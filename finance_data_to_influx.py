@@ -4,6 +4,7 @@ import requests
 import time
 import json
 import os
+import ast
 
 from dotenv import load_dotenv
 
@@ -12,7 +13,7 @@ ENV_PATH = os.path.join(SCRIPT_DIR, ".env")
 
 load_dotenv(ENV_PATH)
 
-from datetime import datetime, timedelta, timezone
+import datetime
 
 # -----------------------------
 # CONFIGURATION
@@ -35,13 +36,10 @@ config.optionxform = str  # preserve case of keys
 config.read(CONFIG_PATH)
 
 STATE_FILE = config["general"]["state_file"]
-
 def load_symbol_config(config):
 
     general = {
-        "default_interval": int(config["general"]["interval"]),
-        "default_decimals": int(config["general"]["decimals"]),
-        "default_decimals_fx": int(config["general"]["decimals_fx"]),
+        "default_interval": int(config["general"]["interval"])
     }
     symbols = {}
 
@@ -57,17 +55,10 @@ def load_symbol_config(config):
 
             symbol = provider_symbol.strip()
 
-            # FX detection
-            if symbol.endswith("=X") or "/" in symbol:
-                decimals = general["default_decimals_fx"]
-            else:
-                decimals = general["default_decimals"]
-
             symbols[measurement] = {
                 "symbol": symbol,
                 "measurement": measurement.strip(),
                 "interval": section_interval,
-                "decimals": decimals,
                 "source": section
             }
 
@@ -91,15 +82,15 @@ EPSILON = 0.005
 # ------------------------------------------------------------
 # Write a measurement to Influx
 # ------------------------------------------------------------
-def write_influx(measurement, fields, tags=None):
+def write_influx(measurement, fields, timestamp, tags=None):
     tag_str = ""
     if tags:
         tag_str = "," + ",".join(f"{k}={v}" for k, v in tags.items())
 
+    # fields is a dict, e.g. {"value": 5.12}
     field_str = ",".join(f"{k}={v}" for k, v in fields.items())
-    line = f"{measurement}{tag_str} {field_str}"
+    line = f"{measurement}{tag_str} {field_str} {timestamp}"
 
-    print(INFLUX_URL)
     r = requests.post(INFLUX_URL, auth=(INFLUX_USER, INFLUX_PASS), data=line, verify=CA_CERT)
     if r.status_code != 204:
         print("Influx write error:", r.text)
@@ -128,101 +119,119 @@ def is_same(a, b):
         return False
     return abs(a - b) < EPSILON
 
+
+def with_message(message):
+    print(f"{message}")
+    return None
+
 # ------------------------------------------------------------
 # Get a measurement and store it in Influx
 # ------------------------------------------------------------
-def process_metric(measurement, fetch_fn, max_age_minutes):
-    print(f"processing {measurement}")
+def process_metric(measurement, fetch_fn, max_age_minutes, state):
     now = int(time.time())
-    state = load_state()
-
 
     # Initialize per-symbol state if missing
     if measurement not in state:
         state[measurement] = {
             "last_value": None,
-            "last_change_time": 0,
-            "last_write_time": 0,
-            "unchanged_count": 0
+            "last_timestamp": 0
         }
 
     s = state[measurement]
+    # Freshness check before hitting the API
+    if s.get("last_try") is not None:
+        age = now - s["last_try"]
+        if age < max_age_minutes * 60:
+            return with_message(f"{measurement}: fresh ({age/60:.1f}m < {max_age_minutes}m) → skip fetch")
+        
+    # Fetch new value + timestamp
+    value, ts = fetch_fn()
+    s["last_try"] = now
 
-    # Add missing key with safe default
-    if "last_write_time" not in s:
-        s["last_write_time"] = s["last_change_time"]
+    if value is None or ts is None:
+        return with_message(f"{measurement}: fetch failed")
+    
+    save = False
 
-    # Freshness check based on last_write_time
-    age = now - s["last_write_time"]
-    if age < max_age_minutes * 60:
-        print(f"{measurement}: fresh ({age/60}m < {max_age_minutes}m) → skip fetch")
-        return s.get("last_value", "use_last")
+    # If this metric has never been written before → accept immediately
+    if s["last_value"] is None:
+        print(f"{measurement}: first-time write ({value}/{ts})")
+        save = True
 
-    # Fetch new value
-    print(f"{now}: Fetching {measurement}...")
-    value = fetch_fn()
+    # New timestamp → write even if value unchanged
+    elif ts != s["last_timestamp"]:
+        print(f"{measurement}: new sample ({value}/{ts})")
+        save = True
 
-    # Hard failure → skip metric entirely
-    if value is None:
-        print(f"{measurement}: failed to read")
-        save_state(state)
-        return None
-
-    # Soft failure → treat as unchanged
-    if value == "use_last":
-        value = s["last_value"]
-
-    # Enforce interval
-    if now - s["last_write_time"] < max_age_minutes * 60:
-        print("{measurement} still fresh");
-        save_state(state)
-        return s.get("last_value", "use_last")
-
-    # Compare with epsilon
-    if is_same(value, s["last_value"]):
-        s["unchanged_count"] += 1
-    else:
-        # Real change detected or first-ever → write immediately
-        write_influx(measurement, {"value": value})
+    if save:
+        write_influx(measurement, {"value": value}, ts)
         s["last_value"] = value
-        s["last_change_time"] = now
-        s["last_write_time"] = now
-        s["unchanged_count"] = 0
-        print(f"{measurement}: updated to {value}")
-        save_state(state)
-        return value
+        s["last_timestamp"] = ts
+        return
 
-    # No change detected → check closure condition
-    time_since_change = now - s["last_change_time"]
+    # Same timestamp → skip
+    return with_message(f"{measurement}: unchanged")
 
-    closed_threshold = max_age_minutes * 60 * 3;
-    if time_since_change >= closed_threshold:
-        # Market is effectively closed → skip write
-        print(f"{measurement}: market closed")
-        save_state(state)
-        return s.get("last_value", "use_last")
+def extract_dependencies(expr: str, candidates):
+    """
+    Return the set of variable names in `expr` that are also in `candidates`.
+    Uses Python's AST, so no substring collisions.
+    """
+    print(f"candidates: {candidates}")
+    tree = ast.parse(expr, mode="eval")
+    names = set()
 
+    class NameCollector(ast.NodeVisitor):
+        def visit_Name(self, node: ast.Name):
+            names.add(node.id)
 
-    # Market is open → write unchanged value to maintain continuity
-    write_influx(measurement, {"value": value})
-    s["last_write_time"] = now
-    print(f"{measurement}: same at {value}")
-    save_state(state)
-    return value
+    NameCollector().visit(tree)
+    return [name for name in names if name in candidates]
 
-# ------------------------------------------------------------
-# Evaluate derived measurements from the fetched data
-# ------------------------------------------------------------
-
-def evaluate_composites(composites, results):
+def evaluate_composites(composites, state, interval):
+    """
+    Evaluate derived measurements from the fetched data
+    """
     computed = {}
+    now = int(time.time())
 
     for measurement, expr in composites.items():
         try:
-            value = eval(expr, {}, results)
-            computed[measurement] = value
-        except Exception:
-            computed[measurement] = "use_last"
+            entry = state.get(measurement, {})
+            last_try = entry.get("last_try")
+
+            # Freshness check BEFORE doing any work
+            if last_try and now - last_try < interval:
+                print(f"Composite {measurement}: fresh enough → skip evaluation")
+                continue
+
+            # Detect dependencies by scanning expression
+            deps = extract_dependencies(expr, state.keys())
+            print(f"Deps: {deps}")  
+            values = {}
+            timestamps = []
+
+            for dep in deps:
+                dep_state = state.get(dep)
+                if not dep_state or dep_state["last_value"] is None:
+                    raise Exception(f"missing dependency {dep}")
+
+                values[dep] = dep_state["last_value"]
+                timestamps.append(dep_state["last_timestamp"])
+
+            print(f"values({measurement}): {values}")
+
+            # Evaluate composite expression
+            value = eval(expr, {}, values)
+
+            # Composite timestamp = newest input timestamp
+            ts = max(timestamps) if timestamps else now
+
+            computed[measurement] = (value, ts)
+
+        except Exception as e:
+            print(f"Composite {measurement} failed: {e}")
+            continue
 
     return computed
 
@@ -243,42 +252,44 @@ def fetch_ecb(symbol):
 
         r = requests.get(url, timeout=10)
         if r.status_code != 200:
-            return "use_last"
+            return None, None
 
         data = r.json()
 
-        try:
-            value = float(
-                data["dataSets"][0]["series"]["0:0:0:0:0"]["observations"]["0"][0]
-            )
-            return value
-        except Exception:
-            return "use_last"
+        value = float(data["dataSets"][0]["series"]["0:0:0:0:0"]["observations"]["0"][0])
+        timestampString = data["structure"]["dimensions"]["observation"][0]["values"][0]["start"]
+        timestamp = int(datetime.datetime.fromisoformat(timestampString).timestamp())
+        return value, timestamp
 
     except Exception:
-        return "use_last"
+        return None, None
 
-def fetch_yahoo_chart(symbol, decimals=2):
-    url = f"https://query1.finance.yahoo.com/v8/finance/chart/{symbol}?interval=1m&range=1d"
+def fetch_yahoo_chart(symbol):
+    url = f"https://query1.finance.yahoo.com/v8/finance/chart/{symbol}?interval=1m&range=1m"
     headers = {"User-Agent": "Mozilla/5.0"}
-    print(f"URL: {url}")
     try:
         r = requests.get(url, headers=headers, timeout=10)
         data = r.json()
 
         result = data["chart"]["result"][0]
-        prices = result["indicators"]["quote"][0]["close"]
+        meta = result["meta"]
 
-        for price in reversed(prices):
-            if price is not None:
-                print(f"Price for {symbol}: {price}")
-                return round(float(price), decimals)
+        price = meta.get("regularMarketPrice")
+        ts = meta.get("regularMarketTime")
+        prev_close = meta.get("chartPreviousClose")
 
-        return None
+        if price is not None:
+            return float(price), ts
+
+        # fallback if Yahoo gives no regularMarketPrice (rare)
+        if prev_close is not None:
+            return float(prev_close), ts
+
+        return None, None
 
     except Exception as e:
         print(f"Error fetching Yahoo chart for {symbol}: {e}")
-        return None
+        return None, None
 
 def fetch_fred_series(series_id):
 
@@ -288,31 +299,37 @@ def fetch_fred_series(series_id):
         "api_key": FRED_API_KEY,
         "file_type": "json",
         "sort_order": "desc",
-        "limit": 1,
-        "observation_start": datetime.date.today().isoformat(),
-        "observation_end": datetime.date.today().isoformat()
+        "limit": 1
     }
 
     try:
         r = requests.get(url, params=params, timeout=10)
         r.raise_for_status()
         data = r.json()
-
         obs = data["observations"][0]
         value = obs["value"]
 
         if value in ("", ".", None):
-            print(f"FRED {series_id} returned no value — using last known")
-            return "use_last"
+            print(f"FRED {series_id} returned no value")
+            return None, None
 
-        return float(value)
+        timestamp_string = obs["date"]
+        timestamp = int(datetime.datetime.strptime(timestamp_string, "%Y-%m-%d").timestamp())
+        return float(value), timestamp
 
     except Exception as e:
         print(f"FRED {series_id} fetch failed:", e)
-        return "use_last"
+        return None, None
 
-def fetch_treasury():
+def fetch_treasury(series_id):
     print("treasury not implemented yet")
+
+FETCHERS = {
+    "yahoo": lambda symbol: lambda: fetch_yahoo_chart(symbol),
+    "fred": lambda series: lambda: fetch_fred_series(series),
+    "ecb": lambda pair: lambda: fetch_ecb(pair),
+    # "treasury": lambda series: lambda: fetch_treasury(series)
+}
 
 # -----------------------------
 # MAIN
@@ -322,38 +339,28 @@ def main():
     symbol_config, general = load_symbol_config(config)
     default_interval = general["default_interval"]
     print("Fetching macro data...")
+    state = load_state()
 
-    results = {}
     for measurement, cfg in symbol_config.items():
-        symbol = cfg["symbol"]
         source = cfg["source"]
+        symbol = cfg["symbol"]
         measurement = cfg["measurement"]
         interval = cfg["interval"]
-        decimals = cfg["decimals"]
-
-        if source == "yahoo":
-            fetch_fn = lambda s=symbol, d=decimals: fetch_yahoo_chart(s, d)
-        elif source == "ecb":
-            fetch_fn = lambda s=symbol: fetch_ecb(s)
-        elif source == "fred":
-            fetch_fn = lambda s=symbol: fetch_fred_series(s)
-        elif source == "treasury":
-            print(f"Skipping treasury metric {measurement}")
-            continue
-            # fetch_fn = lambda: fetch_treasury()
-        else:
+        fetch_builder = FETCHERS.get(source)
+        if fetch_builder is None:
+            print(f"Skipping {source} metric {measurement} - no fetcher")
             continue
 
-        results[measurement] = process_metric( measurement, fetch_fn, interval)
+        process_metric(measurement, fetch_builder(symbol), interval, state)
 
-    print(f"Results: {results}")
     composites = load_composites(config)
-    computed = evaluate_composites(composites, results)
+    computed = evaluate_composites(composites, state, default_interval)
 
-    for measurement, value in computed.items():
-        fetch_fn = lambda v=value: v
-        process_metric(measurement, fetch_fn, default_interval)
+    for measurement, (value, ts) in computed.items():
+        fetch_fn = lambda v=value, t=ts: (v, t)
+        process_metric(measurement, fetch_fn, default_interval, state)
 
+    save_state(state)
     print("Done.")
 
 if __name__ == "__main__":

@@ -1,4 +1,7 @@
-# finance/tests/test_fetch_fred.py
+# Copyright 2026 Rik Essenius
+# Licensed under the Apache License, Version 2.0. See the LICENSE file for details.
+# File: tests/test_fetch_fred.py
+
 from unittest.mock import Mock
 
 import pytest

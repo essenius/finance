@@ -1,4 +1,7 @@
-# tests/test_main.py
+# Copyright 2026 Rik Essenius
+# Licensed under the Apache License, Version 2.0. See the LICENSE file for details.
+# File: tests/test_main.py
+
 def test_main_orchestrator_flow(monkeypatch, capsys):
     from finance import main as main_mod
 

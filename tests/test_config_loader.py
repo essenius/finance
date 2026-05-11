@@ -1,5 +1,6 @@
-# tests/test_config_loader.py
-
+# Copyright 2026 Rik Essenius
+# Licensed under the Apache License, Version 2.0. See the LICENSE file for details.
+# File: tests/test_config_loader.py
 
 def test_load_env_secrets(monkeypatch, tmp_path):
     env = tmp_path / ".env"

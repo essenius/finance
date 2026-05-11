@@ -1,3 +1,6 @@
+# Copyright 2026 Rik Essenius
+# Licensed under the Apache License, Version 2.0. See the LICENSE file for details.
+# File: tests/test_composites_evaluator.py
 
 import pytest
 from finance.composites.evaluator import evaluate_expression, extract_values_and_timestamps, evaluate_composites

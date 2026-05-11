@@ -1,4 +1,6 @@
-# tests/test_freshness.py
+# Copyright 2026 Rik Essenius
+# Licensed under the Apache License, Version 2.0. See the LICENSE file for details.
+# File: tests/test_common_freshness.py
 
 from finance.common.freshness import is_recent
 

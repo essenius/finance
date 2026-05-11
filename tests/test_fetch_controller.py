@@ -1,4 +1,7 @@
-# tests/test_fetch_controller.py
+# Copyright 2026 Rik Essenius
+# Licensed under the Apache License, Version 2.0. See the LICENSE file for details.
+# File: tests/test_fetch_controller.py
+
 import time
 from unittest.mock import Mock
 from finance.fetch.controller import FetchController

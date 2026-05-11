@@ -1,4 +1,6 @@
-# tests/test_parser.py
+# Copyright 2026 Rik Essenius
+# Licensed under the Apache License, Version 2.0. See the LICENSE file for details.
+# File: tests/test_composites_deps.py
 
 import pytest
 from finance.composites.deps import extract_dependencies, topo_sort, CycleError

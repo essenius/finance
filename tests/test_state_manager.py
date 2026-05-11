@@ -1,4 +1,6 @@
-# tests/test_state_manager.py
+# Copyright 2026 Rik Essenius
+# Licensed under the Apache License, Version 2.0. See the LICENSE file for details.
+# File: tests/test_state_manager.py
 
 from pathlib import Path
 

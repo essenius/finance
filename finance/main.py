@@ -1,4 +1,7 @@
 #!/usr/bin/env python3
+# Copyright 2026 Rik Essenius
+# Licensed under the Apache License, Version 2.0. See the LICENSE file for details.
+# File: finance/main.py
 
 from .config.loader import load_config
 from .state.manager import load_state, save_state

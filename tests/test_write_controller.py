@@ -1,4 +1,6 @@
-# tests/test_write_controller.py
+# Copyright 2026 Rik Essenius
+# Licensed under the Apache License, Version 2.0. See the LICENSE file for details.
+# File: tests/test_write_controller.py
 
 from finance.write.controller import should_write, write_metric
 from unittest.mock import Mock

@@ -1,0 +1,41 @@
+#!/usr/bin/env python3
+
+from .config.loader import load_config
+from .state.manager import load_state, save_state
+from .fetch.controller import FetchController
+from .composites.evaluator import evaluate_composites
+from .write.controller import write_metric
+from .write.influx import InfluxWriter
+
+def main():
+
+    config = load_config()
+
+    general = config["general"]
+    symbols = config["symbols"]
+    composites = config["composites"]
+    secrets = config["secrets"]
+
+    state = load_state()
+    influx_writer = InfluxWriter(secrets["influx"])
+
+    fetch_controller = FetchController(symbols, secrets["api_keys"], None)
+    fetched = fetch_controller.fetch_all(state)
+
+    # Write fetched data to Influx and update state
+    for name, (value, ts) in fetched.items():
+        msg = write_metric(name=name, value=value, ts=ts, state=state, influx_writer=influx_writer)
+        print(msg)
+
+    computed = evaluate_composites(composites, state)
+
+    # Write composites
+    for name, (value, ts) in computed.items():
+        msg = write_metric(name=name, value=value, ts=ts, state=state, influx_writer=influx_writer)
+        print(msg)
+
+    save_state(state)
+    print("Done.")
+
+if __name__ == "__main__":
+    main()

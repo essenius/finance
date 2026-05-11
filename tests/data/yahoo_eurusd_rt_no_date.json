@@ -1,0 +1,104 @@
+{
+    "chart": {
+        "result": [
+            {
+                "meta": {
+                    "currency": "USD",
+                    "symbol": "EURUSD=X",
+                    "exchangeName": "CCY",
+                    "fullExchangeName": "CCY",
+                    "instrumentType": "CURRENCY",
+                    "firstTradeDate": 1070236800,
+                    "hasPrePostMarketData": false,
+                    "gmtoffset": 3600,
+                    "timezone": "BST",
+                    "exchangeTimezoneName": "Europe/London",
+                    "regularMarketPrice": 1.179,
+                    "fiftyTwoWeekHigh": 1.2024,
+                    "fiftyTwoWeekLow": 1.1075,
+                    "regularMarketDayHigh": 1.1791,
+                    "regularMarketDayLow": 1.1729,
+                    "regularMarketVolume": 0,
+                    "longName": "EUR/USD",
+                    "shortName": "EUR/USD",
+                    "chartPreviousClose": 1.1732,
+                    "priceHint": 4,
+                    "currentTradingPeriod": {
+                        "pre": {
+                            "timezone": "BST",
+                            "end": 1778194800,
+                            "start": 1778194800,
+                            "gmtoffset": 3600
+                        },
+                        "regular": {
+                            "timezone": "BST",
+                            "end": 1778281140,
+                            "start": 1778194800,
+                            "gmtoffset": 3600
+                        },
+                        "post": {
+                            "timezone": "BST",
+                            "end": 1778281140,
+                            "start": 1778281140,
+                            "gmtoffset": 3600
+                        }
+                    },
+                    "dataGranularity": "1d",
+                    "range": "1d",
+                    "validRanges": [
+                        "1d",
+                        "5d",
+                        "1mo",
+                        "3mo",
+                        "6mo",
+                        "1y",
+                        "2y",
+                        "5y",
+                        "10y",
+                        "ytd",
+                        "max"
+                    ]
+                },
+                "timestamp": [
+                    1778194800,
+                    1778275765
+                ],
+                "indicators": {
+                    "quote": [
+                        {
+                            "high": [
+                                1.178467035293579,
+                                1.1791062355041504
+                            ],
+                            "volume": [
+                                0,
+                                0
+                            ],
+                            "open": [
+                                1.1730892658233643,
+                                1.1730204820632935
+                            ],
+                            "low": [
+                                1.172525405883789,
+                                1.1728830337524414
+                            ],
+                            "close": [
+                                1.1731581687927246,
+                                1.1789672374725342
+                            ]
+                        }
+                    ],
+                    "adjclose": [
+                        {
+                            "adjclose": [
+                                1.1731581687927246,
+                                1.1789672374725342
+                            ]
+                        }
+                    ]
+                }
+            }
+        ],
+        "error": null
+    }
+}

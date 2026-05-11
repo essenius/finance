@@ -1,0 +1,84 @@
+# -------------------------
+# Python
+# -------------------------
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.pdb
+*.pkl
+
+# C extensions
+*.so
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Distribution / packaging
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# Installer logs
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Unit test / coverage
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+pytest_cache/
+.pytest_cache/
+nosetests.xml
+coverage.xml
+
+# Jupyter
+.ipynb_checkpoints/
+
+# MyPy / Pyright / type checkers
+.mypy_cache/
+.dmypy.json
+dmypy.json
+.pytype/
+pyrightconfig.json
+
+# IDEs / Editors
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# -------------------------
+# Project-specific
+# -------------------------
+
+# Environment variables
+.env
+
+# Secrets (any file starting with "secret")
+secret*
+Secret*
+
+# Local config/state
+config.local.ini
+*.local.json
+*.local.yaml
+*.local.yml
+
+# Logs
+*.log
+
+# State files (your pipeline)
+metric_state.json
+state.json
+
+# OS files
+.DS_Store
+Thumbs.db

@@ -3,7 +3,13 @@
 # File: tests/test_composites_deps.py
 
 import pytest
-from finance.composites.deps import extract_dependencies, topo_sort, CycleError, build_composite_graph
+
+from finance.composites.deps import (
+    CycleError,
+    build_composite_graph,
+    extract_dependencies,
+    topo_sort,
+)
 
 # -------------------------
 #  Topo Sort Valid DAGs

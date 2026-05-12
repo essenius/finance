@@ -62,4 +62,4 @@ def test_main_orchestrator_flow(monkeypatch, capsys):
     assert "spx: wrote (4321/100)" in out
     assert "spread: wrote (10/200)" in out
     assert "Done." in out
-    
+

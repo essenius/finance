@@ -2,8 +2,10 @@
 # Licensed under the Apache License, Version 2.0. See the LICENSE file for details.
 # File: tests/test_write_influx.py
 
-from unittest.mock import patch, Mock
+from unittest.mock import Mock, patch
+
 from finance.write.influx import InfluxWriter
+
 
 def test_influx_writer_success():
     secrets = {

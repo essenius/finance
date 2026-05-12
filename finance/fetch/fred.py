@@ -3,7 +3,9 @@
 # File: finance/fetch/fred.py
 
 import datetime
+
 import requests
+
 
 def fetch_fred_series(series_id, api_keys):
 
@@ -23,13 +25,13 @@ def fetch_fred_series(series_id, api_keys):
         obs = data["observations"]
         if not obs:
             return {"value": None, "timestamp": None}
-        
+
         value = obs[0]["value"]
         if value in ("", ".", None):
             print(f"FRED {series_id} returned no value")
             return {"value": None, "timestamp": None}
 
-        timestamp = int(datetime.datetime.strptime(obs[0]["date"], "%Y-%m-%d").replace(tzinfo=datetime.timezone.utc).timestamp())
+        timestamp = int(datetime.datetime.strptime(obs[0]["date"], "%Y-%m-%d").replace(tzinfo=datetime.UTC).timestamp())
         return {"value": float(value), "timestamp": timestamp}
 
     except Exception as e:

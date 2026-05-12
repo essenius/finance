@@ -3,7 +3,9 @@
 # File: finance/composites/evaluator.py
 
 import time
+
 from .deps import build_composite_graph, topo_sort
+
 
 def extract_values_and_timestamps(state, deps):
     values = {}

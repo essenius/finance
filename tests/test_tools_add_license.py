@@ -2,7 +2,6 @@
 # Licensed under the Apache License, Version 2.0. See the LICENSE file for details.
 # File: tests/test_tools_add_license.py
 
-import pytest
 from pathlib import Path
 
 # We import inside tests so monkeypatching works cleanly
@@ -233,7 +232,7 @@ def test_main_processes_all_python_files(tmp_path, monkeypatch):
 
     monkeypatch.setattr("tools.add_license.PROJECT_ROOT", tmp_path)
     monkeypatch.setattr("tools.add_license.CURRENT_YEAR", 2026)
-    
+
     from tools.add_license import main
     main()
 

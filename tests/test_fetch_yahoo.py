@@ -3,7 +3,8 @@
 # File: tests/test_fetch_yahoo.py
 
 import json
-from unittest.mock import patch, Mock
+from unittest.mock import Mock, patch
+
 from finance.fetch.yahoo import fetch_yahoo_chart
 
 

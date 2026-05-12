@@ -4,6 +4,7 @@
 
 import ast
 
+
 def extract_dependencies(expr: str, candidates) -> list[str]:
     """
     Extract variable names from a composite expression using Python's AST.

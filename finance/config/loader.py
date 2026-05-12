@@ -2,12 +2,13 @@
 # Licensed under the Apache License, Version 2.0. See the LICENSE file for details.
 # File: finance/config/loader.py
 
+import os
 from configparser import ConfigParser
 from pathlib import Path
-from dotenv import load_dotenv
-import os
 
-PROJECT_ROOT = Path(__file__).resolve().parent[2]
+from dotenv import load_dotenv
+
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 # -----------------------------
 # Load secrets from .env

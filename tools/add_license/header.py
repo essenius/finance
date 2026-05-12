@@ -3,7 +3,6 @@
 # File: tools/add_license/header.py
 
 import re
-from pathlib import Path
 
 COPYRIGHT_RE = re.compile(r"^# Copyright (\d{4})(?:-(\d{4}))? Rik Essenius$")
 LICENSE_RE = re.compile(r"^# Licensed under the Apache License")

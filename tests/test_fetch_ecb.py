@@ -4,7 +4,9 @@
 
 import json
 from unittest.mock import Mock
+
 from finance.fetch.ecb import fetch_ecb
+
 
 def test_ecb_fetch_real_fixture(monkeypatch):
     with open("tests/data/ecb_eurusd.json") as f:

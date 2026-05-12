@@ -4,13 +4,17 @@
 
 import requests
 
-def fetch_yahoo_chart(symbol, api_keys={}):
+
+def fetch_yahoo_chart(symbol, api_keys=None):
+    if api_keys is None:
+        api_keys = {}
+
     url = f"https://query1.finance.yahoo.com/v8/finance/chart/{symbol}?interval=1m&range=1m"
     headers = {"User-Agent": "Mozilla/5.0"}
     try:
         r = requests.get(url, headers=headers, timeout=10)
         data = r.json()
-        print(f"Yahoo response for {symbol}: {data}")  
+        print(f"Yahoo response for {symbol}: {data}")
 
         result = data["chart"]["result"][0]
         meta = result["meta"]

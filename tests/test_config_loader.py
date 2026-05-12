@@ -39,6 +39,7 @@ spx = ^GSPC
 """)
 
     from configparser import ConfigParser
+
     from finance.config.loader import load_symbols
 
     parser = ConfigParser()
@@ -65,6 +66,7 @@ spx = ^GSPC
 """)
 
     from configparser import ConfigParser
+
     from finance.config.loader import load_symbols
 
     parser = ConfigParser()
@@ -98,6 +100,7 @@ t10y = T10YIE
 """)
 
     from configparser import ConfigParser
+
     from finance.config.loader import load_symbols
 
     parser = ConfigParser()
@@ -122,6 +125,7 @@ ratio = spx / gold
 """)
 
     from configparser import ConfigParser
+
     from finance.config.loader import load_composites
 
     parser = ConfigParser()

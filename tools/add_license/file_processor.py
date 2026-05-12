@@ -3,9 +3,8 @@
 # File: tools/add_license/file_processor.py
 
 from pathlib import Path
-from .header import Header
-from .header import COPYRIGHT_RE, FILE_RE  # if needed
-import os
+
+from .header import Header  # if needed
 
 
 def normalize_body_spacing(lines: list[str]) -> list[str]:

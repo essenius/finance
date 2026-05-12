@@ -4,6 +4,7 @@
 
 import requests
 
+
 class InfluxWriter:
     def __init__(self, secrets: dict):
         """

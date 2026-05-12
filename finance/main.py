@@ -3,12 +3,13 @@
 # Licensed under the Apache License, Version 2.0. See the LICENSE file for details.
 # File: finance/main.py
 
-from .config.loader import load_config
-from .state.manager import load_state, save_state
-from .fetch.controller import FetchController
 from .composites.evaluator import evaluate_composites
+from .config.loader import load_config
+from .fetch.controller import FetchController
+from .state.manager import load_state, save_state
 from .write.controller import write_metric
 from .write.influx import InfluxWriter
+
 
 def main():
 

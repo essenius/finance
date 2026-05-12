@@ -5,7 +5,9 @@
 from unittest.mock import Mock
 
 import pytest
+
 from finance.fetch.fred import fetch_fred_series
+
 
 def test_fred_fetch_normal(monkeypatch):
     fake_json = {

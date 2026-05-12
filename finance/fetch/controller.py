@@ -3,10 +3,13 @@
 # File: finance/fetch/controller.py
 
 import time
-from .yahoo import fetch_yahoo_chart
+
+from finance.common.freshness import is_recent
+
 from .ecb import fetch_ecb
 from .fred import fetch_fred_series
-from finance.common.freshness import is_recent
+from .yahoo import fetch_yahoo_chart
+
 
 class FetchController:
     def __init__(self, symbols, api_keys, now_provider=time.time):
@@ -48,7 +51,7 @@ class FetchController:
         now = int(self.now())
         print(f"FetchController: now={now}, state={state}")  # Debug print
         results = {}
-        print(f"symbols: {self.symbols}")  # Debug print    
+        print(f"symbols: {self.symbols}")  # Debug print
         for name, cfg in self.symbols.items():
             interval = cfg["interval"]
             entry = state.get(name, {})

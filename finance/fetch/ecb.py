@@ -2,15 +2,19 @@
 # Licensed under the Apache License, Version 2.0. See the LICENSE file for details.
 # File: finance/fetch/ecb.py
 
-import requests
 import datetime
 
-def fetch_ecb(symbol, api_keys={}):
+import requests
+
+
+def fetch_ecb(symbol, api_keys=None):
     """
     symbol: e.g. 'USD_EUR'
     returns: float or 'use_last'
     """
 
+    if api_keys is None:
+        api_keys = {}
     try:
         base, quote = symbol.split("_")
         series = f"EXR/D.{base}.{quote}.SP00.A"
@@ -23,8 +27,8 @@ def fetch_ecb(symbol, api_keys={}):
         data = r.json()
 
         value = float(data["dataSets"][0]["series"]["0:0:0:0:0"]["observations"]["0"][0])
-        timestampString = data["structure"]["dimensions"]["observation"][0]["values"][0]["start"]
-        timestamp = int(datetime.datetime.fromisoformat(timestampString).timestamp())
+        timestamp_string = data["structure"]["dimensions"]["observation"][0]["values"][0]["start"]
+        timestamp = int(datetime.datetime.fromisoformat(timestamp_string).timestamp())
         return {"value": value, "timestamp": timestamp}
 
     except Exception:

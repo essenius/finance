@@ -3,22 +3,34 @@
 # File: tests/test_composites_evaluator.py
 
 import pytest
-from finance.composites.evaluator import evaluate_expression, extract_values_and_timestamps, evaluate_composites
+from finance.composites.evaluator import (
+    evaluate_expression,
+    extract_values_and_timestamps,
+    evaluate_composites,
+)
+
+# We patch time.time so tests are deterministic
+import time
+
 
 # -------------------------
 # Evaluate Expression
 # -------------------------
 
+
 def test_evaluate_expression_simple():
     assert evaluate_expression("A + B", {"A": 2, "B": 3}) == 5
+
 
 def test_evaluate_expression_raises():
     with pytest.raises(ValueError):
         evaluate_expression("A + unknown", {"A": 1})
 
+
 # ------------------------------
 # Extract Values and Timestamps
 # ------------------------------
+
 
 def test_extract_values_and_timestamps():
     state = {
@@ -37,13 +49,12 @@ def test_extract_values_and_timestamps_missing():
     }
     with pytest.raises(KeyError):
         extract_values_and_timestamps(state, ["A", "B"])
-        
+
+
 # -------------------------
 # Evaluate Composites
 # -------------------------
 
-# We patch time.time so tests are deterministic
-import time
 
 class FixedTime:
     def __init__(self, value):

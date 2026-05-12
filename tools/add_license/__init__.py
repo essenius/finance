@@ -20,6 +20,6 @@ def add_license_to_file(path: Path):
 
 
 def main():
-    """Compatibility wrapper for tests."""
+    """main entry point for command line usage."""
     from . import PROJECT_ROOT, CURRENT_YEAR
     _main(PROJECT_ROOT, CURRENT_YEAR)

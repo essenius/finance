@@ -13,7 +13,7 @@ class InfluxWriter:
         password: optional password
         ca_cert:  path to CA certificate file, or None to disable verification
         """
-        url = secrets["base"].rstrip("/")
+        url = secrets["url"].rstrip("/")
         db = secrets["db"]
         user = secrets.get("user")
         password = secrets.get("password")

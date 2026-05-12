@@ -7,7 +7,7 @@ from finance.write.influx import InfluxWriter
 
 def test_influx_writer_success():
     secrets = {
-        "base": "http://example.com:8086",
+        "url": "http://example.com:8086",
         "db": "finance",
         "user": "u",
         "password": "p",
@@ -32,7 +32,7 @@ def test_influx_writer_success():
         )
 
 def test_influx_writer_failure():
-    secrets = {"base": "http://x", "db": "y"}
+    secrets = {"url": "http://x", "db": "y"}
 
     writer = InfluxWriter(secrets)
 

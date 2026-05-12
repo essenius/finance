@@ -3,7 +3,7 @@
 # File: tests/test_composites_deps.py
 
 import pytest
-from finance.composites.deps import extract_dependencies, topo_sort, CycleError
+from finance.composites.deps import extract_dependencies, topo_sort, CycleError, build_composite_graph
 
 # -------------------------
 #  Topo Sort Valid DAGs
@@ -215,9 +215,6 @@ def test_handles_complex_real_world_expression():
 # -------------------------
 # Build Composite Graph
 # -------------------------
-
-import pytest
-from finance.composites.deps import build_composite_graph, extract_dependencies
 
 def test_build_composite_graph_simple():
     composites = {

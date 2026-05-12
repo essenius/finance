@@ -4,7 +4,9 @@
 
 import time
 from unittest.mock import Mock
+
 from finance.fetch.controller import FetchController
+
 
 def test_fetch_controller_skips_fresh(monkeypatch):
     # Fake fetcher that should NOT be called
@@ -13,20 +15,16 @@ def test_fetch_controller_skips_fresh(monkeypatch):
     now = int(time.time())
     interval = 3600  # 1 hour
 
-    config = {
-        "sources": {
-            "spx": {"source": "yahoo", "symbol": "^GSPC", "interval": interval}
-        }
-    }
+    config = {"spx": {"source": "yahoo", "symbol": "^GSPC", "interval": interval}}
 
-    fetch_controller = FetchController(config, {}, now_provider=lambda: now) 
+    fetch_controller = FetchController(config, {}, now_provider=lambda: now)
     fetch_controller.fetchers["yahoo"] = lambda cfg, key: fake_fetch(cfg["symbol"])
 
     state = {
         "spx": {
-            "last_try": now - 100,   # fresh
+            "last_try": now - 100,  # fresh
             "last_value": 4000,
-            "last_timestamp": 123456
+            "last_timestamp": 123456,
         }
     }
 
@@ -40,27 +38,23 @@ def test_fetch_controller_fetches_when_stale(monkeypatch):
 
     interval = 3600
 
-    config = {
-        "sources": {
-            "spx": {"source": "yahoo", "symbol": "^GSPC", "interval": interval}
-        }
-    }
+    config = {"spx": {"source": "yahoo", "symbol": "^GSPC", "interval": interval}}
 
     api_keys = {}
     now = 1_000_000_000
 
-    fetch_controller = FetchController(config, api_keys, now_provider=lambda: now) 
+    fetch_controller = FetchController(config, api_keys, now_provider=lambda: now)
     fetch_controller.fetchers["yahoo"] = lambda cfg, key: fake_fetch(cfg["symbol"])
 
     state = {
         "spx": {
             "last_try": now - 7200,  # stale
             "last_value": 4000,
-            "last_timestamp": 123456
+            "last_timestamp": 123456,
         }
     }
 
-    result = fetch_controller.fetch_all(state)
+    fetch_controller.fetch_all(state)
 
     fake_fetch.assert_called_once_with("^GSPC")
     assert state["spx"]["last_value"] == 4000
@@ -69,15 +63,7 @@ def test_fetch_controller_fetches_when_stale(monkeypatch):
 
 
 def test_fetch_controller_unknown_source(capsys):
-    config = {
-        "sources": {
-            "mystery": {
-                "source": "unknown",
-                "symbol": "???",
-                "interval": 3600
-            }
-        }
-    }
+    config = {"mystery": {"source": "unknown", "symbol": "???", "interval": 3600}}
 
     api_keys = {}
     now = 1_000_000_000
@@ -98,15 +84,7 @@ def test_fetch_controller_unknown_source(capsys):
 def test_fetch_controller_fetcher_returns_none():
     fake_fetch = Mock(return_value={"value": None, "timestamp": None})
 
-    config = {
-        "sources": {
-            "spx": {
-                "source": "yahoo",
-                "symbol": "^GSPC",
-                "interval": 3600
-            }
-        }
-    }
+    config = {"spx": {"source": "yahoo", "symbol": "^GSPC", "interval": 3600}}
 
     api_keys = {"yahoo": None}
     now = 1_000_000_000

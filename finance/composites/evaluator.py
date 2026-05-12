@@ -35,7 +35,6 @@ def evaluate_composites(composites, state):
     # Evaluate in topological order
     for measurement in topo_sort(graph):
         expr = composites[measurement]
-        entry = state.get(measurement, {})
 
         deps = graph[measurement]
 

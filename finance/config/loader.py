@@ -7,14 +7,13 @@ from pathlib import Path
 from dotenv import load_dotenv
 import os
 
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
-
+PROJECT_ROOT = Path(__file__).resolve().parent[2]
 
 # -----------------------------
 # Load secrets from .env
 # -----------------------------
 def load_env_secrets(env_path: Path):
-    load_dotenv(env_path)
+    load_dotenv(env_path, override=True)
 
     return {
         "influx": {
@@ -79,6 +78,7 @@ def load_config(
     ini_path: Path = PROJECT_ROOT / "config.ini",
     env_path: Path = PROJECT_ROOT / ".env"
 ):
+    print(f"Loading config from {ini_path} and secrets from {env_path}")
     secrets = load_env_secrets(env_path)
 
     # Load config.ini

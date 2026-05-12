@@ -14,15 +14,16 @@ def main():
 
     config = load_config()
 
-    general = config["general"]
     symbols = config["symbols"]
     composites = config["composites"]
     secrets = config["secrets"]
 
+    print(f"Config loaded. Symbols: {list(symbols.keys())}, Composites: {list(composites.keys())}, Secrets: {secrets}")
+
     state = load_state()
     influx_writer = InfluxWriter(secrets["influx"])
 
-    fetch_controller = FetchController(symbols, secrets["api_keys"], None)
+    fetch_controller = FetchController(symbols, secrets["api_keys"])
     fetched = fetch_controller.fetch_all(state)
 
     # Write fetched data to Influx and update state

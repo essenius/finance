@@ -2,5 +2,5 @@
 # Licensed under the Apache License, Version 2.0. See the LICENSE file for details.
 # File: tools/add_license/__main__.py
 
-from . import main
+from .main import main
 main()

@@ -6,8 +6,8 @@ def test_load_env_secrets(monkeypatch, tmp_path):
     env = tmp_path / ".env"
     env.write_text("INFLUX_URL=http://x\nINFLUX_DB=db\nFRED_API_KEY=abc\n")
 
-    monkeypatch.setenv("INFLUX_URL", "http://x")
-    monkeypatch.setenv("INFLUX_DB", "db")
+    monkeypatch.setenv("INFLUX_URL", "http://y")
+    monkeypatch.setenv("INFLUX_DB", "bogus")
     monkeypatch.setenv("INFLUX_USER", "u")
     monkeypatch.setenv("INFLUX_PASSWORD", "p")
     monkeypatch.setenv("FRED_API_KEY", "fred123")
@@ -17,12 +17,14 @@ def test_load_env_secrets(monkeypatch, tmp_path):
 
     secrets = load_env_secrets(env)
 
+    # .env wins from environment variables
+
     assert secrets["influx"]["url"] == "http://x"
     assert secrets["influx"]["db"] == "db"
     assert secrets["influx"]["user"] == "u"
     assert secrets["influx"]["password"] == "p"
 
-    assert secrets["api_keys"]["fred"] == "fred123"
+    assert secrets["api_keys"]["fred"] == "abc"
     assert secrets["api_keys"]["yahoo"] == "yahoo123"
 
 

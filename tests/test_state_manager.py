@@ -86,7 +86,6 @@ def test_save_state_json_failure(tmp_path, monkeypatch):
     from finance.state.manager import save_state
     import tempfile
     import json
-    import shutil
     from pathlib import Path
     import pytest
 

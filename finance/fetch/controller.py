@@ -16,9 +16,9 @@ class FetchController:
 
         # fetcher registry with correct signatures
         self.fetchers = {
-            "yahoo": lambda cfg, api_key: fetch_yahoo_chart(cfg["symbol"]),
-            "ecb":   lambda cfg, api_key: fetch_ecb(cfg["symbol"]),
-            "fred":  lambda cfg, api_key: fetch_fred_series(cfg["symbol"], api_key),
+            "yahoo": lambda cfg, api_keys: fetch_yahoo_chart(cfg["symbol"]),
+            "ecb":   lambda cfg, api_keys: fetch_ecb(cfg["symbol"]),
+            "fred":  lambda cfg, api_keys: fetch_fred_series(cfg["symbol"], api_keys),
         }
 
     def fetch_one(self, name, cfg, state):
@@ -48,8 +48,8 @@ class FetchController:
         now = int(self.now())
         print(f"FetchController: now={now}, state={state}")  # Debug print
         results = {}
-
-        for name, cfg in self.symbols["sources"].items():
+        print(f"symbols: {self.symbols}")  # Debug print    
+        for name, cfg in self.symbols.items():
             interval = cfg["interval"]
             entry = state.get(name, {})
             print(f"Checking {name}: last_try={entry.get('last_try')}, last_value={entry.get('last_value')}, last_timestamp={entry.get('last_timestamp')}")  # Debug print

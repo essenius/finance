@@ -2,6 +2,7 @@
 # Licensed under the Apache License, Version 2.0. See the LICENSE file for details.
 # File: tests/test_config_loader.py
 
+
 def test_load_env_secrets(monkeypatch, tmp_path):
     env = tmp_path / ".env"
     env.write_text("INFLUX_URL=http://x\nINFLUX_DB=db\nFRED_API_KEY=abc\n")
@@ -53,6 +54,7 @@ spx = ^GSPC
     assert symbols["spx"]["symbol"] == "^GSPC"
     assert symbols["spx"]["source"] == "yahoo"
     assert symbols["spx"]["measurement"] == "spx"
+
 
 def test_load_symbols_section_interval_override(tmp_path):
     ini = tmp_path / "config.ini"

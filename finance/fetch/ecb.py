@@ -6,6 +6,8 @@ import datetime
 
 import requests
 
+BASE_URL = "https://data-api.ecb.europa.eu/service/data"
+
 
 def fetch_ecb(symbol, api_keys=None):
     """
@@ -18,7 +20,7 @@ def fetch_ecb(symbol, api_keys=None):
     try:
         base, quote = symbol.split("_")
         series = f"EXR/D.{base}.{quote}.SP00.A"
-        url = f"https://data-api.ecb.europa.eu/service/data/{series}?format=jsondata&lastNObservations=1&detail=dataonly"
+        url = f"{BASE_URL}/{series}?format=jsondata&lastNObservations=1&detail=dataonly"
 
         r = requests.get(url, timeout=10)
         if r.status_code != 200:

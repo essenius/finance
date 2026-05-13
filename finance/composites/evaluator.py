@@ -21,12 +21,14 @@ def extract_values_and_timestamps(state, deps):
 
     return values, timestamps
 
+
 def evaluate_expression(expr, values):
     """Evaluate a composite expression using only provided values."""
     try:
         return eval(expr, {}, values)
     except Exception as e:
         raise ValueError(f"Error evaluating expression '{expr}'") from e
+
 
 def evaluate_composites(composites, state):
     computed = {}

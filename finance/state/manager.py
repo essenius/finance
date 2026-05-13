@@ -9,6 +9,7 @@ from pathlib import Path
 
 DEFAULT_STATE_FILE = Path(__file__).parent.parent / "state.json"
 
+
 def load_state(path: Path = DEFAULT_STATE_FILE):
     """
     Load state from disk.

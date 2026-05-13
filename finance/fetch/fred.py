@@ -7,15 +7,14 @@ import datetime
 import requests
 
 
-def fetch_fred_series(series_id, api_keys):
-
+def fetch_fred_series(series_id, api_key):
     url = "https://api.stlouisfed.org/fred/series/observations"
     params = {
         "series_id": series_id,
-        "api_key": api_keys.get("fred"),
+        "api_key": api_key,
         "file_type": "json",
         "sort_order": "desc",
-        "limit": 1
+        "limit": 1,
     }
 
     try:

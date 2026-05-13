@@ -41,6 +41,7 @@ def test_write_metric_first_time():
 
     assert msg == "spx: wrote (4321/100)"
 
+
 def test_write_metric_new_timestamp():
     influx = Mock()
     state = {"spx": {"last_value": 4000, "last_timestamp": 50}}
@@ -53,6 +54,7 @@ def test_write_metric_new_timestamp():
     assert state["spx"]["last_timestamp"] == 100
 
     assert msg == "spx: wrote (4100/100)"
+
 
 def test_write_metric_unchanged_timestamp():
     influx = Mock()

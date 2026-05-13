@@ -14,6 +14,7 @@ def test_load_state_missing_file(tmp_path):
 
     assert state == {}
 
+
 def test_load_state_valid_dict(tmp_path):
     import json
 
@@ -27,6 +28,7 @@ def test_load_state_valid_dict(tmp_path):
 
     assert state == data
 
+
 def test_load_state_valid_non_dict(tmp_path):
     import json
 
@@ -36,6 +38,7 @@ def test_load_state_valid_non_dict(tmp_path):
     path.write_text(json.dumps([1, 2, 3]))  # list, not dict
 
     assert load_state(path) == {}
+
 
 def test_load_state_invalid_json(tmp_path):
     from finance.state.manager import load_state
@@ -53,8 +56,10 @@ def test_save_state_atomic_success(tmp_path, monkeypatch):
     from finance.state.manager import save_state
 
     # Force NamedTemporaryFile to write into our tmp_path
-    monkeypatch.setattr(tempfile, "NamedTemporaryFile",
-        lambda *a, **kw: open(tmp_path / "tempfile.json", "w", encoding="utf-8")
+    monkeypatch.setattr(
+        tempfile,
+        "NamedTemporaryFile",
+        lambda *a, **kw: open(tmp_path / "tempfile.json", "w", encoding="utf-8"),
     )
 
     path = tmp_path / "state.json"
@@ -66,6 +71,7 @@ def test_save_state_atomic_success(tmp_path, monkeypatch):
     assert path.exists()
     assert json.loads(path.read_text()) == state
 
+
 def test_save_state_overwrites_existing(tmp_path, monkeypatch):
     import json
     import tempfile
@@ -73,8 +79,10 @@ def test_save_state_overwrites_existing(tmp_path, monkeypatch):
     from finance.state.manager import save_state
 
     # Fake temp file
-    monkeypatch.setattr(tempfile, "NamedTemporaryFile",
-        lambda *a, **kw: open(tmp_path / "tempfile.json", "w", encoding="utf-8")
+    monkeypatch.setattr(
+        tempfile,
+        "NamedTemporaryFile",
+        lambda *a, **kw: open(tmp_path / "tempfile.json", "w", encoding="utf-8"),
     )
 
     path = tmp_path / "state.json"
@@ -102,9 +110,15 @@ def test_save_state_json_failure(tmp_path, monkeypatch):
     # Fake NamedTemporaryFile to return our temp file
     class FakeTemp:
         name = str(temp_file)
-        def write(self, *a, **kw): pass
-        def flush(self): pass
-        def close(self): pass
+
+        def write(self, *a, **kw):
+            pass
+
+        def flush(self):
+            pass
+
+        def close(self):
+            pass
 
     monkeypatch.setattr(tempfile, "NamedTemporaryFile", lambda *a, **kw: FakeTemp())
 
@@ -127,6 +141,7 @@ def test_save_state_json_failure(tmp_path, monkeypatch):
     # Temp file must be deleted
     assert Path(temp_file) in deleted
 
+
 def test_save_state_unlink_failure(tmp_path, monkeypatch):
     import json
     import tempfile
@@ -139,9 +154,15 @@ def test_save_state_unlink_failure(tmp_path, monkeypatch):
 
     class FakeTemp:
         name = str(temp_file)
-        def write(self, *a, **kw): pass
-        def flush(self): pass
-        def close(self): pass
+
+        def write(self, *a, **kw):
+            pass
+
+        def flush(self):
+            pass
+
+        def close(self):
+            pass
 
     monkeypatch.setattr(tempfile, "NamedTemporaryFile", lambda *a, **kw: FakeTemp())
 
@@ -156,13 +177,16 @@ def test_save_state_unlink_failure(tmp_path, monkeypatch):
 
     assert "boom" in str(excinfo.value)
 
+
 def test_load_state_after_atomic_save(tmp_path, monkeypatch):
     import tempfile
 
     from finance.state.manager import load_state, save_state
 
-    monkeypatch.setattr(tempfile, "NamedTemporaryFile",
-        lambda *a, **kw: open(tmp_path / "tempfile.json", "w", encoding="utf-8")
+    monkeypatch.setattr(
+        tempfile,
+        "NamedTemporaryFile",
+        lambda *a, **kw: open(tmp_path / "tempfile.json", "w", encoding="utf-8"),
     )
 
     path = tmp_path / "state.json"

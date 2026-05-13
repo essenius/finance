@@ -10,6 +10,7 @@ from dotenv import load_dotenv
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
+
 # -----------------------------
 # Load secrets from .env
 # -----------------------------
@@ -22,14 +23,17 @@ def load_env_secrets(env_path: Path):
             "db": os.getenv("INFLUX_DB"),
             "user": os.getenv("INFLUX_USER"),
             "password": os.getenv("INFLUX_PASSWORD"),
+            "cert": os.getenv("INFLUX_CERT"),
+            "verify": os.getenv("INFLUX_VERIFY"),
         },
         "api_keys": {
             "fred": os.getenv("FRED_API_KEY"),
             "yahoo": os.getenv("YAHOO_API_KEY"),
             "ecb": os.getenv("ECB_API_KEY"),
             "treasury": os.getenv("TREASURY_API_KEY"),
-        }
+        },
     }
+
 
 # -----------------------------
 # Parse symbol sections
@@ -41,7 +45,7 @@ def load_symbols(parser: ConfigParser, general: dict):
         if section not in parser:
             continue
 
-        raw_interval = parser[section].get("interval") # this is in minutes in the config
+        raw_interval = parser[section].get("interval")  # this is in minutes in the config
 
         interval_seconds = int(general["default_interval"]) if raw_interval is None else int(raw_interval) * 60
 
@@ -75,10 +79,7 @@ def load_composites(parser: ConfigParser):
 # -----------------------------
 # Main config loader
 # -----------------------------
-def load_config(
-    ini_path: Path = PROJECT_ROOT / "config.ini",
-    env_path: Path = PROJECT_ROOT / ".env"
-):
+def load_config(ini_path: Path = PROJECT_ROOT / "config.ini", env_path: Path = PROJECT_ROOT / ".env"):
     print(f"Loading config from {ini_path} and secrets from {env_path}")
     secrets = load_env_secrets(env_path)
 

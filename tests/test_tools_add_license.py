@@ -11,19 +11,23 @@ from pathlib import Path
 # Helpers
 # ------------------------------------------------------------
 
+
 def write(path: Path, text: str):
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(text, encoding="utf-8")
 
+
 # ------------------------------------------------------------
 # Tests for skipping __init__.py
 # ------------------------------------------------------------
+
 
 def test_skip_empty_init(tmp_path, monkeypatch):
     monkeypatch.setattr("tools.add_license.PROJECT_ROOT", tmp_path)
     write(tmp_path / "pkg" / "__init__.py", "")
 
     from tools.add_license import add_license_to_file
+
     path = tmp_path / "pkg" / "__init__.py"
     add_license_to_file(path)
 
@@ -35,6 +39,7 @@ def test_skip_comment_only_init(tmp_path, monkeypatch):
     write(tmp_path / "pkg" / "__init__.py", "# comment\n\n# another\n")
 
     from tools.add_license import add_license_to_file
+
     path = tmp_path / "pkg" / "__init__.py"
     add_license_to_file(path)
 
@@ -48,6 +53,7 @@ def test_nonempty_init_gets_header(tmp_path, monkeypatch):
     write(tmp_path / "pkg" / "__init__.py", "VERSION = '1.0'\n")
 
     from tools.add_license import add_license_to_file
+
     path = tmp_path / "pkg" / "__init__.py"
     add_license_to_file(path)
 
@@ -55,9 +61,11 @@ def test_nonempty_init_gets_header(tmp_path, monkeypatch):
     assert "File: pkg/__init__.py" in text
     assert "VERSION" in text
 
+
 # ------------------------------------------------------------
 # Tests for new header insertion
 # ------------------------------------------------------------
+
 
 def test_new_file_gets_header(tmp_path, monkeypatch):
     monkeypatch.setattr("tools.add_license.PROJECT_ROOT", tmp_path)
@@ -66,6 +74,7 @@ def test_new_file_gets_header(tmp_path, monkeypatch):
     write(tmp_path / "finance" / "a.py", "print('x')\n")
 
     from tools.add_license import add_license_to_file
+
     path = tmp_path / "finance" / "a.py"
     add_license_to_file(path)
 
@@ -83,17 +92,19 @@ def test_new_file_strips_leading_blank_lines(tmp_path, monkeypatch):
     write(tmp_path / "x.py", "\n\n\nprint('x')\n")
 
     from tools.add_license import add_license_to_file
+
     path = tmp_path / "x.py"
     add_license_to_file(path)
 
     lines = path.read_text().splitlines()
-    assert lines[3] == ""      # exactly one blank line
+    assert lines[3] == ""  # exactly one blank line
     assert lines[4].startswith("print")
 
 
 # ------------------------------------------------------------
 # Tests for shebang handling
 # ------------------------------------------------------------
+
 
 def test_shebang_preserved(tmp_path, monkeypatch):
     monkeypatch.setattr("tools.add_license.PROJECT_ROOT", tmp_path)
@@ -102,6 +113,7 @@ def test_shebang_preserved(tmp_path, monkeypatch):
     write(tmp_path / "script.py", "#!/usr/bin/env python3\nprint('x')\n")
 
     from tools.add_license import add_license_to_file
+
     path = tmp_path / "script.py"
     add_license_to_file(path)
 
@@ -114,6 +126,7 @@ def test_shebang_preserved(tmp_path, monkeypatch):
 # Tests for existing header updates
 # ------------------------------------------------------------
 
+
 def test_update_year_range(tmp_path, monkeypatch):
     monkeypatch.setattr("tools.add_license.PROJECT_ROOT", tmp_path)
     monkeypatch.setattr("tools.add_license.CURRENT_YEAR", 2027)
@@ -123,10 +136,11 @@ def test_update_year_range(tmp_path, monkeypatch):
         "# Copyright 2026 Rik Essenius\n"
         "# Licensed under the Apache License, Version 2.0. See the LICENSE file for details.\n"
         "# File: a.py\n"
-        "print('x')\n"
+        "print('x')\n",
     )
 
     from tools.add_license import add_license_to_file
+
     path = tmp_path / "a.py"
     add_license_to_file(path)
 
@@ -144,7 +158,7 @@ def test_filename_updated_when_file_moved(tmp_path, monkeypatch):
         "# Copyright 2026 Rik Essenius\n"
         "# Licensed under the Apache License, Version 2.0. See the LICENSE file for details.\n"
         "# File: finance/common/freshness.py\n"
-        "print('x')\n"
+        "print('x')\n",
     )
 
     new = tmp_path / "finance" / "metrics" / "freshness.py"
@@ -152,6 +166,7 @@ def test_filename_updated_when_file_moved(tmp_path, monkeypatch):
     old.rename(new)
 
     from tools.add_license import add_license_to_file
+
     add_license_to_file(new)
 
     text = new.read_text()
@@ -167,10 +182,11 @@ def test_filename_updated_without_year_change(tmp_path, monkeypatch):
         "# Copyright 2026 Rik Essenius\n"
         "# Licensed under the Apache License, Version 2.0. See the LICENSE file for details.\n"
         "# File: finance/old/freshness.py\n"
-        "print('x')\n"
+        "print('x')\n",
     )
 
     from tools.add_license import add_license_to_file
+
     path = tmp_path / "finance" / "common" / "freshness.py"
     add_license_to_file(path)
 
@@ -188,22 +204,24 @@ def test_existing_header_spacing_normalized(tmp_path, monkeypatch):
         "# Licensed under the Apache License, Version 2.0. See the LICENSE file for details.\n"
         "# File: a.py\n"
         "\n\n\n"
-        "print('x')\n"
+        "print('x')\n",
     )
 
     from tools.add_license import add_license_to_file
+
     path = tmp_path / "a.py"
     add_license_to_file(path)
 
     lines = path.read_text().splitlines()
     print(lines)
-    assert lines[3] == ""      # exactly one blank line
+    assert lines[3] == ""  # exactly one blank line
     assert lines[4].startswith("print")
 
 
 # ------------------------------------------------------------
 # Tests for ValueError fallback
 # ------------------------------------------------------------
+
 
 def test_relative_to_valueerror_falls_back_to_basename(tmp_path, monkeypatch):
     project_root = tmp_path / "project"
@@ -215,6 +233,7 @@ def test_relative_to_valueerror_falls_back_to_basename(tmp_path, monkeypatch):
     write(external, "print('x')\n")
 
     from tools.add_license import add_license_to_file
+
     add_license_to_file(external)
 
     text = external.read_text()
@@ -225,6 +244,7 @@ def test_relative_to_valueerror_falls_back_to_basename(tmp_path, monkeypatch):
 # Test main()
 # ------------------------------------------------------------
 
+
 def test_main_processes_all_python_files(tmp_path, monkeypatch):
 
     write(tmp_path / "finance" / "a.py", "print('a')\n")
@@ -234,6 +254,7 @@ def test_main_processes_all_python_files(tmp_path, monkeypatch):
     monkeypatch.setattr("tools.add_license.CURRENT_YEAR", 2026)
 
     from tools.add_license import main
+
     main()
 
     assert "File: finance/a.py" in (tmp_path / "finance" / "a.py").read_text()

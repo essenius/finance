@@ -2,6 +2,7 @@
 # Licensed under the Apache License, Version 2.0. See the LICENSE file for details.
 # File: tests/test_main.py
 
+
 def test_main_orchestrator_flow(monkeypatch, capsys):
     from finance import main as main_mod
 
@@ -21,8 +22,11 @@ def test_main_orchestrator_flow(monkeypatch, capsys):
     monkeypatch.setattr(main_mod, "load_state", lambda: state)
 
     class FakeWriter:
-        def __init__(self, secrets): pass
-        def write(self, *a, **kw): pass
+        def __init__(self, secrets):
+            pass
+
+        def write(self, *a, **kw):
+            pass
 
     monkeypatch.setattr(main_mod, "InfluxWriter", FakeWriter)
 
@@ -30,6 +34,7 @@ def test_main_orchestrator_flow(monkeypatch, capsys):
         def __init__(self, sources, api_keys, now_provider=None):
             self.sources = sources
             self.api_keys = api_keys
+
         def fetch_all(self, state):
             return {"spx": (4321, 100)}
 
@@ -62,4 +67,3 @@ def test_main_orchestrator_flow(monkeypatch, capsys):
     assert "spx: wrote (4321/100)" in out
     assert "spread: wrote (10/200)" in out
     assert "Done." in out
-

@@ -4,21 +4,51 @@
 
 import requests
 
+from .ssl_context_adapter import SSLContextAdapter, make_legacy_ssl_context
+
+
+def configure_verify(session, mode, cert):
+    mode = mode.lower()
+
+    # --- Strict mode: system CA store ---
+    if mode == "true":
+        return cert if cert else True
+
+    # --- Insecure mode ---
+    if mode == "false":
+        return False
+
+    # --- Pinned mode: cert required ---
+    if mode == "pinned":
+        if not cert:
+            raise ValueError("Pinned mode requires a certificate path")
+        return cert
+
+    # --- Legacy mode: cert optional ---
+    if mode == "legacy":
+        if cert:
+            # Legacy CA mode
+            ctx = make_legacy_ssl_context(cert)
+        else:
+            # Legacy system CA mode
+            ctx = make_legacy_ssl_context("/etc/ssl/certs/ca-certificates.crt")
+
+        session.mount("https://", SSLContextAdapter(ctx))
+        return True  # verify=True but SSLContext overrides behavior
+
+    raise ValueError(f"Unknown verify mode: {mode}")
+
 
 class InfluxWriter:
     def __init__(self, secrets: dict):
-        """
-        base_url: e.g. "https://nas.local:8086"
-        db:       InfluxDB database name
-        user:     optional username
-        password: optional password
-        ca_cert:  path to CA certificate file, or None to disable verification
-        """
+
+        print(f"Initializing InfluxWriter with secrets: {secrets}")  # Debug print --- IGNORE ---
         url = secrets["url"].rstrip("/")
         db = secrets["db"]
-        user = secrets.get("user")
-        password = secrets.get("password")
-        ca_cert = secrets.get("ca_cert")
+        user = secrets.get("user", None)
+        password = secrets.get("password", None)
+        cert = secrets.get("cert", None)
+        verify = secrets.get("verify", "true")
 
         # Prebuild the write URL
         self.write_url = f"{url}/write?db={db}&precision=s"
@@ -29,10 +59,12 @@ class InfluxWriter:
         else:
             self.auth = None
 
-        # Precompute TLS verification mode
-        # - If ca_cert is a path → use it
-        # - If None → disable verification
-        self.verify = ca_cert if ca_cert else False
+        self.session = requests.Session()
+        self.verify = configure_verify(self.session, verify, cert)
+
+        print(
+            f"InfluxWriter initialized with write_url: {self.write_url}, auth: {'set' if self.auth else 'none'}, verify: {self.verify}"
+        )  # Debug print --- IGNORE ---
 
     def write(self, measurement, fields, timestamp):
         """

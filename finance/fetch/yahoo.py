@@ -14,7 +14,6 @@ def fetch_yahoo_chart(symbol, api_keys=None):
     try:
         r = requests.get(url, headers=headers, timeout=10)
         data = r.json()
-        print(f"Yahoo response for {symbol}: {data}")
 
         result = data["chart"]["result"][0]
         meta = result["meta"]

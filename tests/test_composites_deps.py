@@ -15,13 +15,16 @@ from finance.composites.deps import (
 #  Topo Sort Valid DAGs
 # -------------------------
 
+
 def test_empty_graph():
     graph = {}
     assert topo_sort(graph) == []
 
+
 def test_single_node():
     graph = {"a": []}
     assert topo_sort(graph) == ["a"]
+
 
 def test_two_independent_nodes():
     graph = {"a": [], "b": []}
@@ -36,12 +39,7 @@ def test_simple_chain():
 
 
 def test_diamond_graph():
-    graph = {
-        "d": ["b", "c"],
-        "b": ["a"],
-        "c": ["a"],
-        "a": []
-    }
+    graph = {"d": ["b", "c"], "b": ["a"], "c": ["a"], "a": []}
     result = topo_sort(graph)
     assert result.index("a") < result.index("b")
     assert result.index("a") < result.index("c")
@@ -62,49 +60,33 @@ def test_depends_on_non_composite_ignored():
 
 
 def test_mixed_dependencies():
-    graph = {
-        "c": ["a", "b", "external"],
-        "a": [],
-        "b": []
-    }
+    graph = {"c": ["a", "b", "external"], "a": [], "b": []}
     result = topo_sort(graph)
     assert result.index("a") < result.index("c")
     assert result.index("b") < result.index("c")
 
 
 def test_wide_graph():
-    graph = {
-        "z": ["a", "b", "c", "d", "e"],
-        "a": [], "b": [], "c": [], "d": [], "e": []
-    }
+    graph = {"z": ["a", "b", "c", "d", "e"], "a": [], "b": [], "c": [], "d": [], "e": []}
     result = topo_sort(graph)
     for parent in ["a", "b", "c", "d", "e"]:
         assert result.index(parent) < result.index("z")
 
 
 def test_deep_graph():
-    graph = {
-        "n5": ["n4"],
-        "n4": ["n3"],
-        "n3": ["n2"],
-        "n2": ["n1"],
-        "n1": []
-    }
+    graph = {"n5": ["n4"], "n4": ["n3"], "n3": ["n2"], "n2": ["n1"], "n1": []}
     assert topo_sort(graph) == ["n1", "n2", "n3", "n4", "n5"]
 
 
 def test_unordered_input_keys():
-    graph = {
-        "c": ["b"],
-        "a": [],
-        "b": ["a"]
-    }
+    graph = {"c": ["b"], "a": [], "b": ["a"]}
     assert topo_sort(graph) == ["a", "b", "c"]
 
 
 # -------------------------
 #  Topo Sort Cycles
 # -------------------------
+
 
 def test_cycle_two_nodes():
     graph = {"a": ["b"], "b": ["a"]}
@@ -131,11 +113,10 @@ def test_complex_cycle():
         "b": ["d"],
         "c": ["e"],
         "d": ["c"],
-        "e": ["b"]  # cycle: b → d → c → e → b
+        "e": ["b"],  # cycle: b → d → c → e → b
     }
     with pytest.raises(CycleError):
         topo_sort(graph)
-
 
 
 # -------------------------
@@ -218,19 +199,15 @@ def test_handles_complex_real_world_expression():
     candidates = {"A", "B", "C", "D"}
     assert set(extract_dependencies(expr, candidates)) == {"A", "B", "C", "D"}
 
+
 # -------------------------
 # Build Composite Graph
 # -------------------------
 
+
 def test_build_composite_graph_simple():
-    composites = {
-        "C": "A + B"
-    }
-    state = {
-        "A": {},
-        "B": {},
-        "C": {}
-    }
+    composites = {"C": "A + B"}
+    state = {"A": {}, "B": {}, "C": {}}
 
     graph = build_composite_graph(composites, state)
 
@@ -238,16 +215,8 @@ def test_build_composite_graph_simple():
 
 
 def test_build_composite_graph_multiple():
-    composites = {
-        "C": "A + B",
-        "D": "C * 2"
-    }
-    state = {
-        "A": {},
-        "B": {},
-        "C": {},
-        "D": {}
-    }
+    composites = {"C": "A + B", "D": "C * 2"}
+    state = {"A": {}, "B": {}, "C": {}, "D": {}}
 
     graph = build_composite_graph(composites, state)
 
@@ -256,14 +225,8 @@ def test_build_composite_graph_multiple():
 
 
 def test_build_composite_graph_ignores_unknown_names():
-    composites = {
-        "X": "A + B + UNKNOWN"
-    }
-    state = {
-        "A": {},
-        "B": {},
-        "X": {}
-    }
+    composites = {"X": "A + B + UNKNOWN"}
+    state = {"A": {}, "B": {}, "X": {}}
 
     graph = build_composite_graph(composites, state)
 
@@ -272,15 +235,9 @@ def test_build_composite_graph_ignores_unknown_names():
 
 
 def test_build_composite_graph_no_dependencies():
-    composites = {
-        "Z": "42"
-    }
-    state = {
-        "Z": {}
-    }
+    composites = {"Z": "42"}
+    state = {"Z": {}}
 
     graph = build_composite_graph(composites, state)
 
-    assert graph == {
-        "Z": []
-    }
+    assert graph == {"Z": []}

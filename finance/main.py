@@ -19,8 +19,6 @@ def main():
     composites = config["composites"]
     secrets = config["secrets"]
 
-    print(f"Config loaded. Symbols: {list(symbols.keys())}, Composites: {list(composites.keys())}, Secrets: {secrets}")
-
     state = load_state()
     influx_writer = InfluxWriter(secrets["influx"])
 
@@ -41,6 +39,7 @@ def main():
 
     save_state(state)
     print("Done.")
+
 
 if __name__ == "__main__":
     main()

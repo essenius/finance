@@ -2,6 +2,7 @@
 # Licensed under the Apache License, Version 2.0. See the LICENSE file for details.
 # File: finance/write/controller.py
 
+
 def should_write(entry, ts):
     """
     Decide whether a metric should be written to Influx.
@@ -36,8 +37,7 @@ def write_metric(name, value, ts, state, influx_writer):
     action = "wrote"
     try:
         influx_writer.write(name, {"value": value}, ts)
-    except Exception as e:
-        print(f"Influx write failed for {name}: {e}")
+    except Exception:
         action = "Influx could not write"
 
     entry["last_value"] = value

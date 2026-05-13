@@ -25,11 +25,13 @@ def extract_dependencies(expr: str, candidates) -> list[str]:
 
 class CycleError(Exception):
     """Raised when a cycle is detected in composite dependencies."""
+
     pass
 
+
 def topo_sort(graph):
-    visited = set()          # nodes fully processed
-    active = set()           # nodes in current recursion stack
+    visited = set()  # nodes fully processed
+    active = set()  # nodes in current recursion stack
     order = []
 
     def visit(node):
@@ -42,7 +44,7 @@ def topo_sort(graph):
         active.add(node)
 
         for dep in graph[node]:
-            if dep in graph:        # only follow composite→composite edges
+            if dep in graph:  # only follow composite→composite edges
                 visit(dep)
 
         active.remove(node)
@@ -53,6 +55,7 @@ def topo_sort(graph):
         visit(node)
 
     return order
+
 
 def build_composite_graph(composites, state):
     graph = {}

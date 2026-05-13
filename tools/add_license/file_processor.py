@@ -14,11 +14,13 @@ def normalize_body_spacing(lines: list[str]) -> list[str]:
         idx += 1
     return [""] + lines[idx:]
 
+
 def compute_relative_filename(path: Path, project_root: Path) -> str:
     try:
         return str(path.relative_to(project_root))
     except ValueError:
         return path.name
+
 
 class FileProcessor:
     """Handles reading, processing, and writing a single Python file."""

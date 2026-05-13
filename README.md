@@ -1,112 +1,106 @@
-# Finance Data Pipeline
+# **Finance Data Pipeline**  
+A modular Python pipeline that fetches financial and macro‑economic data from multiple public sources (Yahoo Finance, FRED, ECB, U.S. Treasury, etc.) and writes normalized time‑series metrics into InfluxDB.  
+The system supports both **base metrics** (direct API fetches) and **composite metrics** (Python expressions computed from other metrics).
 
-A modular Python pipeline that fetches financial and macro‑economic data from multiple public sources (Yahoo Finance, FRED, ECB, U.S. Treasury, etc.) and writes the results to InfluxDB. The system supports both **base metrics** (fetched directly from APIs) and **composite metrics** (computed from other metrics using Python expressions).
-
-The goal is to provide a reliable, deterministic, and extensible ingestion layer for time‑series dashboards such as Grafana.
+The goal is a **deterministic, reliable, and extensible ingestion layer** for dashboards such as Grafana.
 
 ---
 
-## Features
+## **Features**
 
-### Unified state model
-
-All metrics share the same state structure:
-
-```python
+### **Unified State Model**  
+All metrics share the same structure:  
+```
 state[metric] = {
     "last_value": float | None,
     "last_timestamp": int | None,
     "last_try": int | None
 }
+```  
+This ensures consistent behavior across fetchers and composites.   [Current page](citation-section://708118277/8)
+
+### **Freshness Based on `last_try`**  
+A metric is fetched only when its freshness interval has expired:  
 ```
-
-This ensures consistent behavior across base and composite metrics.
-
-### Freshness based on `last_try`
-
-To avoid unnecessary API calls, each metric is fetched only when its freshness interval has expired:
-
-```text
 if now - last_try < interval:
     skip
+```  
+This applies to both base and composite metrics.   [Current page](citation-section://708118277/8)
+
+### **Composite Metrics With Dependency Resolution**  
+Composite metrics are defined as Python expressions, e.g.:  
 ```
-
-This applies to both base metrics and composites.
-
-### Composite metrics with dependency resolution
-
-Composite metrics are defined as Python expressions, for example:
-
-```text
 SPREAD_10Y_2Y = US10Y - US2Y
 ```
 
-The system:
+The system:  
+- Parses expressions using AST  
+- Extracts variable dependencies  
+- Builds a dependency graph  
+- Performs topological sorting  
+- Evaluates composites in correct order  
+- Detects and rejects cycles  
 
-- **Parses expressions with AST** to extract variable dependencies.
-- **Builds a dependency graph** of composite metrics.
-- **Topologically sorts** the graph to determine evaluation order.
-- **Evaluates composites** in dependency order.
-- **Detects and rejects cycles** in composite definitions.
-
-### Deterministic and extensible
-
-The architecture is designed to be:
-
+### **Deterministic and Extensible Architecture**  
+Designed to be:  
 - deterministic  
 - efficient  
 - safe for composite‑in‑composite chains  
 - easy to extend with new fetchers or metrics  
 
+
 ---
 
-## Project structure
+## **Project Structure**
 
-A suggested structure for the repository:
-
-```text
-finance/                     # repo root
-    finance/                 # Python package
-        __init__.py
-        finance_data_to_influx.py     # main pipeline script
-
-        composites/
-            __init__.py
-            topo.py                   # topo_sort + cycle detection
-            parser.py                 # AST dependency extraction
-            evaluator.py              # composite evaluation
-
-        state/
-            __init__.py
-            model.py                  # state structure
-            process.py                # process_metric()
-
-        fetchers/
-            __init__.py
-            yahoo.py
-            fred.py
-            ecb.py
-            treasury.py
-
-        writers/
-            __init__.py
-            influx.py                 # InfluxDB writer
-
-    config.ini
-    .env
-
-    tests/
-        __init__.py
-        test_topo_sort.py
+The repository now follows a clean modular layout:   
+```
+finance/
+    common/
+        freshness.py
+    composites/
+        deps.py
+        evaluator.py
+    config/
+        loader.py
+    fetch/
+        controller.py
+        yahoo.py
+        fred.py
+        ecb.py
+        treasury.py
+    state/
+        manager.py
+    write/
+        controller.py
+        influx.py
+        ssl_context_adapter.py
+    __main__.py
+    main.py
+tests/
+tools/
+config.ini
+.env.example
+requirements.txt
 ```
 
-This layout keeps the pipeline modular and testable while remaining small and understandable.
+### **InfluxDB Writer (Updated)**  
+The Influx writer now uses a **requests.Session** with four verification modes:
+
+| Mode      | Behavior |
+|-----------|----------|
+| `true`    | Strict TLS, system CA store |
+| `false`   | Insecure mode (`verify=False`) |
+| `pinned`  | Use provided cert as trust anchor |
+| `legacy`  | Custom SSLContext + adapter (OpenSSL legacy mode) |
+
+Legacy mode uses a custom `SSLContextAdapter` and `make_legacy_ssl_context`.
+
+Tests mock `Session.send` to avoid real network calls and mock `make_legacy_ssl_context` inside `finance.write.influx` to avoid filesystem access.
 
 ---
 
-## Installation
-
-Create a virtual environment and install dependencies:
+## **Installation**
 
 ```bash
 python -m venv .venv
@@ -114,39 +108,36 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-Copy `.env.example` to `.env` (if present) and fill in any required API keys or secrets.
+Copy `.env.example` to `.env` and fill in API keys and secrets.
 
 ---
 
-## Running the pipeline
-
-From the project root:
+## **Running the Pipeline**
 
 ```bash
 python -m finance.finance_data_to_influx
 ```
 
-You can schedule this via cron, systemd timers, or any other scheduler.
+You can schedule it via cron, systemd timers, or any scheduler.
 
 ---
 
-## Running tests
+## **Running Tests**
 
-The project uses `pytest`.
-
+The project uses **pytest**.   [Current page]
 Run all tests:
 
 ```bash
 pytest
 ```
 
-Run a specific test file:
+Run a specific file:
 
 ```bash
-pytest tests/test_topo_sort.py
+pytest tests/test_write_influx.py
 ```
 
-If needed, you can ensure the package is on the Python path:
+Ensure the package is on the Python path if needed:
 
 ```bash
 PYTHONPATH=. pytest
@@ -154,29 +145,28 @@ PYTHONPATH=. pytest
 
 ---
 
-## Configuration
+## **Configuration**
 
-The pipeline reads settings from:
-
+The pipeline reads settings from:  
 - `config.ini` — metric definitions, intervals, InfluxDB settings  
 - `.env` — secrets and API keys  
 
-Both files are intentionally excluded from version control.
+Config is in source control, .env is not. There is .env.example that can be taken as reference. 
 
 ---
 
-## Contributing
+## **Contributing**
 
-When extending the pipeline:
+When extending the pipeline:  
+- Add unit tests for new modules or behaviors  
+- Keep composite expressions deterministic  
+- Avoid unnecessary API calls  
+- Ensure state updates follow the unified model  
 
-- Add unit tests for new modules or behaviors.
-- Keep composite expressions deterministic and side‑effect free.
-- Avoid unnecessary API calls; respect freshness intervals.
-- Ensure state updates follow the unified state model.
-
+  
 ---
 
-## License
+## **License**
 
-This project is licensed under the Apache License 2.0.
-See the LICENSE file for details.
+Apache License 2.0.  
+See `LICENSE` for details.

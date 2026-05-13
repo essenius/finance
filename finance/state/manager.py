@@ -7,7 +7,7 @@ import shutil
 import tempfile
 from pathlib import Path
 
-DEFAULT_STATE_FILE = Path(__file__).parent.parent / "state.json"
+DEFAULT_STATE_FILE = Path(__file__).parents[2] / "state.json"
 
 
 def load_state(path: Path = DEFAULT_STATE_FILE):

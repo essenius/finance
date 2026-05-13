@@ -78,7 +78,9 @@ class InfluxWriter:
         line = f"{measurement} {field_str} {timestamp}"
 
         try:
-            r = requests.post(self.write_url, data=line, auth=self.auth, timeout=5, verify=self.verify)
+            r = self.session.post(self.write_url, data=line, auth=self.auth, timeout=5, verify=self.verify)
             r.raise_for_status()
         except Exception as e:
             print(f"Influx write failed for {measurement}: {e}")
+            for err in e.args:
+                print(err)

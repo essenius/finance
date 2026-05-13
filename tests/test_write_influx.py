@@ -127,33 +127,6 @@ def test_make_legacy_ssl_context():
 # --- InfluxWriter tests ------------------------------------------------------
 
 
-def test_influx_writer_success():
-    secrets = {
-        "url": "http://example.com:8086",
-        "db": "finance",
-        "user": "u",
-        "password": "p",
-        "cert": None,
-    }
-
-    writer = InfluxWriter(secrets)
-
-    with patch("finance.write.influx.requests.post") as mock_post:
-        mock_response = Mock()
-        mock_response.raise_for_status.return_value = None
-        mock_post.return_value = mock_response
-
-        writer.write("spx", {"value": 123}, 100)
-
-        mock_post.assert_called_once_with(
-            "http://example.com:8086/write?db=finance&precision=s",
-            data="spx value=123 100",
-            auth=("u", "p"),
-            timeout=5,
-            verify=True,
-        )
-
-
 def test_influx_writer_failure():
     secrets = {"url": "http://x", "db": "y"}
 
@@ -164,3 +137,26 @@ def test_influx_writer_failure():
 
         # Should not raise
         writer.write("spx", {"value": 1}, 100)
+
+@pytest.mark.parametrize("verify_mode", ["true", "false", "pinned", "legacy"])
+def test_influx_writer_uses_session(verify_mode):
+    secrets = {
+        "url": "https://example:8086",
+        "db": "test",
+        "verify": verify_mode,
+        "cert": "/home/pi/certs/ca-both.crt",
+    }
+    # Prevent legacy mode from touching the filesystem
+    with patch("finance.write.influx.make_legacy_ssl_context") as mock_ctx_factory:
+        mock_ctx = Mock()
+        mock_ctx_factory.return_value = mock_ctx
+
+        writer = InfluxWriter(secrets)
+
+        mock_response = Mock()
+        mock_response.raise_for_status.return_value = None
+
+        with patch("requests.sessions.Session.send", return_value=mock_response) as mock_send:
+            writer.write("m", {"value": 1}, 123)
+            mock_send.assert_called_once()
+

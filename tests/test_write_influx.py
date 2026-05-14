@@ -138,6 +138,7 @@ def test_influx_writer_failure():
         # Should not raise
         writer.write("spx", {"value": 1}, 100)
 
+
 @pytest.mark.parametrize("verify_mode", ["true", "false", "pinned", "legacy"])
 def test_influx_writer_uses_session(verify_mode):
     secrets = {
@@ -159,4 +160,3 @@ def test_influx_writer_uses_session(verify_mode):
         with patch("requests.sessions.Session.send", return_value=mock_response) as mock_send:
             writer.write("m", {"value": 1}, 123)
             mock_send.assert_called_once()
-

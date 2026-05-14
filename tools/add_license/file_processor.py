@@ -8,10 +8,19 @@ from .header import Header  # if needed
 
 
 def normalize_body_spacing(lines: list[str]) -> list[str]:
-    """Ensure exactly one blank line before the body."""
+    """Normalize leading blank lines:
+    - keep 1 or 2 blank lines
+    - otherwise collapse to exactly 1
+    """
+    # Count leading blank lines
     idx = 0
     while idx < len(lines) and not lines[idx].strip():
         idx += 1
+
+    if idx in (1, 2):
+        return lines
+
+    # idx == 0 or idx >= 3 → collapse to exactly one
     return [""] + lines[idx:]
 
 

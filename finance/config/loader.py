@@ -8,7 +8,7 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
+from finance.common.paths import get_project_root
 
 
 # -----------------------------
@@ -79,8 +79,18 @@ def load_composites(parser: ConfigParser):
 # -----------------------------
 # Main config loader
 # -----------------------------
-def load_config(ini_path: Path = PROJECT_ROOT / "config.ini", env_path: Path = PROJECT_ROOT / ".env"):
+def load_config(ini_path=None, env_path=None):
+
+    if ini_path is None or env_path is None:
+        root = get_project_root()
+        ini_path = ini_path or (root / "config.ini")
+        env_path = env_path or (root / ".env")
+
+    if not ini_path.exists():
+        raise FileNotFoundError(f"Config file not found: {ini_path}")
+
     print(f"Loading config from {ini_path} and secrets from {env_path}")
+
     secrets = load_env_secrets(env_path)
 
     # Load config.ini

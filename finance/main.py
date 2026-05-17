@@ -39,4 +39,3 @@ def main():
 
     save_state(state)
     print("Done.")
-

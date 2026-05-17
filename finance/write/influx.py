@@ -42,7 +42,6 @@ def configure_verify(session, mode, cert):
 class InfluxWriter:
     def __init__(self, secrets: dict):
 
-        print(f"Initializing InfluxWriter with secrets: {secrets}")  # Debug print --- IGNORE ---
         url = secrets["url"].rstrip("/")
         db = secrets["db"]
         user = secrets.get("user", None)

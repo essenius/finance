@@ -7,14 +7,19 @@ import shutil
 import tempfile
 from pathlib import Path
 
-DEFAULT_STATE_FILE = Path(__file__).parents[2] / "state.json"
+from finance.common.paths import get_project_root
+
+DEFAULT_STATE_FILE = "state.json"
 
 
-def load_state(path: Path = DEFAULT_STATE_FILE):
+def load_state(path: Path | None = None) -> dict:
     """
-    Load state from disk.
-    Returns an empty dict if the file does not exist or is invalid.
+    Load state.json from the project root unless an explicit path is provided.
     """
+    if path is None:
+        root = get_project_root()
+        path = root / DEFAULT_STATE_FILE
+
     if not path.exists():
         return {}
 
@@ -29,10 +34,14 @@ def load_state(path: Path = DEFAULT_STATE_FILE):
     return {}
 
 
-def save_state(state: dict, path: Path = DEFAULT_STATE_FILE):
+def save_state(state: dict, path: Path | None = None):
     """
     Save state atomically to avoid corruption.
     """
+    if path is None:
+        root = get_project_root()
+        path = root / DEFAULT_STATE_FILE
+
     tmp = tempfile.NamedTemporaryFile("w", delete=False, encoding="utf-8")
     try:
         json.dump(state, tmp, indent=2)

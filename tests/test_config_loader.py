@@ -4,6 +4,9 @@
 
 from configparser import ConfigParser
 
+import pytest
+
+import finance.config.loader as loader
 from finance.config.loader import (
     load_composites,
     load_config,
@@ -183,3 +186,43 @@ def test_load_composites_none(tmp_path):
     composites = load_composites(parser)
 
     assert not composites
+
+
+def test_load_config_dev_mode(monkeypatch, tmp_path):
+    monkeypatch.chdir(tmp_path)
+
+    (tmp_path / "config.ini").write_text("""
+[general]
+interval = 30
+
+[yahoo]
+spx = ^GSPC
+
+[composites]
+spread = t10y - t2y
+""")
+
+    (tmp_path / ".env").write_text("INFLUX_URL=http://x\nINFLUX_DB=db\n")
+
+    cfg = loader.load_config()
+    assert cfg["general"]["default_interval"] == 1800
+
+
+def test_load_config_missing_config(monkeypatch, tmp_path):
+    monkeypatch.chdir(tmp_path)
+
+    # No config.ini → cwd is NOT a valid project root
+    with pytest.raises(RuntimeError):
+        loader.load_config()
+
+
+def test_load_config_explicit_missing_file(tmp_path):
+    """
+    When ini_path is explicitly provided and does not exist,
+    load_config() must raise FileNotFoundError.
+    """
+    missing_ini = tmp_path / "does_not_exist.ini"
+    missing_env = tmp_path / "does_not_exist.env"
+
+    with pytest.raises(FileNotFoundError):
+        loader.load_config(ini_path=missing_ini, env_path=missing_env)

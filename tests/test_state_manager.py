@@ -4,6 +4,8 @@
 
 from pathlib import Path
 
+from finance.state.manager import load_state, save_state
+
 
 def test_load_state_missing_file(tmp_path):
     from finance.state.manager import load_state
@@ -196,3 +198,38 @@ def test_load_state_after_atomic_save(tmp_path, monkeypatch):
 
     loaded = load_state(path)
     assert loaded == state
+
+
+def test_load_state_default_path(monkeypatch, tmp_path):
+    """
+    When path=None, load_state() must use get_project_root() and return {} if state.json is missing.
+    """
+    # Make tmp_path the project root
+    monkeypatch.chdir(tmp_path)
+
+    # Required for get_project_root()
+    (tmp_path / "config.ini").write_text("")
+
+    # No state.json yet → should return empty dict
+    assert load_state() == {}
+
+
+def test_save_state_default_path(monkeypatch, tmp_path):
+    """
+    When path=None, save_state() must write state.json in the project root.
+    """
+    monkeypatch.chdir(tmp_path)
+
+    # Required for get_project_root()
+    (tmp_path / "config.ini").write_text("")
+
+    data = {"foo": 123}
+
+    # Save using default path
+    save_state(data)
+
+    # Load using default path
+    assert load_state() == data
+
+    # And verify the file exists where expected
+    assert (tmp_path / "state.json").exists()

@@ -19,7 +19,7 @@ def test_ecb_fetch_real_fixture(monkeypatch):
     # Patch requests.get to return your real fixture
     monkeypatch.setattr("finance.fetch.ecb.requests.get", lambda *a, **k: mock_resp)
 
-    result = fetch_ecb("USD_EUR")
+    result = fetch_ecb("USD_EUR", {})
 
     assert result["value"] == 1.1761
 

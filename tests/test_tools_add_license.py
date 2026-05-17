@@ -110,7 +110,7 @@ def test_shebang_preserved(tmp_path, monkeypatch):
     monkeypatch.setattr("tools.add_license.PROJECT_ROOT", tmp_path)
     monkeypatch.setattr("tools.add_license.CURRENT_YEAR", 2026)
 
-    write(tmp_path / "script.py", "#!/usr/bin/env python3\nprint('x')\n")
+    write(tmp_path / "script.py", "#!/usr/bin/env python3\n# Path: x\nprint('x')\n")
 
     from tools.add_license import add_license_to_file
 
@@ -127,7 +127,7 @@ def test_shebang_preserved(tmp_path, monkeypatch):
 # ------------------------------------------------------------
 
 
-def test_update_year_range(tmp_path, monkeypatch):
+def test_update_year_range_from_single(tmp_path, monkeypatch):
     monkeypatch.setattr("tools.add_license.PROJECT_ROOT", tmp_path)
     monkeypatch.setattr("tools.add_license.CURRENT_YEAR", 2027)
 
@@ -146,6 +146,27 @@ def test_update_year_range(tmp_path, monkeypatch):
 
     text = path.read_text()
     assert "2026-2027" in text
+
+
+def test_no_update_year_range(tmp_path, monkeypatch):
+    monkeypatch.setattr("tools.add_license.PROJECT_ROOT", tmp_path)
+    monkeypatch.setattr("tools.add_license.CURRENT_YEAR", 2026)
+
+    write(
+        tmp_path / "a.py",
+        "# Copyright 2024-2026 Rik Essenius\n"
+        "# Licensed under the Apache License, Version 2.0. See the LICENSE file for details.\n"
+        "# File: a.py\n"
+        "print('x')\n",
+    )
+
+    from tools.add_license import add_license_to_file
+
+    path = tmp_path / "a.py"
+    add_license_to_file(path)
+
+    text = path.read_text()
+    assert "2024-2026" in text
 
 
 def test_filename_updated_when_file_moved(tmp_path, monkeypatch):
@@ -218,6 +239,31 @@ def test_existing_header_spacing_normalized(tmp_path, monkeypatch):
     assert lines[4].startswith("print")
 
 
+def test_existing_header_spacing_left_intact(tmp_path, monkeypatch):
+    monkeypatch.setattr("tools.add_license.PROJECT_ROOT", tmp_path)
+    monkeypatch.setattr("tools.add_license.CURRENT_YEAR", 2026)
+
+    write(
+        tmp_path / "a.py",
+        "# Copyright 2026 Rik Essenius\n"
+        "# Licensed under the Apache License, Version 2.0. See the LICENSE file for details.\n"
+        "# File: a.py\n"
+        "\n\n"
+        "print('x')\n",
+    )
+
+    from tools.add_license import add_license_to_file
+
+    path = tmp_path / "a.py"
+    add_license_to_file(path)
+
+    lines = path.read_text().splitlines()
+    print(lines)
+    assert lines[3] == ""  # two blank lines stay
+    assert lines[4] == ""
+    assert lines[5].startswith("print")
+
+
 # ------------------------------------------------------------
 # Tests for ValueError fallback
 # ------------------------------------------------------------
@@ -249,6 +295,8 @@ def test_main_processes_all_python_files(tmp_path, monkeypatch):
 
     write(tmp_path / "finance" / "a.py", "print('a')\n")
     write(tmp_path / "finance" / "b.py", "print('b')\n")
+    # make sure we have a non-Python file to verify it's skipped
+    write(tmp_path / "finance" / "c.txt", "c")
 
     monkeypatch.setattr("tools.add_license.PROJECT_ROOT", tmp_path)
     monkeypatch.setattr("tools.add_license.CURRENT_YEAR", 2026)
@@ -259,3 +307,4 @@ def test_main_processes_all_python_files(tmp_path, monkeypatch):
 
     assert "File: finance/a.py" in (tmp_path / "finance" / "a.py").read_text()
     assert "File: finance/b.py" in (tmp_path / "finance" / "b.py").read_text()
+    assert (tmp_path / "finance" / "c.txt").read_text() == "c"

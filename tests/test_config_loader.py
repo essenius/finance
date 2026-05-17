@@ -2,6 +2,15 @@
 # Licensed under the Apache License, Version 2.0. See the LICENSE file for details.
 # File: tests/test_config_loader.py
 
+from configparser import ConfigParser
+
+from finance.config.loader import (
+    load_composites,
+    load_config,
+    load_env_secrets,
+    load_symbols,
+)
+
 
 def test_load_env_secrets(monkeypatch, tmp_path):
     env = tmp_path / ".env"
@@ -13,8 +22,6 @@ def test_load_env_secrets(monkeypatch, tmp_path):
     monkeypatch.setenv("INFLUX_PASSWORD", "p")
     monkeypatch.setenv("FRED_API_KEY", "fred123")
     monkeypatch.setenv("YAHOO_API_KEY", "yahoo123")
-
-    from finance.config.loader import load_env_secrets
 
     secrets = load_env_secrets(env)
 
@@ -39,10 +46,6 @@ interval = 60
 spx = ^GSPC
 """)
 
-    from configparser import ConfigParser
-
-    from finance.config.loader import load_symbols
-
     parser = ConfigParser()
     parser.optionxform = str
     parser.read(ini)
@@ -66,10 +69,6 @@ interval = 60
 interval = 5
 spx = ^GSPC
 """)
-
-    from configparser import ConfigParser
-
-    from finance.config.loader import load_symbols
 
     parser = ConfigParser()
     parser.optionxform = str
@@ -101,10 +100,6 @@ eurusd = USD
 t10y = T10YIE
 """)
 
-    from configparser import ConfigParser
-
-    from finance.config.loader import load_symbols
-
     parser = ConfigParser()
     parser.optionxform = str
     parser.read(ini)
@@ -125,10 +120,6 @@ def test_load_composites(tmp_path):
 spread = t10y - t2y
 ratio = spx / gold
 """)
-
-    from configparser import ConfigParser
-
-    from finance.config.loader import load_composites
 
     parser = ConfigParser()
     parser.optionxform = str
@@ -160,8 +151,6 @@ spread = t10y - t2y
     monkeypatch.setenv("INFLUX_URL", "http://x")
     monkeypatch.setenv("INFLUX_DB", "db")
 
-    from finance.config.loader import load_config
-
     cfg = load_config(ini, env)
 
     # default interval: 30 minutes → 1800 seconds
@@ -179,3 +168,18 @@ spread = t10y - t2y
     # secrets
     assert cfg["secrets"]["influx"]["url"] == "http://x"
     assert cfg["secrets"]["influx"]["db"] == "db"
+
+
+def test_load_composites_none(tmp_path):
+    ini = tmp_path / "config.ini"
+    ini.write_text("")
+
+    from finance.config.loader import load_composites
+
+    parser = ConfigParser()
+    parser.optionxform = str
+    parser.read(ini)
+
+    composites = load_composites(parser)
+
+    assert not composites

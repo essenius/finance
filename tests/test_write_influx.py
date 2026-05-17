@@ -144,6 +144,8 @@ def test_influx_writer_uses_session(verify_mode):
     secrets = {
         "url": "https://example:8086",
         "db": "test",
+        "user": "u",
+        "password": "p",
         "verify": verify_mode,
         "cert": "/home/pi/certs/ca-both.crt",
     }

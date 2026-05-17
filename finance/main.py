@@ -40,6 +40,3 @@ def main():
     save_state(state)
     print("Done.")
 
-
-if __name__ == "__main__":
-    main()

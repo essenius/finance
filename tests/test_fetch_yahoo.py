@@ -45,7 +45,7 @@ def test_yahoo_handles_missing_data(mock_get):
     mock_response.json.return_value = {"chart": {"result": None}}
     mock_get.return_value = mock_response
 
-    result = fetch_yahoo_chart("EURUSD=X", None)
+    result = fetch_yahoo_chart("EURUSD=X", {})
 
     assert result["value"] is None
     assert result["timestamp"] is None

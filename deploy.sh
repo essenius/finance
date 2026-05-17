@@ -1,4 +1,8 @@
 #!/usr/bin/env bash
+# Copyright 2026 Rik Essenius
+# Licensed under the Apache License, Version 2.0. See the LICENSE file for details.
+# File: deploy.sh
+
 set -euo pipefail
 
 DEV_ROOT="$(cd "$(dirname "$0")" && pwd)"
@@ -25,8 +29,13 @@ read -r MAJOR MINOR PATCH <<< "$CURRENT_VERSION"
 NEW_PATCH=$((PATCH + 1))
 NEW_VERSION="$MAJOR.$MINOR.$NEW_PATCH"
 
-# Replace in file
+# Replace in pyproject.toml
 sed -i "s/version = \"$MAJOR.$MINOR.$PATCH\"/version = \"$NEW_VERSION\"/" "$PYPROJECT"
+
+# Replace in __init__.py
+sed -i "s/^__version__ = \".*\"/__version__ = \"$NEW_VERSION\"/" "$DEV_ROOT/finance/__init__.py"
+
+echo "__version__ = \"$NEW_VERSION\"" > "$DEV_ROOT/finance/__init__.py"
 
 echo "Version bumped: $MAJOR.$MINOR.$PATCH → $NEW_VERSION"
 
@@ -51,3 +60,6 @@ echo "=== Installing wheel in prod venv ==="
 
 echo "=== Deployment complete ==="
 echo "Deployed version: $NEW_VERSION"
+
+echo "Reminder: re-activate the prod venv in any open terminals:"
+echo "  deactivate && source $PROD_ROOT/venv/bin/activate"

@@ -3,6 +3,10 @@
 # Licensed under the Apache License, Version 2.0. See the LICENSE file for details.
 # File: finance/main.py
 
+from datetime import datetime
+
+import finance
+
 from .composites.evaluator import evaluate_composites
 from .config.loader import load_config
 from .fetch.controller import FetchController
@@ -12,7 +16,8 @@ from .write.influx import InfluxWriter
 
 
 def main():
-
+    now = datetime.now().astimezone().isoformat(timespec="seconds")
+    print(f"Finance version: {finance.__version__} started at {now}")
     config = load_config()
 
     symbols = config["symbols"]

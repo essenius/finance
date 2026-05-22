@@ -1,0 +1,13 @@
+[Unit]
+Description=Finance Data Fetcher
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=pi
+WorkingDirectory=/home/pi/prod/finance
+ExecStart=/home/pi/prod/finance/venv/bin/python -m finance
+
+[Install]
+WantedBy=multi-user.target

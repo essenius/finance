@@ -5,11 +5,17 @@
 
 set -euo pipefail
 
+# Load environment variables from .env, including PROD_ROOT and PROD_VENV
+set -a
+source .env
+set +a
+
+# Ensure PROD_ROOT and PROD_VENV are set
+: "${PROD_ROOT:?PROD_ROOT is not set}"
+: "${PROD_VENV:?PROD_VENV is not set}"
+
 DEV_ROOT="$(cd "$(dirname "$0")" && pwd)"
 PYPROJECT="$DEV_ROOT/pyproject.toml"
-PROD_ROOT="$HOME/prod/finance"
-PROD_VENV="$PROD_ROOT/venv"
-
 
 echo "=== Dev root: $DEV_ROOT ==="
 echo "=== Prod root: $PROD_ROOT ==="
@@ -60,6 +66,20 @@ echo "=== Installing wheel in prod venv ==="
 
 echo "=== Deployment complete ==="
 echo "Deployed version: $NEW_VERSION"
+
+echo "=== Installing systemd unit files ==="
+
+sudo cp "$DEV_ROOT/systemd/finance-fetch.service" /etc/systemd/system/
+sudo cp "$DEV_ROOT/systemd/finance-fetch.timer" /etc/systemd/system/
+
+sudo systemctl daemon-reload
+sudo systemctl enable finance-fetch.timer
+
+echo "=== Restarting systemd service ==="
+sudo systemctl restart finance-fetch.service
+
+echo "=== Service status ==="
+sudo systemctl --no-pager --full status finance-fetch.service
 
 echo "Reminder: re-activate the prod venv in any open terminals:"
 echo "  deactivate && source $PROD_ROOT/venv/bin/activate"

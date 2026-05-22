@@ -65,16 +65,17 @@ class InfluxWriter:
             f"InfluxWriter initialized with write_url: {self.write_url}, auth: {'set' if self.auth else 'none'}, verify: {self.verify}"
         )  # Debug print --- IGNORE ---
 
-    def write(self, measurement, fields, timestamp):
+    def write(self, measurement, fields, timestamp, tags=None):
         """
         measurement: string
         fields: dict, e.g. {"value": 123.45}
         timestamp: int (unix seconds)
         """
-
-        # Convert fields dict to line protocol
+        tag_str = ""
+        if tags:
+            tag_str = "," + ",".join(f"{k}={v}" for k, v in tags.items())
         field_str = ",".join(f"{k}={v}" for k, v in fields.items())
-        line = f"{measurement} {field_str} {timestamp}"
+        line = f"{measurement}{tag_str} {field_str} {timestamp}"
 
         try:
             r = self.session.post(self.write_url, data=line, auth=self.auth, timeout=5, verify=self.verify)

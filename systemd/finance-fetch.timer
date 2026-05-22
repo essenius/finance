@@ -1,0 +1,10 @@
+[Unit]
+Description=Run Finance Data Fetcher periodically
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=10min
+Unit=finance-fetch.service
+
+[Install]
+WantedBy=timers.target

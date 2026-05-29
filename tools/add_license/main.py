@@ -28,6 +28,6 @@ def main(project_root: Path, current_year: int):
         dirs[:] = [d for d in dirs if d not in SKIP_DIRS and not d.startswith(".")]
 
         for file in files:
-            if file.endswith((".py", ".sh", ".ini", ".toml")) or file.startswith(".env"):
+            if file.endswith((".py", ".sh", ".toml", ".yaml")) or file.startswith((".env", "makefile")):
                 path = Path(root) / file
                 FileProcessor(path, project_root, current_year).process()

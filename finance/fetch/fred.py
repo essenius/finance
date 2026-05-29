@@ -2,37 +2,56 @@
 # Licensed under the Apache License, Version 2.0. See the LICENSE file for details.
 # File: finance/fetch/fred.py
 
-import datetime
+from datetime import UTC, datetime
 
 import requests
 
+from .provider import MarketDataProvider
 
-def fetch_fred_series(series_id, api_key):
-    url = "https://api.stlouisfed.org/fred/series/observations"
-    params = {
-        "series_id": series_id,
-        "api_key": api_key,
-        "file_type": "json",
-        "sort_order": "desc",
-        "limit": 1,
-    }
+BASE_URL = "https://api.stlouisfed.org/fred/series/observations"
 
-    try:
-        r = requests.get(url, params=params, timeout=10)
-        r.raise_for_status()
-        data = r.json()
-        obs = data["observations"]
-        if not obs:
-            return {"value": None, "timestamp": None}
 
-        value = obs[0]["value"]
-        if value in ("", ".", None):
-            print(f"FRED {series_id} returned no value")
-            return {"value": None, "timestamp": None}
+class FredProvider(MarketDataProvider):
+    """FRED daily economic data provider."""
 
-        timestamp = int(datetime.datetime.strptime(obs[0]["date"], "%Y-%m-%d").replace(tzinfo=datetime.UTC).timestamp())
-        return {"value": float(value), "timestamp": timestamp}
+    def fetch(self, asset, last_timestamp):
+        symbol = asset["symbol"]
+        field = asset["fields"][0]
 
-    except Exception as e:
-        print(f"FRED {series_id} fetch failed:", e)
-        return {"value": None, "timestamp": None}
+        api_key = self._require_api_key(symbol)
+        if api_key is None:
+            return []
+
+        return self._safe(symbol, lambda: self._fetch(symbol, field, api_key))
+
+    def _fetch(self, symbol, field, api_key):
+        params = {
+            "series_id": symbol,
+            "api_key": api_key,
+            "file_type": "json",
+            "sort_order": "desc",
+            "limit": 1,
+        }
+
+        response = requests.get(BASE_URL, params=params, timeout=10)
+        if not self._check_status(symbol, response):
+            return []
+
+        data = response.json()
+        observations = data.get("observations", [])
+        if not observations:
+            self.error("no 'observations' in response", symbol)
+            return []
+
+        obs = observations[0]
+        value_str = obs.get("value")
+        date_str = obs.get("date")
+
+        if value_str in (None, ".", ""):
+            self.error(f"invalid value '{value_str}' in first observation", symbol)
+            return []
+
+        value = float(value_str)
+        timestamp = int(datetime.fromisoformat(date_str).replace(tzinfo=UTC).timestamp())
+
+        return [{"timestamp": timestamp, "fields": {field: value}}]

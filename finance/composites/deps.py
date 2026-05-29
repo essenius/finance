@@ -11,7 +11,12 @@ def extract_dependencies(expr: str, candidates) -> list[str]:
     Only returns identifiers that are present in `candidates`.
     """
 
-    tree = ast.parse(expr, mode="eval")
+    try:
+        tree = ast.parse(expr, mode="eval")
+    except SyntaxError as e:
+        # Log the error — replace with your mixin if available
+        return [], f"Syntax error in composite expression '{expr}': {e}"
+
     names = set()
 
     class NameCollector(ast.NodeVisitor):
@@ -20,7 +25,7 @@ def extract_dependencies(expr: str, candidates) -> list[str]:
 
     NameCollector().visit(tree)
 
-    return [name for name in names if name in candidates]
+    return [name for name in names if name in candidates], None
 
 
 class CycleError(Exception):
@@ -59,7 +64,10 @@ def topo_sort(graph):
 
 def build_composite_graph(composites, state):
     graph = {}
+    errors = {}
     for measurement, expr in composites.items():
-        deps = extract_dependencies(expr, state.keys())
+        deps, err = extract_dependencies(expr, state.keys())
         graph[measurement] = deps
-    return graph
+        if err:
+            errors[measurement] = err
+    return graph, errors

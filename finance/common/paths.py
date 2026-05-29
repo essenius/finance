@@ -13,7 +13,7 @@ def get_project_root() -> Path:
     If not, this is a fatal error — the program must not guess.
     """
     cwd = Path.cwd()
-    if (cwd / "config.ini").exists():
+    if (cwd / "config.yaml").exists():
         return cwd
 
     raise RuntimeError(f"Current working directory {cwd} is not a valid project root (config.ini not found).")

@@ -3,12 +3,20 @@
 # File: finance/config/loader.py
 
 import os
-from configparser import ConfigParser
 from pathlib import Path
 
+import yaml
 from dotenv import load_dotenv
 
+from finance.common.log_mixin import LOG_LEVELS, LogMixin
 from finance.common.paths import get_project_root
+
+
+class Logger(LogMixin):
+    pass
+
+
+logger = Logger()
 
 
 # -----------------------------
@@ -17,15 +25,34 @@ from finance.common.paths import get_project_root
 def load_env_secrets(env_path: Path):
     load_dotenv(env_path, override=True)
 
+    influx = {
+        "url": os.getenv("INFLUX_URL"),
+        "cert": os.getenv("INFLUX_SSL_CERT"),
+        "ssl_verify": os.getenv("INFLUX_SSL_VERIFY"),
+    }
+
+    if not influx["url"]:
+        raise RuntimeError("InfluxDB requires URL in INFLUX_URL")
+
+    # if we have a bucket variable, we have Influx 2 so we need a token
+    org = os.getenv("INFLUX_ORG")
+    if org:
+        # influxDB 2
+        influx["org"] = org
+        influx["token"] = os.getenv("INFLUX_WRITE_TOKEN") or os.getenv("INFLUX_TOKEN")
+
+        if not influx["token"]:
+            raise RuntimeError("InfluxDB 2.x requires INFLUX_WRITE_TOKEN or INFLUX_TOKEN")
+    else:
+        # InfluxDB 1
+        influx["db"] = os.getenv("INFLUX_DB")
+        if not influx["db"]:
+            raise RuntimeError("InfluxDB 1.x requires database name in INFLUX_DB")
+        influx["user"] = os.getenv("INFLUX_USER")
+        influx["password"] = os.getenv("INFLUX_PASSWORD")
+
     return {
-        "influx": {
-            "url": os.getenv("INFLUX_URL"),
-            "db": os.getenv("INFLUX_DB"),
-            "user": os.getenv("INFLUX_USER"),
-            "password": os.getenv("INFLUX_PASSWORD"),
-            "cert": os.getenv("INFLUX_CERT"),
-            "verify": os.getenv("INFLUX_VERIFY"),
-        },
+        "influx": influx,
         "api_keys": {
             "fred": os.getenv("FRED_API_KEY"),
             "yahoo": os.getenv("YAHOO_API_KEY"),
@@ -36,42 +63,119 @@ def load_env_secrets(env_path: Path):
 
 
 # -----------------------------
-# Parse symbol sections
+# Load YAML config
 # -----------------------------
-def load_symbols(parser: ConfigParser, general: dict):
-    symbols = {}
+def load_yaml_config(yaml_path: Path):
+    if not yaml_path.exists():
+        raise FileNotFoundError(f"Config file not found: {yaml_path}")
 
-    for section in ("yahoo", "ecb", "fred", "treasury"):
-        if section not in parser:
-            continue
+    with yaml_path.open("r", encoding="utf-8") as f:
+        return yaml.safe_load(f)
 
-        raw_interval = parser[section].get("interval")  # this is in minutes in the config
 
-        interval_seconds = int(general["default_interval"]) if raw_interval is None else int(raw_interval) * 60
+def require(cfg: dict, key: str, context: str):
+    """
+    Return cfg[key] if present, otherwise raise a clear ValueError.
+    """
+    if key not in cfg:
+        raise ValueError(f"Missing required field '{key}' in {context}")
+    return cfg[key]
 
-        for measurement, provider_symbol in parser[section].items():
-            if measurement == "interval":
-                continue
 
-            symbols[measurement] = {
-                "symbol": provider_symbol.strip(),
-                "measurement": measurement,
-                "interval": interval_seconds,
-                "source": section,
+def apply_logging_config(config):
+
+    level_name = config.get("logging", {}).get("level", "info").lower()
+
+    LogMixin.min_level = LOG_LEVELS.get(level_name, LOG_LEVELS["info"])
+
+
+# -----------------------------
+# Normalize asset definitions
+# -----------------------------
+def normalize_assets(raw_assets: dict, field_sets: dict = None, buckets: dict = None):
+    """
+    Expand YAML asset blocks with 'timeseries' into flat metric definitions.
+
+    Example:
+      gold:
+        provider: yahoo
+        symbol: "GC=F"
+        tags: {...}
+        timeseries:
+          intraday:
+            interval: 10m
+
+    Produces:
+      gold_intraday: { ... }
+    """
+
+    metrics = {}
+
+    for asset_name, cfg in raw_assets.items():
+        provider = require(cfg, "provider", f"asset '{asset_name}'")
+        symbol = require(cfg, "symbol", f"asset '{asset_name}'")
+        tags = {k.lower(): v for k, v in cfg.get("tags", {}).items()}
+
+        timeseries_config = require(cfg, "timeseries", f"asset '{asset_name}'")
+
+        for series_name, series_def in timeseries_config.items():
+            metric_name = f"{asset_name}_{series_name}"
+
+            if (series_name == "intraday") or ("fields" not in series_def):
+                fields = ["price"]
+            else:
+                # Resolve field set
+                fields = series_def["fields"]
+                if isinstance(fields, str):
+                    if field_sets is None or fields not in field_sets:
+                        raise ValueError(f"Unknown field set '{fields}' in asset '{asset_name}'")
+                    fields = field_sets[fields]
+
+            metrics[metric_name] = {
+                "asset": asset_name,
+                "timeseries": series_name,
+                "fields": fields,
+                "interval": require(series_def, "interval", f"timeseries '{series_name}' in asset '{asset_name}'"),
+                # inherited from asset
+                "provider": provider,
+                "symbol": symbol,
+                "tags": tags.copy(),
             }
 
-    return symbols
+            if buckets:
+                bucket_name = require(buckets, series_name, "buckets")
+                metrics[metric_name]["bucket"] = bucket_name
+
+    return metrics
 
 
 # -----------------------------
-# Parse composite expressions
+# Normalize composite definitions
 # -----------------------------
-def load_composites(parser: ConfigParser):
+def normalize_composites(raw_composites: dict, buckets: dict = None):
+    """
+    Composite format is now:
+
+      composites:
+        SPREAD:
+          expression: "spx_daily - ndx_daily"
+          timeseries: intraday  # optional, calculated if not specified
+          tags: {...}
+    """
+
     composites = {}
 
-    if "composites" in parser:
-        for name, expr in parser["composites"].items():
-            composites[name] = expr.strip()
+    for name, cfg in raw_composites.items():
+        composites[name] = {
+            "expression": require(cfg, "expression", f"composite '{name}'"),
+            "tags": {k.lower(): v for k, v in cfg.get("tags", {}).items()},
+        }
+
+        if "timeseries" in cfg:
+            composites[name]["timeseries"] = cfg["timeseries"]
+            if buckets:
+                bucket_name = require(buckets, cfg["timeseries"], "buckets")
+                composites[name]["bucket"] = bucket_name
 
     return composites
 
@@ -79,36 +183,34 @@ def load_composites(parser: ConfigParser):
 # -----------------------------
 # Main config loader
 # -----------------------------
-def load_config(ini_path=None, env_path=None):
+def load_config(yaml_path=None, env_path=None):
 
-    if ini_path is None or env_path is None:
-        root = get_project_root()
-        ini_path = ini_path or (root / "config.ini")
-        env_path = env_path or (root / ".env")
-
-    if not ini_path.exists():
-        raise FileNotFoundError(f"Config file not found: {ini_path}")
-
-    print(f"Loading config from {ini_path} and secrets from {env_path}")
+    root = get_project_root()
+    yaml_path = yaml_path or (root / "config.yaml")
+    env_path = env_path or (root / ".env")
 
     secrets = load_env_secrets(env_path)
+    raw_cfg = load_yaml_config(yaml_path)
 
-    # Load config.ini
-    parser = ConfigParser()
-    parser.optionxform = str
-    parser.read(ini_path)
+    apply_logging_config(raw_cfg)
 
-    general = {
-        "default_interval": int(parser["general"].get("interval", 1440)) * 60,  # convert minutes to seconds
-    }
+    logger.debug(f"Loaded config from {yaml_path} and secrets from {env_path}")
 
-    # Parse symbols + composites
-    symbols = load_symbols(parser, general)
-    composites = load_composites(parser)
+    buckets = raw_cfg.get("buckets", {})
+    field_sets = raw_cfg.get("field_sets", {})
+    providers = raw_cfg.get("providers", {})
+    raw_assets = raw_cfg.get("assets", {})
+    raw_composites = raw_cfg.get("composites", {})
+
+    # Normalize and validate assets/composites.
+    assets = normalize_assets(raw_assets, field_sets, buckets)
+    # we cannot always flatten buckets in composites since we don't always know the timeseries upfront.
+    composites = normalize_composites(raw_composites, buckets)
 
     return {
-        "general": general,
-        "symbols": symbols,
+        "buckets": buckets,
+        "providers": providers,
+        "assets": assets,
         "composites": composites,
         "secrets": secrets,
     }

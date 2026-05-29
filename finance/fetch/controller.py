@@ -5,58 +5,97 @@
 import time
 
 from finance.common.freshness import is_recent
+from finance.common.intervals import parse_interval
+from finance.common.log_mixin import LogMixin
+from finance.fetch.ecb import EcbProvider
+from finance.fetch.fred import FredProvider
+from finance.fetch.yahoo import YahooProvider
 
-from .ecb import fetch_ecb
-from .fred import fetch_fred_series
-from .yahoo import fetch_yahoo_chart
+PROVIDER_REGISTRY = {
+    "yahoo": YahooProvider,
+    "fred": FredProvider,
+    "ecb": EcbProvider,
+}
 
 
-class FetchController:
-    def __init__(self, symbols, api_keys, now_provider=time.time):
-        self.symbols = symbols
+class FetchController(LogMixin):
+    def __init__(self, assets, api_keys, now_provider=time.time):
+        self.assets = assets
         self.api_keys = api_keys
         self.now = now_provider
-        # fetcher registry with correct signatures
-        self.fetchers = {
-            "yahoo": lambda cfg, api_key: fetch_yahoo_chart(cfg["symbol"]),
-            "ecb": lambda cfg, api_key: fetch_ecb(cfg["symbol"]),
-            "fred": lambda cfg, api_key: fetch_fred_series(cfg["symbol"], api_key),
+
+        # Instantiate all providers with their API key (or None)
+        self.providers = {
+            name: provider_class(api_keys.get(name)) for name, provider_class in PROVIDER_REGISTRY.items()
         }
 
-    def fetch_one(self, name, cfg, state):
-        source_type = cfg.get("source")
-        api_key = self.api_keys.get(source_type)
+    def _validate_result(self, result):
+        if not isinstance(result, dict):
+            return None
 
-        fetcher = self.fetchers.get(source_type)
-        if fetcher is None:
-            print(f"Skipping {source_type} metric {name} - no fetcher")
+        timestamp = result.get("timestamp")
+        fields = result.get("fields")
+
+        if not isinstance(timestamp, int):
+            return None
+
+        if not isinstance(fields, dict):
+            return None
+
+        return result
+
+    def fetch_one(self, asset, state: dict):
+
+        provider = self.providers.get(asset["provider"])
+        if provider is None:
+            self.error(f"Skipping {asset['provider']} asset {asset['name']} - no provider")
             return None
 
         now = int(self.now())
-        result = fetcher(cfg, api_key)
 
-        value = result.get("value")
-        ts = result.get("timestamp")
+        last_timestamp = state.get(asset["name"], {}).get("last_timestamp")
 
-        entry = state.setdefault(name, {})
+        try:
+            result = provider.fetch(asset, last_timestamp)
+
+        except Exception as ex:
+            self.error(f"Fetcher for {asset['name']} failed: {ex}")
+            entry = state.setdefault(asset["name"], {})
+            entry["last_try"] = now
+            return None
+
+        validated = self._validate_result(result)
+        entry = state.setdefault(asset["name"], {})
         entry["last_try"] = now
 
-        if value is not None and ts is not None:
-            return value, ts
+        if validated is None:
+            return None
 
-        return None
+        timestamp = validated["timestamp"]
+        fields = validated["fields"]
+        entry["last_timestamp"] = timestamp
+        return {"timestamp": timestamp, "fields": fields}
 
-    def fetch_all(self, state):
+    def fetch_all(self, state: dict):
         now = int(self.now())
         results = {}
-        for name, cfg in self.symbols.items():
-            interval = cfg["interval"]
-            entry = state.get(name, {})
-            if is_recent(entry, now, interval):
+
+        for asset in self.assets:
+            required = ["name", "provider", "symbol", "interval", "fields", "timeseries"]
+            missing = [k for k in required if k not in asset]
+            if missing:
+                self.error(f"Asset {asset.get('name')} missing keys: {missing}")
+                return results
+
+            interval_s = parse_interval(asset["interval"])
+
+            entry = state.get(asset["name"], {})
+            if is_recent(entry, now, interval_s):
                 continue
 
-            fetched = self.fetch_one(name, cfg, state)
+            fetched = self.fetch_one(asset, state)
+
             if fetched is not None:
-                results[name] = fetched
+                results[asset["name"]] = fetched
 
         return results

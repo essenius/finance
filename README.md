@@ -7,30 +7,49 @@ The goal is a **deterministic, reliable, and extensible ingestion layer** for da
 ---
 
 ## **Features**
-
-### **Unified State Model**  
-All metrics share the same structure:  
-```
-state[metric] = {
-    "last_value": float | None,
-    "last_timestamp": int | None,
-    "last_try": int | None
-}
-```  
-This ensures consistent behavior across fetchers and composites.   [Current page](citation-section://708118277/8)
-
-### **Freshness Based on `last_try`**  
-A metric is fetched only when its freshness interval has expired:  
-```
-if now - last_try < interval:
-    skip
-```  
-This applies to both base and composite metrics.   [Current page](citation-section://708118277/8)
+Define assets in Yaml
 
 ### **Composite Metrics With Dependency Resolution**  
-Composite metrics are defined as Python expressions, e.g.:  
+Composite metrics are defined as Python expressions in config.yaml, using the asset names e.g.:  
 ```
-SPREAD_10Y_2Y = US10Y - US2Y
+
+assets:
+  fred_10y_nominal:
+    source: fred
+    symbol: "DGS10"
+    tags:
+      symbol: 10Y_NOMINAL
+      instrument: macro
+      region: US
+      unit: percent
+      source: fred
+    timeseries:
+      daily:
+        interval: 1d
+
+  fred_10y_breakeven:
+    source: fred
+    symbol: "T10YIE"
+    tags:
+      symbol: 10Y_BREAKEVEN
+      instrument: macro
+      region: US
+      unit: percent
+      source: fred
+    timeseries:
+      daily:
+        interval: 1d
+
+composites:
+  10Y_REAL:
+    expression: "fred_10y_nominal - fred_10y_breakeven"
+    timeseries: daily
+    tags:
+      symbol: 10Y_REAL
+      instrument: macro
+      region: US
+      unit: percent
+      source: composite
 ```
 
 The system:  
@@ -41,13 +60,6 @@ The system:
 - Evaluates composites in correct order  
 - Detects and rejects cycles  
 
-### **Deterministic and Extensible Architecture**  
-Designed to be:  
-- deterministic  
-- efficient  
-- safe for composite‑in‑composite chains  
-- easy to extend with new fetchers or metrics  
-
 
 ---
 
@@ -57,31 +69,32 @@ The repository now follows a clean modular layout:
 ```
 finance/
     common/
-        freshness.py
+        # shared logic
     composites/
-        deps.py
-        evaluator.py
+        # dependency detection and evaluator
     config/
-        loader.py
+        # loader for config.yaml and .env, flattening structure
     fetch/
-        controller.py
-        yahoo.py
-        fred.py
-        ecb.py
-        treasury.py
+        # fetching data from the providers and transforming to standard format
     state/
-        manager.py
+        # capturing last values and timestamps per asset
     write/
-        controller.py
-        influx.py
-        ssl_context_adapter.py
-    __main__.py
+        # writing to InfluxDB
     main.py
+scripts/
+    # bash scripts used by makefile
 tests/
+    # unit tests for finance/
 tools/
-config.ini
-.env.example
-requirements.txt
+    # development tools (adding license header)
+config.yaml      # assets and composites, see above
+.env.example     # example content for .env (secrets)
+.env.acc         # environment settings for acceptance deployment
+.env.prod        # environment settings for production deployment
+makefile         # testing/building/deploying the application
+pyproject.toml   # project definition
+pytest.ini       # pytest config
+ruff.toml        # ruff (static analysis) config
 ```
 
 ### **InfluxDB Writer (Updated)**  

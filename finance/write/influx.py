@@ -4,6 +4,8 @@
 
 import requests
 
+from finance.common.log_mixin import LogMixin
+
 from .ssl_context_adapter import SSLContextAdapter, make_legacy_ssl_context
 
 
@@ -39,34 +41,51 @@ def configure_verify(session, mode, cert):
     raise ValueError(f"Unknown verify mode: {mode}")
 
 
-class InfluxWriter:
+class InfluxWriter(LogMixin):
     def __init__(self, secrets: dict):
 
         url = secrets["url"].rstrip("/")
-        db = secrets["db"]
-        user = secrets.get("user", None)
-        password = secrets.get("password", None)
         cert = secrets.get("cert", None)
-        verify = secrets.get("verify", "true")
-
-        # Prebuild the write URL
-        self.write_url = f"{url}/write?db={db}&precision=s"
-
-        # Precompute auth tuple or None
-        if user and password:
-            self.auth = (user, password)
-        else:
-            self.auth = None
+        ssl_verify = secrets.get("ssl_verify", "true")
 
         self.session = requests.Session()
-        self.verify = configure_verify(self.session, verify, cert)
+        self.ssl_verify = configure_verify(self.session, ssl_verify, cert)
 
-        print(
-            f"InfluxWriter initialized with write_url: {self.write_url}, auth: {'set' if self.auth else 'none'}, verify: {self.verify}"
-        )  # Debug print --- IGNORE ---
+        self.is_v2 = "org" in secrets
+        self.is_v1 = "db" in secrets
 
-    def write(self, measurement, fields, timestamp, tags=None):
+        if self.is_v1 and self.is_v2:
+            self.warning("secrets contain both 'org' (InfluxDb 2.x) and 'db' (InfluxDB 1.x), ignoring 'db'")
+
+        if self.is_v2:
+            # InfluxDB 2.x
+            self.org = secrets["org"]
+            self.token = secrets["token"]
+            self.base_url = f"{url}/api/v2/write"
+            self.headers = {
+                "Authorization": f"Token {self.token}",
+                "Content-Type": "text/plain; charset=utf-8",
+            }
+
+        elif self.is_v1:
+            # InfluxDB 1.x
+            self.db = secrets["db"]
+            user = secrets.get("user")
+            password = secrets.get("password")
+            self.base_url = f"{url}/write"
+            self.auth = (user, password) if user and password else None
+            self.headers = {
+                "Content-Type": "text/plain; charset=utf-8",
+            }
+
+        else:
+            raise ValueError("Secrets must contain either 'org' (InfluxDB 2.x) or 'db' (InfluxDB 1.x)")
+
+        self.debug("InfluxWriter initialized", base_url=self.base_url, verify=self.ssl_verify)
+
+    def write(self, bucket, measurement, fields, timestamp, tags=None):
         """
+        bucket: string (InfluxDB 2.x only, ignored in 1.x)
         measurement: string
         fields: dict, e.g. {"value": 123.45}
         timestamp: int (unix seconds)
@@ -77,10 +96,23 @@ class InfluxWriter:
         field_str = ",".join(f"{k}={v}" for k, v in fields.items())
         line = f"{measurement}{tag_str} {field_str} {timestamp}"
 
+        base_params = {
+            "data": line,
+            "headers": self.headers,
+            "timeout": 5,
+            "verify": self.ssl_verify,
+        }
         try:
-            r = self.session.post(self.write_url, data=line, auth=self.auth, timeout=5, verify=self.verify)
+            if self.is_v2:
+                url = f"{self.base_url}?org={self.org}&bucket={bucket}&precision=s"
+                r = self.session.post(url, **base_params)
+            else:
+                url = f"{self.base_url}?db={self.db}&precision=s"
+                r = self.session.post(url, auth=self.auth, **base_params)
+
             r.raise_for_status()
+            return {"ok": True}
+
         except Exception as e:
-            print(f"Influx write failed for {measurement}: {e}")
-            for err in e.args:
-                print(err)
+            self.error("Influx write failed", measurement=measurement, exception=e, args=e.args)
+            return {"ok": False, "error": str(e)}

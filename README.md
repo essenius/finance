@@ -98,7 +98,7 @@ ruff.toml        # ruff (static analysis) config
 ```
 
 ### **InfluxDB Writer (Updated)**  
-The Influx writer now uses a **requests.Session** with four verification modes:
+The Influx writer now supports four SSL verification modes:
 
 | Mode      | Behavior |
 |-----------|----------|
@@ -109,15 +109,14 @@ The Influx writer now uses a **requests.Session** with four verification modes:
 
 Legacy mode uses a custom `SSLContextAdapter` and `make_legacy_ssl_context`.
 
-Tests mock `Session.send` to avoid real network calls and mock `make_legacy_ssl_context` inside `finance.write.influx` to avoid filesystem access.
-
 ---
 
 ## **Installation**
 
 ```bash
-python -m venv .venv
-source .venv/bin/activate
+make production
+cd /home/pi/prod/finance
+source pyvenv/bin/activate
 pip install -r requirements.txt
 ```
 

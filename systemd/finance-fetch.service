@@ -1,3 +1,7 @@
+# Copyright 2026 Rik Essenius
+# Licensed under the Apache License, Version 2.0. See the LICENSE file for details.
+# File: systemd/finance-fetch.service
+
 [Unit]
 Description=Finance Data Fetcher
 After=network-online.target

@@ -1,4 +1,8 @@
 #!/usr/bin/env bash
+# Copyright 2026 Rik Essenius
+# Licensed under the Apache License, Version 2.0. See the LICENSE file for details.
+# File: scripts/bump_version.sh
+
 set -euo pipefail
 
 DEV_ROOT="$(cd "$(dirname "$0")/.." && pwd)"

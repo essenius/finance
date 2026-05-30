@@ -1,3 +1,7 @@
+# Copyright 2026 Rik Essenius
+# Licensed under the Apache License, Version 2.0. See the LICENSE file for details.
+# File: config.yaml
+
 logging:
   level: info
 
@@ -20,7 +24,7 @@ assets:
   # FOREX: EURUSD (Yahoo)
   # -------------------------
   eurusd_yahoo_intraday:
-    source: yahoo
+    provider: yahoo
     symbol: "EURUSD=X"
     tags:
       symbol: EURUSD
@@ -29,13 +33,13 @@ assets:
       region: GLOBAL
       currency: USD
       unit: ratio
-      source: yahoo
+      provider: yahoo
     timeseries:
       intraday:
         interval: 10m
 
   eurusd_yahoo_daily:
-    source: yahoo
+    provider: yahoo
     symbol: "EURUSD=X"
     tags:
       symbol: EURUSD
@@ -44,7 +48,7 @@ assets:
       region: GLOBAL
       currency: USD
       unit: ratio
-      source: yahoo
+      provider: yahoo
     timeseries:
       daily:
         fields: candle
@@ -54,7 +58,7 @@ assets:
   # FOREX: EURUSD (ECB)
   # -------------------------
   eurusd_ecb:
-    source: ecb
+    provider: ecb
     symbol: "USD_EUR"
     tags:
       symbol: EURUSD
@@ -63,7 +67,7 @@ assets:
       region: EU
       currency: USD
       unit: ratio
-      source: ecb
+      provider: ecb
     timeseries:
       daily:
         interval: 1d
@@ -72,7 +76,7 @@ assets:
   # COMMODITIES
   # -------------------------
   gold:
-    source: yahoo
+    provider: yahoo
     symbol: "GC=F"
     tags:
       symbol: GOLD
@@ -81,7 +85,7 @@ assets:
       region: GLOBAL
       currency: USD
       unit: USD
-      source: yahoo
+      provider: yahoo
     timeseries:
       intraday:
         interval: 10m
@@ -90,7 +94,7 @@ assets:
         interval: 1d
 
   wti:
-    source: yahoo
+    provider: yahoo
     symbol: "CL=F"
     tags:
       symbol: WTI
@@ -99,7 +103,7 @@ assets:
       region: GLOBAL
       currency: USD
       unit: USD
-      source: yahoo
+      provider: yahoo
     timeseries:
       intraday:
         interval: 10m
@@ -108,7 +112,7 @@ assets:
         interval: 1d
 
   brent:
-    source: yahoo
+    provider: yahoo
     symbol: "BZ=F"
     tags:
       symbol: BRENT
@@ -117,7 +121,7 @@ assets:
       region: GLOBAL
       currency: USD
       unit: USD
-      source: yahoo
+      provider: yahoo
     timeseries:
       intraday:
         interval: 10m
@@ -129,7 +133,7 @@ assets:
   # EQUITIES
   # -------------------------
   shell:
-    source: yahoo
+    provider: yahoo
     symbol: "SHEL"
     tags:
       symbol: SHEL
@@ -138,7 +142,7 @@ assets:
       region: GLOBAL
       currency: USD
       unit: USD
-      source: yahoo
+      provider: yahoo
     timeseries:
       daily:
         fields: candle
@@ -147,7 +151,7 @@ assets:
         interval: 10m
 
   shell_as:
-    source: yahoo
+    provider: yahoo
     symbol: "SHELL.AS"
     tags:
       symbol: SHELL.AS
@@ -156,7 +160,7 @@ assets:
       region: GLOBAL
       currency: EUR
       unit: EUR
-      source: yahoo
+      provider: yahoo
     timeseries:
       daily:
         fields: candle
@@ -168,7 +172,7 @@ assets:
   # INDEXES
   # -------------------------
   spx:
-    source: yahoo
+    provider: yahoo
     symbol: "^GSPC"
     tags:
       symbol: SPX
@@ -177,14 +181,14 @@ assets:
       region: US
       currency: USD
       unit: index
-      source: yahoo
+      provider: yahoo
     timeseries:
       daily:
         fields: candle
         interval: 1d
 
   vix:
-    source: yahoo
+    provider: yahoo
     symbol: "^VIX"
     tags:
       symbol: VIX
@@ -193,7 +197,7 @@ assets:
       region: US
       currency: USD
       unit: index
-      source: yahoo
+      provider: yahoo
     timeseries:
       daily:
         fields: candle
@@ -203,7 +207,7 @@ assets:
   # CRYPTO
   # -------------------------
   bitcoin:
-    source: yahoo
+    provider: yahoo
     symbol: "BTC-USD"
     tags:
       symbol: BTCUSD
@@ -212,7 +216,7 @@ assets:
       region: GLOBAL
       currency: USD
       unit: USD
-      source: yahoo
+      provider: yahoo
     timeseries:
       intraday:
         interval: 10m
@@ -224,53 +228,53 @@ assets:
   # MACRO (FRED + Treasury)
   # -------------------------
   fred_10y_nominal:
-    source: fred
+    provider: fred
     symbol: "DGS10"
     tags:
       symbol: 10Y_NOMINAL
       instrument: macro
       region: US
       unit: percent
-      source: fred
+      provider: fred
     timeseries:
       daily:
         interval: 1d
 
   fred_10y_breakeven:
-    source: fred
+    provider: fred
     symbol: "T10YIE"
     tags:
       symbol: 10Y_BREAKEVEN
       instrument: macro
       region: US
       unit: percent
-      source: fred
+      provider: fred
     timeseries:
       daily:
         interval: 1d
 
   fed_balance_sheet:
-    source: fred
+    provider: fred
     symbol: "WALCL"
     tags:
       symbol: BALANCE_SHEET
       instrument: macro
       region: US
       unit: billions_usd
-      source: fred
+      provider: fred
     timeseries:
       daily:
         interval: 1d
 
   treasury_avg:
-    source: treasury
+    provider: treasury
     symbol: "avg_interest_rate"
     tags:
       symbol: AVG_INTEREST_RATE
       instrument: macro
       region: US
       unit: percent
-      source: treasury
+      provider: treasury
     timeseries:
       daily:
         interval: 1d
@@ -287,7 +291,7 @@ composites:
       instrument: macro
       region: US
       unit: percent
-      source: composite
+      provider: composite
 
   GOLD_DAILY_RANGE:
     expression: "gold.high - gold.low"
@@ -297,4 +301,4 @@ composites:
       instrument: commodity
       region: GLOBAL
       unit: USD
-      source: composite
+      provider: composite

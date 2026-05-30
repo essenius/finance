@@ -17,7 +17,7 @@ def make_asset(
 
     fields = ["close"] if fields is None else list(fields)
     return {
-        "name": name,
+        "asset": name,
         "provider": provider,
         "symbol": symbol,
         "interval": interval,
@@ -237,7 +237,7 @@ def test_validate_result_invalid(
     [
         # Missing provider
         {
-            "name": "eurusd_intraday",
+            "asset": "eurusd_intraday",
             "symbol": "EURUSD=X",
             "interval": "10m",
             "fields": ["close"],
@@ -245,7 +245,7 @@ def test_validate_result_invalid(
         },
         # Missing symbol
         {
-            "name": "eurusd_intraday",
+            "asset": "eurusd_intraday",
             "provider": "yahoo",
             "interval": "10m",
             "fields": ["close"],
@@ -253,7 +253,7 @@ def test_validate_result_invalid(
         },
         # Missing interval
         {
-            "name": "eurusd_intraday",
+            "asset": "eurusd_intraday",
             "provider": "yahoo",
             "symbol": "EURUSD=X",
             "fields": ["close"],
@@ -261,7 +261,7 @@ def test_validate_result_invalid(
         },
         # Missing fields
         {
-            "name": "eurusd_intraday",
+            "asset": "eurusd_intraday",
             "provider": "yahoo",
             "symbol": "EURUSD=X",
             "interval": "10m",
@@ -269,7 +269,7 @@ def test_validate_result_invalid(
         },
         # Missing timeseries
         {
-            "name": "eurusd_intraday",
+            "asset": "eurusd_intraday",
             "provider": "yahoo",
             "symbol": "EURUSD=X",
             "interval": "10m",

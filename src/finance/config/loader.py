@@ -34,7 +34,7 @@ def load_env_secrets(env_path: Path):
     if not influx["url"]:
         raise RuntimeError("InfluxDB requires URL in INFLUX_URL")
 
-    # if we have a bucket variable, we have Influx 2 so we need a token
+    # if we have an org variable, we have Influx 2 so we need a token
     org = os.getenv("INFLUX_ORG")
     if org:
         # influxDB 2

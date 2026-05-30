@@ -23,7 +23,7 @@ assets:
   # -------------------------
   # FOREX: EURUSD (Yahoo)
   # -------------------------
-  eurusd_yahoo_intraday:
+  eurusd_yahoo:
     provider: yahoo
     symbol: "EURUSD=X"
     tags:
@@ -37,19 +37,6 @@ assets:
     timeseries:
       intraday:
         interval: 10m
-
-  eurusd_yahoo_daily:
-    provider: yahoo
-    symbol: "EURUSD=X"
-    tags:
-      symbol: EURUSD
-      instrument: forex
-      exchange: FOREX
-      region: GLOBAL
-      currency: USD
-      unit: ratio
-      provider: yahoo
-    timeseries:
       daily:
         fields: candle
         interval: 1d

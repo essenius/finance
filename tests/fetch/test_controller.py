@@ -11,18 +11,20 @@ from finance.fetch.controller import FetchController
 
 
 def make_asset(
-    name="eurusd_intraday", provider="yahoo", symbol="EURUSD=X", interval="10m", fields=None, timeseries="intraday"
+    instrument="eur_usd", provider="yahoo", symbol="EURUSD=X", interval="10m", fields=None, timeseries="intraday"
 ):
     # doing this to avoid mutable data structures in argument defaults, with risk of cross-contamination
-
     fields = ["close"] if fields is None else list(fields)
+    series = f"{instrument}_{timeseries}"
     return {
-        "asset": name,
-        "provider": provider,
-        "symbol": symbol,
-        "interval": interval,
-        "fields": fields,
-        "timeseries": timeseries,
+        series: {
+            "asset": instrument,
+            "provider": provider,
+            "symbol": symbol,
+            "interval": interval,
+            "fields": fields,
+            "timeseries": timeseries,
+        }
     }
 
 
@@ -36,13 +38,13 @@ def test_controller_skips_fresh():
     fake_provider.fetch.return_value = {"timestamp": 999, "fields": {"close": 1.23}}
 
     now = 1_000_000_000
-    asset = make_asset(interval="1h")
+    assets = make_asset(interval="1h")
 
-    fc = FetchController([asset], api_keys={}, now_provider=lambda: now)
+    fc = FetchController(assets, api_keys={}, now_provider=lambda: now)
     fc.providers["yahoo"] = fake_provider
 
     state = {
-        "eurusd_intraday": {
+        "eur_usd_intraday": {
             "last_try": now - 100,  # fresh vs 1h interval
             "last_timestamp": 123456,
         }
@@ -63,13 +65,13 @@ def test_controller_fetches_when_stale():
     fake_provider.fetch.return_value = {"timestamp": 777, "fields": {"close": 4.321}}
 
     now = 1_000_000_000
-    asset = make_asset(interval="1h")
+    assets = make_asset(interval="1h")
 
-    fc = FetchController([asset], api_keys={}, now_provider=lambda: now)
+    fc = FetchController(assets, api_keys={}, now_provider=lambda: now)
     fc.providers["yahoo"] = fake_provider
 
     state = {
-        "eurusd_intraday": {
+        "eur_usd_intraday": {
             "last_try": now - 7200,  # stale vs 1h
             "last_timestamp": 123456,
         }
@@ -77,16 +79,18 @@ def test_controller_fetches_when_stale():
 
     results = fc.fetch_all(state)
 
-    fake_provider.fetch.assert_called_once_with(asset, 123456)
+    series_name = next(iter(assets))
+    config = assets[series_name]
+    fake_provider.fetch.assert_called_once_with(config, 123456)
 
     assert results == {
-        "eurusd_intraday": {
+        "eur_usd_intraday": {
             "timestamp": 777,
             "fields": {"close": 4.321},
         }
     }
 
-    assert state["eurusd_intraday"]["last_try"] == now
+    assert state["eur_usd_intraday"]["last_try"] == now
 
 
 # ----------------------------------------------------------------------
@@ -95,9 +99,9 @@ def test_controller_fetches_when_stale():
 
 
 def test_controller_unknown_provider(capsys):
-    asset = make_asset(provider="mystery")
+    assets = make_asset(provider="mystery")
 
-    fc = FetchController([asset], api_keys={}, now_provider=lambda: 0)
+    fc = FetchController(assets, api_keys={}, now_provider=lambda: 0)
     state = {}
 
     results = fc.fetch_all(state)
@@ -113,7 +117,7 @@ def test_controller_unknown_provider(capsys):
     "side_effect, expected_err",
     [
         (None, ""),
-        (RuntimeError("boom"), "Fetcher for eurusd_intraday failed: boom"),
+        (RuntimeError("boom"), "Fetcher for eur_usd_intraday failed: boom"),
     ],
 )
 def test_controller_provider_failure(capsys, side_effect, expected_err):
@@ -121,17 +125,17 @@ def test_controller_provider_failure(capsys, side_effect, expected_err):
     fake.fetch.side_effect = side_effect
 
     now = 1_000_000_000
-    asset = make_asset()
+    assets = make_asset()
 
-    fc = FetchController([asset], api_keys={}, now_provider=lambda: now)
+    fc = FetchController(assets, api_keys={}, now_provider=lambda: now)
     fc.providers["yahoo"] = fake
 
-    state = {"eurusd_intraday": {}}
+    state = {"eur_usd_intraday": {}}
 
     results = fc.fetch_all(state)
 
     assert results == {}
-    assert state["eurusd_intraday"]["last_try"] == now
+    assert state["eur_usd_intraday"]["last_try"] == now
 
     err = capsys.readouterr().err
     if expected_err:
@@ -150,18 +154,18 @@ def test_controller_malformed_result():
     fake_provider.fetch.return_value = {"foo": 1}
 
     now = 1_000_000_000
-    asset = make_asset()
+    assets = make_asset()
 
-    fc = FetchController([asset], api_keys={}, now_provider=lambda: now)
+    fc = FetchController(assets, api_keys={}, now_provider=lambda: now)
     fc.providers["yahoo"] = fake_provider
 
-    state = {"eurusd_intraday": {}}
+    state = {"eur_usd_intraday": {}}
 
     results = fc.fetch_all(state)
 
     fake_provider.fetch.assert_called_once()
     assert results == {}
-    assert state["eurusd_intraday"]["last_try"] == now
+    assert state["eur_usd_intraday"]["last_try"] == now
 
 
 # ----------------------------------------------------------------------
@@ -174,10 +178,13 @@ def test_controller_multiple_assets():
     fake_provider.fetch.return_value = {"timestamp": 333, "fields": {"close": 3.3}}
 
     now = 1_000_000_000
-    a1 = make_asset(name="eurusd_intraday")
-    a2 = make_asset(name="spx_intraday", symbol="^GSPC")
 
-    fc = FetchController([a1, a2], api_keys={}, now_provider=lambda: now)
+    assets = {
+        **make_asset(instrument="eur_usd_yahoo"),
+        **make_asset(instrument="spx_yahoo", symbol="^GSPC"),
+    }
+
+    fc = FetchController(assets, api_keys={}, now_provider=lambda: now)
     fc.providers["yahoo"] = fake_provider
 
     state = {}
@@ -185,8 +192,8 @@ def test_controller_multiple_assets():
     results = fc.fetch_all(state)
 
     assert fake_provider.fetch.call_count == 2
-    assert "eurusd_intraday" in results
-    assert "spx_intraday" in results
+    assert "eur_usd_yahoo_intraday" in results
+    assert "spx_yahoo_intraday" in results
 
 
 # ----------------------------------------------------------------------
@@ -198,13 +205,13 @@ def test_controller_respects_interval():
     fake_provider = Mock()
     fake_provider.fetch.return_value = {"timestamp": 444, "fields": {"close": 4.4}}
 
-    asset = make_asset(interval="10s")
+    assets = make_asset(interval="10s")
 
     now = 1_000_000_000
-    fc = FetchController([asset], api_keys={}, now_provider=lambda: now)
+    fc = FetchController(assets, api_keys={}, now_provider=lambda: now)
     fc.providers["yahoo"] = fake_provider
 
-    state = {"eurusd_intraday": {"last_try": now - 5}}
+    state = {"eur_usd_intraday": {"last_try": now - 5}}
 
     fc.fetch_all(state)
 
@@ -228,7 +235,7 @@ def test_controller_respects_interval():
 def test_validate_result_invalid(
     result: None | list[str] | dict[str, str | dict[Any, Any]] | dict[str, int | list[str]],
 ):
-    fc = FetchController([], api_keys={}, now_provider=lambda: 0)
+    fc = FetchController({}, api_keys={}, now_provider=lambda: 0)
     assert fc._validate_result(result) is None
 
 
@@ -237,7 +244,7 @@ def test_validate_result_invalid(
     [
         # Missing provider
         {
-            "asset": "eurusd_intraday",
+            "asset": "eur_usd",
             "symbol": "EURUSD=X",
             "interval": "10m",
             "fields": ["close"],
@@ -245,7 +252,7 @@ def test_validate_result_invalid(
         },
         # Missing symbol
         {
-            "asset": "eurusd_intraday",
+            "asset": "eur_usd",
             "provider": "yahoo",
             "interval": "10m",
             "fields": ["close"],
@@ -253,7 +260,7 @@ def test_validate_result_invalid(
         },
         # Missing interval
         {
-            "asset": "eurusd_intraday",
+            "asset": "eur_usd",
             "provider": "yahoo",
             "symbol": "EURUSD=X",
             "fields": ["close"],
@@ -261,7 +268,7 @@ def test_validate_result_invalid(
         },
         # Missing fields
         {
-            "asset": "eurusd_intraday",
+            "asset": "eur_usd",
             "provider": "yahoo",
             "symbol": "EURUSD=X",
             "interval": "10m",
@@ -269,7 +276,7 @@ def test_validate_result_invalid(
         },
         # Missing timeseries
         {
-            "asset": "eurusd_intraday",
+            "asset": "eur_usd",
             "provider": "yahoo",
             "symbol": "EURUSD=X",
             "interval": "10m",
@@ -280,7 +287,7 @@ def test_validate_result_invalid(
 def test_controller_missing_asset_properties(bad_asset, capsys):
     now = 1_000_000_000
 
-    fc = FetchController([bad_asset], api_keys={}, now_provider=lambda: now)
+    fc = FetchController({ "my_series": bad_asset }, api_keys={}, now_provider=lambda: now)
 
     state = {}
 
@@ -295,4 +302,4 @@ def test_controller_missing_asset_properties(bad_asset, capsys):
     # Error printed
     err = capsys.readouterr().err
     assert "missing keys" in err
-    assert "eurusd_intraday" in err
+    assert "my_series" in err

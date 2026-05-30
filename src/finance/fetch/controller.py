@@ -44,28 +44,28 @@ class FetchController(LogMixin):
 
         return result
 
-    def fetch_one(self, asset, state: dict):
+    def fetch_one(self, name, asset, state: dict):
 
         provider = self.providers.get(asset["provider"])
         if provider is None:
-            self.error(f"Skipping {asset['provider']} asset {asset['asset']} - no provider")
+            self.error(f"Skipping {asset['provider']} series {name} - no provider")
             return None
 
         now = int(self.now())
 
-        last_timestamp = state.get(asset["asset"], {}).get("last_timestamp")
+        last_timestamp = state.get(name, {}).get("last_timestamp")
 
         try:
             result = provider.fetch(asset, last_timestamp)
 
         except Exception as ex:
-            self.error(f"Fetcher for {asset['asset']} failed: {ex}")
-            entry = state.setdefault(asset["asset"], {})
+            self.error(f"Fetcher for {name} failed: {ex}")
+            entry = state.setdefault(name, {})
             entry["last_try"] = now
             return None
 
         validated = self._validate_result(result)
-        entry = state.setdefault(asset["asset"], {})
+        entry = state.setdefault(name, {})
         entry["last_try"] = now
 
         if validated is None:
@@ -80,22 +80,22 @@ class FetchController(LogMixin):
         now = int(self.now())
         results = {}
 
-        for asset in self.assets:
+        for name, asset in self.assets.items():
             required = ["asset", "provider", "symbol", "interval", "fields", "timeseries"]
             missing = [k for k in required if k not in asset]
             if missing:
-                self.error(f"Asset {asset.get('asset')} missing keys: {missing}")
-                return results
+                self.error(f"Asset {name} missing keys: {missing}")
+                continue
 
             interval_s = parse_interval(asset["interval"])
 
-            entry = state.get(asset["asset"], {})
+            entry = state.get(name, {})
             if is_recent(entry, now, interval_s):
                 continue
 
-            fetched = self.fetch_one(asset, state)
+            fetched = self.fetch_one(name, asset, state)
 
             if fetched is not None:
-                results[asset["asset"]] = fetched
+                results[name] = fetched
 
         return results

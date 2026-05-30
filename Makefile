@@ -95,7 +95,7 @@ lint: $(LINT_STAMP)
 
 $(TEST_STAMP): | $(CACHE_DIR)
 $(TEST_STAMP): $(shell find finance tools tests -name '*.py')
-	$(PYTHON) -m pytest -q
+	$(PYTHON) -m pytest -c pytest.ini -q
 	touch $(TEST_STAMP)
 
 test: $(TEST_STAMP)

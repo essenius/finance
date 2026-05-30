@@ -1,6 +1,6 @@
 # Copyright 2026 Rik Essenius
 # Licensed under the Apache License, Version 2.0. See the LICENSE file for details.
-# File: finance/fetch/fred.py
+# File: src/finance/fetch/fred.py
 
 from datetime import UTC, datetime
 

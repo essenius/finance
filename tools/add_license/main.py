@@ -9,8 +9,7 @@ from .file_processor import FileProcessor
 
 SKIP_DIRS = {
     ".git",
-    ".cache"
-    ".venv",
+    ".cache.venv",
     "venv",
     "env",
     "__pycache__",

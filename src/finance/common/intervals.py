@@ -1,6 +1,6 @@
 # Copyright 2026 Rik Essenius
 # Licensed under the Apache License, Version 2.0. See the LICENSE file for details.
-# File: finance/common/intervals.py
+# File: src/finance/common/intervals.py
 
 
 def parse_interval(s: str) -> int:

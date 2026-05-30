@@ -1,6 +1,6 @@
 # Copyright 2026 Rik Essenius
 # Licensed under the Apache License, Version 2.0. See the LICENSE file for details.
-# File: finance/write/__init__.py
+# File: src/finance/write/__init__.py
 
 from .metric_writer import MetricWriter
 

@@ -1,6 +1,6 @@
 # Copyright 2026 Rik Essenius
 # Licensed under the Apache License, Version 2.0. See the LICENSE file for details.
-# File: finance/common/freshness.py
+# File: src/finance/common/freshness.py
 
 
 def is_recent(entry, now, interval):

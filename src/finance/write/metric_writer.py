@@ -1,6 +1,6 @@
 # Copyright 2026 Rik Essenius
 # Licensed under the Apache License, Version 2.0. See the LICENSE file for details.
-# File: finance/write/metric_writer.py
+# File: src/finance/write/metric_writer.py
 
 
 from finance.common.log_mixin import LogMixin

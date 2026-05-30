@@ -21,8 +21,8 @@ dependencies = [
 ]
 
 [tool.setuptools.packages.find]
-where = ["."]
-exclude = ["tools*", "tests*"]
+where = ["src"]
+#exclude = ["tools*", "tests*"]
 
 [project.optional-dependencies]
 dev = [

@@ -1,6 +1,6 @@
 # Copyright 2026 Rik Essenius
 # Licensed under the Apache License, Version 2.0. See the LICENSE file for details.
-# File: finance/common/log_mixin.py
+# File: src/finance/common/log_mixin.py
 
 import sys
 

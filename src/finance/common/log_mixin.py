@@ -2,25 +2,28 @@
 # Licensed under the Apache License, Version 2.0. See the LICENSE file for details.
 # File: src/finance/common/log_mixin.py
 
-import sys
+import logging
 
 LOG_LEVELS = {
-    "debug": 10,
-    "info": 20,
-    "warning": 30,
-    "error": 40,
+    "debug": logging.DEBUG,
+    "info": logging.INFO,
+    "warning": logging.WARNING,
+    "error": logging.ERROR,
 }
 
 
 class LogMixin:
-    min_level = LOG_LEVELS["info"]
+
+    @property
+    def logger(self):
+        # Each class gets its own logger name
+        return logging.getLogger(self.__class__.__name__)
 
     def log(self, level, msg=None, **context):
 
-        if LOG_LEVELS[level] < self.min_level:
-            return {"level": level, "skipped": True, **context}
+        py_level = LOG_LEVELS[level]
 
-        # Remove ok and status if present
+        # Remove ok if present
         context.pop("ok", None)
 
         # flatten nested dicts one level deep
@@ -39,8 +42,8 @@ class LogMixin:
         parts += [f"{k}={v}" for k, v in flat.items()]
         line = " | ".join(parts)
 
-        stream = sys.stderr if level == "error" else sys.stdout
-        print(line, file=stream)
+        # Send to Python logging
+        self.logger.log(py_level, line)
         return {"level": level, "logline": line, **context}
 
     def error(self, msg=None, **context):

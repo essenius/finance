@@ -2,7 +2,7 @@
 # Licensed under the Apache License, Version 2.0. See the LICENSE file for details.
 # File: tests/write/test_wal.py
 
-from finance.write.wal import JsonlWAL
+from finance.state.wal import JsonlWAL
 
 
 def test_wal_enqueue_and_read_all(tmp_path):
@@ -103,3 +103,40 @@ def test_iter_valid_entries_skips_empty_lines(tmp_path):
 
     entries = list(wal._iter_valid_entries())
     assert entries == [{"a": 1}]
+
+
+def test_wal_append_is_atomic(tmp_path):
+    wal_path = tmp_path / "wal.jsonl"
+    wal = JsonlWAL(wal_path)
+
+    wal.enqueue({"a": 1})
+
+    # simulate crash during second write
+    with wal_path.open("a") as f:
+        f.write('{"b": ')  # incomplete JSON
+
+    # WAL should still return only the valid entry
+    assert list(wal.read_all()) == [{"a": 1}]
+
+
+def test_wal_skips_multiple_corrupt_middle_lines(tmp_path):
+    wal_path = tmp_path / "wal.jsonl"
+
+    with wal_path.open("w") as f:
+        f.write('{"a": 1}\n')
+        f.write('{"bad": \n')
+        f.write('{"also_bad": \n')
+        f.write('{"b": 2}\n')
+
+    wal = JsonlWAL(wal_path)
+    assert list(wal.read_all()) == [{"a": 1}, {"b": 2}]
+
+
+def test_wal_creates_file_if_missing(tmp_path):
+    wal_path = tmp_path / "wal.jsonl"
+    wal = JsonlWAL(wal_path)
+
+    wal.enqueue({"x": 1})
+
+    assert wal_path.exists()
+    assert list(wal.read_all()) == [{"x": 1}]

@@ -1,0 +1,2 @@
+class TimeSeriesError(Exception):
+    pass

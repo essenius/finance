@@ -2,6 +2,7 @@
 # Licensed under the Apache License, Version 2.0. See the LICENSE file for details.
 # File: tests/fetch/yahoo/test_candles.py
 
+import logging
 from datetime import UTC, date, datetime
 
 from finance.fetch.model import Candle
@@ -102,7 +103,7 @@ def test_extract_candles_valid_output_structure(provider):
     assert c["fields"]["close"] == 1.5
 
 
-def test_extract_candles_skips_invalid(provider, capsys):
+def test_extract_candles_skips_invalid(provider, caplog):
 
     result = {
         "timestamp": [1000],
@@ -119,12 +120,14 @@ def test_extract_candles_skips_invalid(provider, capsys):
         },
     }
 
-    candles = provider._extract_candles(result, "x")
+    with caplog.at_level(logging.ERROR):
+        candles = provider._extract_candles(result, "x")
+
     assert candles == []
-    assert "invalid candle: {" in capsys.readouterr().err
+    assert "invalid candle: {" in caplog.text
 
 
-def test_extract_candles_filters_today(provider, capsys):
+def test_extract_candles_filters_today(provider, caplog):
 
     today = date(2026, 5, 25)
     today_midnight = int(datetime(today.year, today.month, today.day, tzinfo=UTC).timestamp())
@@ -144,38 +147,44 @@ def test_extract_candles_filters_today(provider, capsys):
         },
     }
 
-    candles = provider._extract_candles(result, "x", today=today)
+    with caplog.at_level(logging.ERROR):
+        candles = provider._extract_candles(result, "x", today=today)
+
     assert candles == []
-    assert capsys.readouterr().err == ""
+    assert caplog.text == ""   # no error logged
 
 
-def test_extract_candles_handles_missing_timestamp(provider, capsys):
+def test_extract_candles_handles_missing_timestamp(provider, caplog):
 
     result = {"timestamp": [], "indicators": {"quote": []}}
 
-    candles = provider._extract_candles(result, "x")
+    with caplog.at_level(logging.ERROR):
+        candles = provider._extract_candles(result, "x")
+
     assert candles == []
+    assert "no timestamp in result" in caplog.text
 
-    assert "no timestamp in result" in capsys.readouterr().err
 
-
-def test_extract_candles_handles_missing_quote(provider, capsys):
+def test_extract_candles_handles_missing_quote(provider, caplog):
 
     result = {"timestamp": [1], "indicators": {"quote": []}}
 
-    candles = provider._extract_candles(result, "x")
+    with caplog.at_level(logging.ERROR):
+        candles = provider._extract_candles(result, "x")
+
     assert candles == []
+    assert "missing index [0] in path for quote list" in caplog.text
 
-    assert "missing index [0] in path for quote list" in capsys.readouterr().err
 
-
-def test_extract_candles_empty_result(provider, capsys):
+def test_extract_candles_empty_result(provider, caplog):
 
     data = {
         "timestamp": [1],
         "indicators": {"quote": [{}]},  # missing arrays → treated as empty lists
     }
 
-    candles = provider._extract_candles(data, "x")
+    with caplog.at_level(logging.ERROR):
+        candles = provider._extract_candles(data, "x")
+
     assert candles == []
-    assert capsys.readouterr().err == ""
+    assert caplog.text == ""   # no error logged

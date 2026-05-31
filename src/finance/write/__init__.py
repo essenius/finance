@@ -5,13 +5,13 @@
 from .metric_writer import MetricWriter
 
 
-def write_metric(bucket, measurement, fields, timestamp, state, influx_writer):
+def write_metric(bucket, measurement, fields, timestamp, state):
     """
     Public API for writing a metric.
     This is what main.py and tests should call.
     """
-    writer = MetricWriter(influx_writer)
-    result = writer.write_metric(bucket, measurement, fields, timestamp, state)
+    writer = MetricWriter(state)
+    result = writer.write(bucket, measurement, fields, timestamp)
     if result["status"] == "error":
         writer.error("write failed", **result)
     elif result["status"] == "skipped":

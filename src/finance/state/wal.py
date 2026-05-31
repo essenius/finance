@@ -7,8 +7,8 @@ from pathlib import Path
 
 
 class JsonlWAL:
-    def __init__(self, path):
-        self.path = Path(path)
+    def __init__(self, path: Path):
+        self.path = path
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self.path.touch(exist_ok=True)
 

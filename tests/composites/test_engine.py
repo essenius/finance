@@ -2,6 +2,7 @@
 # Licensed under the Apache License, Version 2.0. See the LICENSE file for details.
 # File: tests/composites/test_engine.py
 
+import logging
 import pytest
 
 from finance.composites.engine import CompositeEngine
@@ -181,7 +182,7 @@ def test_composite_evaluation(composites, state, expected):
 # ---------------------------------------------------------
 
 
-def test_missing_dependency(capsys):
+def test_missing_dependency(caplog):
     composites = {
         "C": {
             "expression": "A + B",
@@ -197,15 +198,15 @@ def test_missing_dependency(capsys):
     )
 
     engine = CompositeEngine(composites, state)
-    result = engine.evaluate_all()
+
+    with caplog.at_level(logging.ERROR):
+        result = engine.evaluate_all()
 
     assert result == {}
-
-    err = capsys.readouterr().err
-    assert "Composite C failed" in err
+    assert "Composite C failed" in caplog.text
 
 
-def test_syntax_error_in_raw_expression(capsys):
+def test_syntax_error_in_raw_expression(caplog):
     composites = {
         "C": {
             "expression": "A +",  # invalid raw expression
@@ -220,12 +221,12 @@ def test_syntax_error_in_raw_expression(capsys):
     )
 
     engine = CompositeEngine(composites, state)
-    result = engine.evaluate_all()
+
+    with caplog.at_level(logging.ERROR):
+        result = engine.evaluate_all()
 
     assert result == {}
-
-    err = capsys.readouterr().err
-    assert "Syntax error" in err
+    assert "Syntax error" in caplog.text
 
 
 def test_no_dependencies():

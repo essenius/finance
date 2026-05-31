@@ -150,7 +150,7 @@ def test_extract_dependencies_ok(expr, candidates, expected):
         "A + (B * )",  # missing operand
     ],
 )
-def test_extract_dependencies_syntax_error(expr, capsys):
+def test_extract_dependencies_syntax_error(expr):
     deps, err = extract_dependencies(expr, {"A", "B"})
     assert deps == []
     assert "Syntax error" in err

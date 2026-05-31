@@ -2,6 +2,7 @@
 # Licensed under the Apache License, Version 2.0. See the LICENSE file for details.
 # File: tests/fetch/test_fred.py
 
+import logging
 from unittest.mock import Mock
 
 import pytest
@@ -77,7 +78,7 @@ MALFORMED_CASES = [
 
 
 @pytest.mark.parametrize("api_key, json_data, expected_error", MALFORMED_CASES)
-def test_fred_malformed_cases(monkeypatch, capsys, api_key, json_data, expected_error):
+def test_fred_malformed_cases(monkeypatch, caplog, api_key, json_data, expected_error):
 
     # Missing API key → no HTTP call
     if api_key is not None:
@@ -85,28 +86,31 @@ def test_fred_malformed_cases(monkeypatch, capsys, api_key, json_data, expected_
 
     provider = make_provider(api_key) if api_key is not None else FredProvider()
 
-    result = provider.fetch(make_asset(), None)
+    with caplog.at_level(logging.ERROR):
+        result = provider.fetch(make_asset(), None)
+
     assert result == []
-
-    err = capsys.readouterr().err
-    assert expected_error in err
+    assert expected_error in caplog.text
 
 
-def test_fred_fetch_network_error(monkeypatch, capsys):
+def test_fred_fetch_network_error(monkeypatch, caplog):
 
     monkeypatch.setattr("finance.fetch.fred.requests.get", lambda *a, **k: (_ for _ in ()).throw(Exception("boom")))
 
     provider = make_provider()
-    assert provider.fetch(make_asset(), None) == []
+    with caplog.at_level(logging.ERROR):
+        assert provider.fetch(make_asset(), None) == []
 
-    assert "boom" in capsys.readouterr().err
+    assert "boom" in caplog.text
 
 
-def test_fred_status_code_not_200(monkeypatch, capsys):
+def test_fred_status_code_not_200(monkeypatch, caplog):
 
     mock_fred_response(monkeypatch, 500, {})
 
     provider = make_provider()
-    assert provider.fetch(make_asset(), None) == []
 
-    assert "status 500" in capsys.readouterr().err
+    with caplog.at_level(logging.ERROR):
+        assert provider.fetch(make_asset(), None) == []
+
+    assert "status 500" in caplog.text

@@ -2,6 +2,7 @@
 # Licensed under the Apache License, Version 2.0. See the LICENSE file for details.
 # File: tests/fetch/yahoo/test_fetch.py
 
+import logging
 from unittest.mock import Mock
 
 import pytest
@@ -70,32 +71,31 @@ def test_fetch_raises_for_unknown_timeseries(provider):
         ({"chart": {"result": [{}]}}, False, None),
     ],
 )
-def test_is_error_response(provider, capsys, data, expected_is_error, expected_message):
+def test_is_error_response(provider, caplog, data, expected_is_error, expected_message):
     symbol = "x"
-    result = provider._is_error_response(data, symbol)
+    with caplog.at_level(logging.ERROR):
+        result = provider._is_error_response(data, symbol)
 
     assert result is expected_is_error
 
-    captured = capsys.readouterr()
-
     if expected_is_error:
-        assert f"Error fetching Yahoo data for x: {expected_message}" in captured.err
+        assert f"Error fetching Yahoo data for x: {expected_message}" in caplog.text
     else:
-        assert captured.err == ""
+        assert caplog.text == ""
 
 
-def test_fetch_success(provider, monkeypatch, capsys):
+def test_fetch_success(provider, monkeypatch, caplog):
     mock_response = Mock()
     mock_response.raise_for_status.return_value = None
     mock_response.json.return_value = {"chart": {"result": [{}]}}
 
     monkeypatch.setattr("requests.get", lambda *a, **kw: mock_response)
 
-    result = provider._fetch("EURUSD=X", "1d", "5d")
+    with caplog.at_level(logging.ERROR):
+        result = provider._fetch("EURUSD=X", "1d", "5d")
+
     assert result == {}
-    captured = capsys.readouterr()
-    assert captured.err == ""
-    assert captured.out == ""
+    assert caplog.text == ""   # no errors logged
 
 
 @pytest.mark.parametrize(
@@ -113,7 +113,7 @@ def test_fetch_success(provider, monkeypatch, capsys):
         ),
     ],
 )
-def test_fetch_errors(provider, monkeypatch, capsys, response_setup, expected_error):
+def test_fetch_errors(provider, monkeypatch, caplog, response_setup, expected_error):
     mock_response = Mock()
     mock_response.raise_for_status.return_value = None
     mock_response.json.return_value = {"chart": {"result": [{}]}}
@@ -127,11 +127,11 @@ def test_fetch_errors(provider, monkeypatch, capsys, response_setup, expected_er
 
     monkeypatch.setattr("requests.get", lambda *a, **kw: mock_response)
 
-    result = provider._fetch("EURUSD=X", "1d", "5d")
-    assert result == []
+    with caplog.at_level(logging.ERROR):
+        result = provider._fetch("EURUSD=X", "1d", "5d")
 
-    err = capsys.readouterr().err
-    assert expected_error in err
+    assert result == []
+    assert expected_error in caplog.text
 
 
 def test_fetch_returns_data_but_no_results(provider, monkeypatch):

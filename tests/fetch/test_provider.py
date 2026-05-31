@@ -2,7 +2,7 @@
 # Licensed under the Apache License, Version 2.0. See the LICENSE file for details.
 # File: tests/fetch/test_provider.py
 
-
+import logging
 from datetime import UTC, datetime
 from unittest.mock import Mock
 
@@ -28,41 +28,45 @@ def test_init_defaults():
     assert now.tzinfo == UTC
 
 
-def test_check_status_ok(monkeypatch, capsys):
+def test_check_status_ok(caplog):
     p = DummyProvider()
 
     resp = Mock()
     resp.status_code = 200
     resp.text = ""
 
-    assert p._check_status("ABC", resp) is True
-    assert capsys.readouterr().err == ""
+    with caplog.at_level(logging.ERROR):
+        assert p._check_status("ABC", resp) is True
+
+    # No errors logged
+    assert caplog.text == ""
 
 
-def test_check_status_non_200(monkeypatch, capsys):
+def test_check_status_non_200(caplog):
     p = DummyProvider()
 
     resp = Mock()
     resp.status_code = 500
     resp.text = "Internal Server Error"
 
-    assert p._check_status("XYZ", resp) is False
+    with caplog.at_level(logging.ERROR):
+        assert p._check_status("XYZ", resp) is False
 
-    err = capsys.readouterr().err
-    assert "Error fetching Dummy data for XYZ: status 500 (Internal Server Error)" in err
+    assert "Error fetching Dummy data for XYZ: status 500 (Internal Server Error)" in caplog.text
 
 
-def test_check_status_non_200_without_text(monkeypatch, capsys):
+
+def test_check_status_non_200_without_text(caplog):
     p = DummyProvider()
 
     resp = Mock()
     resp.status_code = 500
     resp.text = None
 
-    assert p._check_status("XYZ", resp) is False
+    with caplog.at_level(logging.ERROR):
+        assert p._check_status("XYZ", resp) is False
 
-    err = capsys.readouterr().err
-    assert "Error fetching Dummy data for XYZ: status 500" in err
+    assert "Error fetching Dummy data for XYZ: status 500" in caplog.text
 
 
 @pytest.mark.parametrize(
@@ -72,34 +76,34 @@ def test_check_status_non_200_without_text(monkeypatch, capsys):
         (("boom",), "Error fetching Dummy data: boom"),
     ],
 )
-def test_error_prints_and_returns_empty(args, expected, capsys):
+def test_error_prints_and_returns_empty(args, expected, caplog):
     p = DummyProvider()
 
-    result = p.error(*args)
+    with caplog.at_level(logging.ERROR):
+        result = p.error(*args)
+
     assert result == []
-
-    err = capsys.readouterr().err
-    assert expected in err
+    assert expected in caplog.text
 
 
-def test_require_api_key_missing(capsys):
+def test_require_api_key_missing(caplog):
     p = DummyProvider(config={})  # no api_key
 
-    key = p._require_api_key("AAPL")
+    with caplog.at_level(logging.ERROR):
+        key = p._require_api_key("AAPL")
+
     assert key is None
-
-    err = capsys.readouterr().err
-    assert "API key missing" in err
+    assert "API key missing" in caplog.text
 
 
-def test_require_api_key_present(capsys):
+def test_require_api_key_present(caplog):
     p = DummyProvider(config={"api_key": "SECRET"})
 
-    key = p._require_api_key("AAPL")
-    assert key == "SECRET"
+    with caplog.at_level(logging.ERROR):
+        key = p._require_api_key("AAPL")
 
-    # no error printed
-    assert capsys.readouterr().err == ""
+    assert key == "SECRET"
+    assert caplog.text == ""  # no error logged
 
 
 def test_safe_success():
@@ -112,17 +116,17 @@ def test_safe_success():
     assert result == [1, 2, 3]
 
 
-def test_safe_exception(capsys):
+def test_safe_exception(caplog):
     p = DummyProvider()
 
     def bad():
         raise ValueError("kaboom")
 
-    result = p._safe("ABC", bad)
-    assert result == []  # safe wrapper returns empty list
+    with caplog.at_level(logging.ERROR):
+        result = p._safe("ABC", bad)
 
-    err = capsys.readouterr().err
-    assert "Error fetching Dummy data for ABC: kaboom" in err
+    assert result == []  # safe wrapper returns empty list
+    assert "Error fetching Dummy data for ABC: kaboom" in caplog.text
 
 
 # -------------------------

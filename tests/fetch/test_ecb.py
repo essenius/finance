@@ -3,6 +3,7 @@
 # File: tests/fetch/test_ecb.py
 
 import json
+import logging
 from unittest.mock import Mock
 
 import pytest
@@ -49,14 +50,16 @@ def test_ecb_fetch_ok(monkeypatch):
     assert result == [{"timestamp": 1778191200, "fields": {"price": 1.1761}}]
 
 
-def test_ecb_fetch_non_200(monkeypatch, capsys):
+def test_ecb_fetch_non_200(monkeypatch, caplog):
     mock_ecb_response(monkeypatch, 500, "", "Internal Server Error")
 
     provider = EcbProvider()
-    result = provider.fetch(make_asset(), last_timestamp=None)
+
+    with caplog.at_level(logging.ERROR):
+        result = provider.fetch(make_asset(), last_timestamp=None)
 
     assert result == []
-    assert "status 500 (Internal Server Error)" in capsys.readouterr().err
+    assert "status 500 (Internal Server Error)" in caplog.text
 
 
 MALFORMED_CASES = [
@@ -78,17 +81,15 @@ MALFORMED_CASES = [
         "timestamp",
     ),
 ]
-
-
 @pytest.mark.parametrize("json_data, expected, context", MALFORMED_CASES)
-def test_ecb_malformed_json(monkeypatch, capsys, json_data, expected, context):
+def test_ecb_malformed_json(monkeypatch, caplog, json_data, expected, context):
     mock_ecb_response(monkeypatch, 200, json_data)
 
     provider = EcbProvider()
-    result = provider.fetch(make_asset(), None)
+
+    with caplog.at_level(logging.ERROR):
+        result = provider.fetch(make_asset(), None)
 
     assert result == []
-
-    err = capsys.readouterr().err
-    assert expected in err
-    assert f"in path for {context}" in err
+    assert expected in caplog.text
+    assert f"in path for {context}" in caplog.text

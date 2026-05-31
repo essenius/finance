@@ -2,6 +2,7 @@
 # Licensed under the Apache License, Version 2.0. See the LICENSE file for details.
 # File: tests/fetch/yahoo/test_fields.py
 
+import logging
 from datetime import UTC, datetime
 
 import pytest
@@ -140,16 +141,25 @@ META_CASES = [
 
 
 @pytest.mark.parametrize("fields, meta, expected, err", META_CASES)
-def test_get_from_meta_param(capsys, provider, fields, meta, expected, err):
-    result = provider._get_from_meta(fields, meta, "x")
+def test_get_from_meta_param(caplog, provider, fields, meta, expected, err):
+    with caplog.at_level(logging.ERROR):
+        result = provider._get_from_meta(fields, meta, "x")
 
     if expected is None:
         assert result == []
         if err is not None:
-            assert err in capsys.readouterr().err
+            assert err in caplog.text
+        else:
+            # no error expected → no log
+            assert caplog.text == ""
     else:
         assert len(result) == 1
         assert result[0]["fields"] == expected
+
+        if err is not None:
+            assert err in caplog.text
+        else:
+            assert caplog.text == ""
 
 
 def test_metadata_price_and_close_equivalent():

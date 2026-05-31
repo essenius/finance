@@ -10,9 +10,10 @@ from .common.log_mixin import LogMixin
 from .composites import evaluate_composites
 from .config.loader import load_config
 from .fetch.controller import FetchController
-from .state.manager import load_state, save_state
+from .state.manager import State
+from .state.wal import JsonlWAL
+from .timeseries import TimeSeriesClient
 from .write import write_metric
-from .write.influx import InfluxWriter
 
 
 class AppLogger(LogMixin):
@@ -27,44 +28,49 @@ def main():
     logger.info(f"Finance version: {finance.__version__} started at {now}")
 
     config = load_config()
-
+    paths = config["paths"]
     assets = config["assets"]
     composites = config["composites"]
     secrets = config["secrets"]
     buckets = config["buckets"]
 
-    state = load_state()
-    influx_writer = InfluxWriter(secrets["influx"])
+    timeseries_client = TimeSeriesClient(secrets["influx"])
+    wal = JsonlWAL(paths.get("wal"))
+    state = State(timeseries_client, wal, paths.get("state"))
 
-    # ---------------------------------------------------------
-    # 1. Fetch primary asset metrics
-    # ---------------------------------------------------------
+    # Fetch primary asset metrics
     fetch_controller = FetchController(assets, secrets["api_keys"])
     fetched = fetch_controller.fetch_all(state)
 
-    for asset_name, (fields, ts) in fetched.items():
+    failures = 0
+
+    for asset_name, (fields, timestamp) in fetched.items():
         asset_cfg = assets[asset_name]
         series_type = asset_cfg["timeseries"]
         bucket = buckets[series_type]
         measurement = asset_name
 
-        write_metric(bucket, measurement, fields, ts, state, influx_writer)
+        result = write_metric(bucket, measurement, fields, timestamp, state)
+        if not result["ok"]:
+            failures += 1
 
-    # ---------------------------------------------------------
-    # 2. Evaluate composites
-    # ---------------------------------------------------------
+    # Evaluate composites
     computed = evaluate_composites(composites, state)
 
-    for name, (fields, ts) in computed.items():
+    for name, (fields, timestamp) in computed.items():
         composite_cfg = composites[name]
         series_type = composite_cfg["timeseries"]
         bucket = buckets[series_type]
         measurement = name
 
-        write_metric(bucket, measurement, fields, ts, state, influx_writer)
+        result = write_metric(bucket, measurement, fields, timestamp, state)
+        if not result["ok"]:
+            failures += 1
 
-    # ---------------------------------------------------------
-    # 3. Persist state
-    # ---------------------------------------------------------
-    save_state(state)
+    # Persist state
+    state.save()
+
+    if failures:
+        logger.error(f"Completed with {failures} write failures")
+        raise SystemExit(1)
     logger.info("Done.")

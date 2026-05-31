@@ -2,6 +2,7 @@
 # Licensed under the Apache License, Version 2.0. See the LICENSE file for details.
 # File: tests/fetch/test_controller.py
 
+import logging
 from typing import Any
 from unittest.mock import Mock
 
@@ -98,19 +99,18 @@ def test_controller_fetches_when_stale():
 # ----------------------------------------------------------------------
 
 
-def test_controller_unknown_provider(capsys):
+def test_controller_unknown_provider(caplog):
     assets = make_asset(provider="mystery")
 
     fc = FetchController(assets, api_keys={}, now_provider=lambda: 0)
     state = {}
 
-    results = fc.fetch_all(state)
+    with caplog.at_level(logging.ERROR):
+        results = fc.fetch_all(state)
 
     assert results == {}
     assert state == {}
-
-    err = capsys.readouterr().err
-    assert "no provider" in err
+    assert "no provider" in caplog.text
 
 
 @pytest.mark.parametrize(
@@ -120,7 +120,7 @@ def test_controller_unknown_provider(capsys):
         (RuntimeError("boom"), "Fetcher for eur_usd_intraday failed: boom"),
     ],
 )
-def test_controller_provider_failure(capsys, side_effect, expected_err):
+def test_controller_provider_failure(caplog, side_effect, expected_err):
     fake = Mock()
     fake.fetch.side_effect = side_effect
 
@@ -132,16 +132,16 @@ def test_controller_provider_failure(capsys, side_effect, expected_err):
 
     state = {"eur_usd_intraday": {}}
 
-    results = fc.fetch_all(state)
+    with caplog.at_level(logging.ERROR):
+        results = fc.fetch_all(state)
 
     assert results == {}
     assert state["eur_usd_intraday"]["last_try"] == now
 
-    err = capsys.readouterr().err
     if expected_err:
-        assert expected_err in err
+        assert expected_err in caplog.text
     else:
-        assert err == ""
+        assert caplog.text == ""
 
 
 # ----------------------------------------------------------------------
@@ -284,14 +284,15 @@ def test_validate_result_invalid(
         },
     ],
 )
-def test_controller_missing_asset_properties(bad_asset, capsys):
+def test_controller_missing_asset_properties(bad_asset, caplog):
     now = 1_000_000_000
 
     fc = FetchController({ "my_series": bad_asset }, api_keys={}, now_provider=lambda: now)
 
     state = {}
 
-    results = fc.fetch_all(state)
+    with caplog.at_level(logging.ERROR):
+        results = fc.fetch_all(state)
 
     # No results produced
     assert results == {}
@@ -299,7 +300,6 @@ def test_controller_missing_asset_properties(bad_asset, capsys):
     # No state entry created
     assert state == {}
 
-    # Error printed
-    err = capsys.readouterr().err
-    assert "missing keys" in err
-    assert "my_series" in err
+    # Error logged
+    assert "missing keys" in caplog.text
+    assert "my_series" in caplog.text

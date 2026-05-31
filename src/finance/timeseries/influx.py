@@ -41,7 +41,7 @@ def configure_verify(session, mode, cert):
     raise ValueError(f"Unknown verify mode: {mode}")
 
 
-class InfluxWriter(LogMixin):
+class InfluxBackend(LogMixin):
     def __init__(self, secrets: dict):
 
         url = secrets["url"].rstrip("/")
@@ -82,6 +82,74 @@ class InfluxWriter(LogMixin):
             raise ValueError("Secrets must contain either 'org' (InfluxDB 2.x) or 'db' (InfluxDB 1.x)")
 
         self.debug("InfluxWriter initialized", base_url=self.base_url, verify=self.ssl_verify)
+
+
+    def read(self, bucket, measurement, start, stop):
+        """
+        Unified read API for InfluxDB 1.x and 2.x.
+
+        bucket: string (InfluxDB 2.x only)
+        measurement: string
+        start, stop: unix timestamps (seconds)
+        """
+        try:
+            if self.is_v2:
+                return self._read_v2(bucket, measurement, start, stop)
+            else:
+                return self._read_v1(measurement, start, stop)
+
+        except Exception as e:
+            self.error("Influx read failed", measurement=measurement, exception=e, args=e.args)
+            return {"ok": False, "error": str(e)}
+
+
+    def _read_v2(self, bucket, measurement, start, stop):
+        url = self.base_url.replace("/write", "/query")
+
+        query = f'''
+from(bucket: "{bucket}")
+  |> range(start: {start}, stop: {stop})
+  |> filter(fn: (r) => r._measurement == "{measurement}")
+'''
+
+        params = {"org": self.org}
+        headers = {
+            "Authorization": f"Token {self.token}",
+            "Content-Type": "application/vnd.flux",
+        }
+
+        r = self.session.post(
+            url,
+            params=params,
+            data=query,
+            headers=headers,
+            timeout=5,
+            verify=self.ssl_verify,
+        )
+        r.raise_for_status()
+        return {"ok": True, "data": r.json()}
+
+
+    def _read_v1(self, measurement, start, stop):
+        url = self.base_url.replace("/write", "/query")
+
+        q = (
+            f"SELECT * FROM {measurement} "
+            f"WHERE time >= {start}s AND time <= {stop}s"
+        )
+
+        params = {"db": self.db, "q": q}
+
+        r = self.session.get(
+            url,
+            params=params,
+            auth=self.auth,
+            timeout=5,
+            verify=self.ssl_verify,
+        )
+        r.raise_for_status()
+        return {"ok": True, "data": r.json()}
+
 
     def write(self, bucket, measurement, fields, timestamp, tags=None):
         """

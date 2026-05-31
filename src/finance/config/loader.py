@@ -2,6 +2,7 @@
 # Licensed under the Apache License, Version 2.0. See the LICENSE file for details.
 # File: src/finance/config/loader.py
 
+import logging
 import os
 from pathlib import Path
 
@@ -9,7 +10,7 @@ import yaml
 from dotenv import load_dotenv
 
 from finance.common.log_mixin import LOG_LEVELS, LogMixin
-from finance.common.paths import get_project_root
+from finance.common.paths import get_project_root, resolve_config_path
 
 
 class Logger(LogMixin):
@@ -86,7 +87,12 @@ def apply_logging_config(config):
 
     level_name = config.get("logging", {}).get("level", "info").lower()
 
-    LogMixin.min_level = LOG_LEVELS.get(level_name, LOG_LEVELS["info"])
+    py_level = LOG_LEVELS.get(level_name, logging.INFO)
+
+    logging.basicConfig(
+        level=py_level,
+        format="%(message)s",
+    )
 
 
 # -----------------------------
@@ -192,15 +198,24 @@ def load_config(yaml_path=None, env_path=None):
     secrets = load_env_secrets(env_path)
     raw_cfg = load_yaml_config(yaml_path)
 
-    apply_logging_config(raw_cfg)
+    env_cfg = raw_cfg.get("environment", {})
+    apply_logging_config(env_cfg)
+
+    paths_cfg = env_cfg.get("paths", {})
+
+    paths = {
+        "wal": resolve_config_path(paths_cfg.get("wal"), "wal.jsonl"),
+        "state": resolve_config_path(paths_cfg.get("state"), "state.json"),
+    }
 
     logger.debug(f"Loaded config from {yaml_path} and secrets from {env_path}")
 
-    buckets = raw_cfg.get("buckets", {})
-    field_sets = raw_cfg.get("field_sets", {})
-    providers = raw_cfg.get("providers", {})
-    raw_assets = raw_cfg.get("assets", {})
-    raw_composites = raw_cfg.get("composites", {})
+    biz_cfg = raw_cfg.get("business", {})
+    buckets = biz_cfg.get("buckets", {})
+    field_sets = biz_cfg.get("field_sets", {})
+    providers = biz_cfg.get("providers", {})
+    raw_assets = biz_cfg.get("assets", {})
+    raw_composites = biz_cfg.get("composites", {})
 
     # Normalize and validate assets/composites.
     assets = normalize_assets(raw_assets, field_sets, buckets)
@@ -208,6 +223,7 @@ def load_config(yaml_path=None, env_path=None):
     composites = normalize_composites(raw_composites, buckets)
 
     return {
+        "paths": paths,
         "buckets": buckets,
         "providers": providers,
         "assets": assets,

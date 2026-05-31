@@ -174,36 +174,102 @@ def test_load_state_after_atomic_save(tmp_path, monkeypatch):
     assert loaded == state
 
 
-def test_load_state_default_path(monkeypatch, tmp_path):
-    """
-    When path=None, load_state() must use get_project_root() and return {} if state.json is missing.
-    """
-    # Make tmp_path the project root
-    monkeypatch.chdir(tmp_path)
+# ---------------------------------------------------------------------------
+# rebuild_measurement_state tests
+# ---------------------------------------------------------------------------
 
-    # Required for get_project_root()
-    (tmp_path / "config.yaml").write_text("providers: {}")
+def test_rebuild_measurement_state_prefers_wal(monkeypatch):
+    """If WAL has entries for the measurement, the newest one wins."""
 
-    # No state.json yet → should return empty dict
-    assert load_state() == {}
+    from finance.state.manager import rebuild_measurement_state
+
+    # Fake WAL with two entries
+    class FakeWAL:
+        def read_all(self):
+            return [
+                {"measurement": "spx", "fields": {"value": 100}, "timestamp": 10},
+                {"measurement": "spx", "fields": {"value": 200}, "timestamp": 20},
+            ]
+
+    # Influx should NOT be queried
+    class FakeInflux:
+        def query_latest(self, m):
+            raise AssertionError("Influx should not be queried when WAL has entries")
+
+    wal = FakeWAL()
+    influx = FakeInflux()
+
+    result = rebuild_measurement_state("spx", wal, influx)
+
+    assert result == {"fields": {"value": 200}, "last_timestamp": 20}
 
 
-def test_save_state_default_path(monkeypatch, tmp_path):
-    """
-    When path=None, save_state() must write state.json in the project root.
-    """
-    monkeypatch.chdir(tmp_path)
+def test_rebuild_measurement_state_uses_influx_if_wal_empty():
+    """If WAL has no entries for the measurement, Influx is used."""
 
-    # Required for get_project_root()
-    (tmp_path / "config.yaml").write_text("providers: {}")
+    from finance.state.manager import rebuild_measurement_state
 
-    data = {"foo": 123}
+    class FakeWAL:
+        def read_all(self):
+            return []  # empty WAL
 
-    # Save using default path
-    save_state(data)
+    class FakeInflux:
+        def query_latest(self, m):
+            assert m == "spx"
+            class R:
+                fields = {"value": 999}
+                timestamp = 123
+            return R()
 
-    # Load using default path
-    assert load_state() == data
+    wal = FakeWAL()
+    influx = FakeInflux()
 
-    # And verify the file exists where expected
-    assert (tmp_path / "state.json").exists()
+    result = rebuild_measurement_state("spx", wal, influx)
+
+    assert result == {"fields": {"value": 999}, "last_timestamp": 123}
+
+
+def test_rebuild_measurement_state_returns_none_if_no_history():
+    """If neither WAL nor Influx has data, return None."""
+
+    from finance.state.manager import rebuild_measurement_state
+
+    class FakeWAL:
+        def read_all(self):
+            return []
+
+    class FakeInflux:
+        def query_latest(self, m):
+            return None
+
+    wal = FakeWAL()
+    influx = FakeInflux()
+
+    result = rebuild_measurement_state("spx", wal, influx)
+
+    assert result is None
+
+
+def test_rebuild_measurement_state_multiple_wal_entries_newest_wins():
+    """Ensure WAL replay picks the highest timestamp."""
+
+    from finance.state.manager import rebuild_measurement_state
+
+    class FakeWAL:
+        def read_all(self):
+            return [
+                {"measurement": "spx", "fields": {"value": 1}, "timestamp": 10},
+                {"measurement": "spx", "fields": {"value": 2}, "timestamp": 30},
+                {"measurement": "spx", "fields": {"value": 3}, "timestamp": 20},
+            ]
+
+    class FakeInflux:
+        def query_latest(self, m):
+            raise AssertionError("Should not query Influx when WAL has entries")
+
+    wal = FakeWAL()
+    influx = FakeInflux()
+
+    result = rebuild_measurement_state("spx", wal, influx)
+
+    assert result == {"fields": {"value": 2}, "last_timestamp": 30}

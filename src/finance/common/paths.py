@@ -7,8 +7,8 @@ from pathlib import Path
 
 def get_project_root() -> Path:
     """
-    The project root is ALWAYS the current working directory,
-    but ONLY if it contains config.ini.
+    The project root is the current working directory,
+    but ONLY if it contains config.yaml.
 
     If not, this is a fatal error — the program must not guess.
     """
@@ -16,4 +16,36 @@ def get_project_root() -> Path:
     if (cwd / "config.yaml").exists():
         return cwd
 
-    raise RuntimeError(f"Current working directory {cwd} is not a valid project root (config.ini not found).")
+    raise RuntimeError(f"Current working directory {cwd} is not a valid project root (config.yaml not found).")
+
+
+def resolve_config_path(value: str | None, default_filename: str) -> Path:
+    """
+    Resolve a path from config:
+    - If value is None or empty: return project_root / default_filename
+    - If value is absolute: return it as-is
+    - If value is relative: return project_root / value
+    """
+    if not value:
+        return get_project_root() / default_filename
+
+    p = Path(value)
+
+    if p.is_absolute():
+        return p
+
+    resolved = get_project_root() / p
+    if resolved.is_dir():
+        return resolved / default_filename
+
+    return resolved
+
+'''
+def get_path(path: Path | None, default_file) -> Path:
+    """return path if it is defined, otherwise a default in the project root"""
+    if path is not None:
+        return path
+    root = get_project_root()
+    return root / default_file
+'''
+

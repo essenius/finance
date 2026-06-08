@@ -1,52 +1,62 @@
-# Copyright 2026 Rik Essenius
-# Licensed under the Apache License, Version 2.0. See the LICENSE file for details.
-# File: tests/write/test_wal.py
+import json
+from dataclasses import asdict
 
+from pytest import File
+
+from finance.common.model import TimeseriesWrite
 from finance.state.wal import JsonlWAL
 
 
-def test_wal_enqueue_and_read_all(tmp_path):
+def make(measurement="m", field=None, timestamp=0, bucket="b", tags=None):
+    return TimeseriesWrite(measurement=measurement, fields=field or {}, timestamp=timestamp, bucket=bucket, tags=tags or {})
 
+
+def write_series(f: File, series: TimeseriesWrite):
+    f.write(json.dumps(asdict(series)) + "\n")
+
+def test_wal_enqueue_and_read_all(tmp_path):
     wal_path = tmp_path / "wal.jsonl"
     wal = JsonlWAL(wal_path)
 
-    wal.enqueue({"a": 1})
-    wal.enqueue({"b": 2})
+    wal.enqueue(make(field={"a": 1}))
+    wal.enqueue(make(field={"b": 2}))
 
     entries = list(wal.read_all())
-    assert entries == [{"a": 1}, {"b": 2}]
+    assert entries == [
+        make(field={"a": 1}),
+        make(field={"b": 2}),
+    ]
 
 
 def test_wal_peek_returns_first_entry(tmp_path):
-
     wal_path = tmp_path / "wal.jsonl"
     wal = JsonlWAL(wal_path)
 
-    wal.enqueue({"first": 1})
-    wal.enqueue({"second": 2})
+    wal.enqueue(make(field={"first": 1}))
+    wal.enqueue(make(field={"second": 2}))
 
-    assert wal.peek() == {"first": 1}
-    # ensure it was NOT removed
-    assert list(wal.read_all()) == [{"first": 1}, {"second": 2}]
+    assert wal.peek() == make(field={"first": 1})
+    assert list(wal.read_all()) == [
+        make(field={"first": 1}),
+        make(field={"second": 2}),
+    ]
 
 
 def test_wal_dequeue_removes_first_entry(tmp_path):
-
     wal_path = tmp_path / "wal.jsonl"
     wal = JsonlWAL(wal_path)
 
-    wal.enqueue({"first": 1})
-    wal.enqueue({"second": 2})
+    wal.enqueue(make(field={"first": 1}))
+    wal.enqueue(make(field={"second": 2}))
 
     removed = wal.dequeue()
-    assert removed == {"first": 1}
+    assert removed == make(field={"first": 1})
 
     remaining = list(wal.read_all())
-    assert remaining == [{"second": 2}]
+    assert remaining == [make(field={"second": 2})]
 
 
 def test_wal_empty_behaviour(tmp_path):
-
     wal_path = tmp_path / "wal.jsonl"
     wal = JsonlWAL(wal_path)
 
@@ -56,87 +66,90 @@ def test_wal_empty_behaviour(tmp_path):
 
 
 def test_wal_ignores_corrupt_trailing_line(tmp_path):
-
     wal_path = tmp_path / "wal.jsonl"
     wal = JsonlWAL(wal_path)
 
-    wal.enqueue({"a": 1})
-    wal.enqueue({"b": 2})
+    wal.enqueue(make(field={"a": 1}))
+    wal.enqueue(make(field={"b": 2}))
 
-    # simulate crash: write partial JSON
     with wal_path.open("a") as wal_file:
         wal_file.write('{"incomplete": ')
 
-    entries = list(wal.read_all())
-    assert entries == [{"a": 1}, {"b": 2}]
+    assert list(wal.read_all()) == [
+        make(field={"a": 1}),
+        make(field={"b": 2}),
+    ]
 
 
 def test_wal_dequeue_skips_corrupt_lines_before_valid_entry(tmp_path):
-
     wal_path = tmp_path / "wal.jsonl"
 
-    # manually create WAL with corrupt first line
+    good = make(field={"good": 1})
+    next = make(field={"next": 2})
     with wal_path.open("w") as wal_file:
         wal_file.write('{"bad": \n')
-        wal_file.write('{"good": 1}\n')
-        wal_file.write('{"next": 2}\n')
+        write_series(wal_file, good)
+        write_series(wal_file, next)
 
     wal = JsonlWAL(wal_path)
 
     removed = wal.dequeue()
-    assert removed == {"good": 1}
+    assert removed == good
 
     remaining = list(wal.read_all())
-    assert remaining == [{"next": 2}]
+    assert remaining == [next]
 
 
 def test_iter_valid_entries_skips_empty_lines(tmp_path):
     wal_path = tmp_path / "wal.jsonl"
 
+    entry = make(field={"a": 1})
     with wal_path.open("w") as wal_file:
         wal_file.write("\n")
         wal_file.write("   \n")
-        wal_file.write('{"a": 1}\n')
+        write_series(wal_file, entry)
         wal_file.write("\n")
 
     wal = JsonlWAL(wal_path)
 
-    entries = list(wal._iter_valid_entries())
-    assert entries == [{"a": 1}]
+    assert list(wal._iter_valid_entries()) == [entry]
 
 
 def test_wal_append_is_atomic(tmp_path):
     wal_path = tmp_path / "wal.jsonl"
     wal = JsonlWAL(wal_path)
 
-    wal.enqueue({"a": 1})
+    wal.enqueue(make(field={"a": 1}))
 
-    # simulate crash during second write
     with wal_path.open("a") as f:
         f.write('{"b": ')  # incomplete JSON
 
-    # WAL should still return only the valid entry
-    assert list(wal.read_all()) == [{"a": 1}]
+    assert list(wal.read_all()) == [make(field={"a": 1})]
 
 
 def test_wal_skips_multiple_corrupt_middle_lines(tmp_path):
     wal_path = tmp_path / "wal.jsonl"
 
+    first = make(field={"a": 1})
+    second = make(field={"b": 2})
     with wal_path.open("w") as f:
-        f.write('{"a": 1}\n')
+        write_series(f, first)
         f.write('{"bad": \n')
         f.write('{"also_bad": \n')
-        f.write('{"b": 2}\n')
+        write_series(f, second)
 
     wal = JsonlWAL(wal_path)
-    assert list(wal.read_all()) == [{"a": 1}, {"b": 2}]
+    assert list(wal.read_all()) == [
+        make(field={"a": 1}),
+        make(field={"b": 2}),
+    ]
 
 
 def test_wal_creates_file_if_missing(tmp_path):
     wal_path = tmp_path / "wal.jsonl"
     wal = JsonlWAL(wal_path)
 
-    wal.enqueue({"x": 1})
+    wal.enqueue(make(field={"x": 1}))
 
     assert wal_path.exists()
-    assert list(wal.read_all()) == [{"x": 1}]
+    assert list(wal.read_all()) == [make(field={"x": 1})]

@@ -2,7 +2,6 @@
 # Licensed under the Apache License, Version 2.0. See the LICENSE file for details.
 # File: tests/fetch/yahoo/test_fields.py
 
-import logging
 from datetime import UTC, datetime
 
 import pytest
@@ -22,37 +21,6 @@ def make_provider(config=None):
             return datetime(2026, 5, 25, tzinfo=UTC)
 
     return P(config=config or {})
-
-
-# ----------------------------------------------------------------------
-# _map_fields() tests
-# ----------------------------------------------------------------------
-
-
-@pytest.mark.parametrize(
-    "candle, fields, expected, error",
-    [
-        # price mapping
-        ({"fields": {"close": 123.45}}, ["price"], {"price": 123.45}, None),
-        # subset mapping
-        (
-            {"fields": {"open": 1, "high": 2, "low": 3, "close": 4, "volume": 5}},
-            ["open", "close"],
-            {"open": 1.0, "close": 4.0},
-            None,
-        ),
-        # mixed price + OHLC → error
-        ({"fields": {"close": 10}}, ["price", "open"], None, ValueError),
-        # unknown field → error
-        ({"fields": {"close": 10}}, ["foo"], None, ValueError),
-    ],
-)
-def test_map_fields_param(provider, candle, fields, expected, error):
-    if error:
-        with pytest.raises(error):
-            provider._map_fields(candle, fields)
-    else:
-        assert provider._map_fields(candle, fields) == expected
 
 
 # ----------------------------------------------------------------------
@@ -78,6 +46,7 @@ META_CASES = [
             "volume": 1000.0,
         },
         None,
+        None,
     ),
     # partial success
     (
@@ -93,7 +62,8 @@ META_CASES = [
             "close": 10.0,
             "low": 8.0,
         },
-        "metadata missing value for 'high'",
+        None,
+        ["missing value for 'high'", "missing value for 'volume'"],
     ),
     # all missing → empty
     (
@@ -106,7 +76,13 @@ META_CASES = [
             "regularMarketVolume": None,
         },
         None,
-        "metadata missing value for 'close'",
+        None,
+        [
+            "missing value for 'close'",
+            "missing value for 'high'",
+            "missing value for 'low'",
+            "missing value for 'volume'",
+        ]
     ),
     # open requested → fail fast
     (
@@ -117,6 +93,7 @@ META_CASES = [
         },
         None,
         "cannot synthesize 'open' from metadata",
+        None
     ),
     # unknown field → fail fast
     (
@@ -127,6 +104,7 @@ META_CASES = [
         },
         None,
         "unknown field 'foo'",
+        None
     ),
     # missing timestamp → empty
     (
@@ -135,31 +113,40 @@ META_CASES = [
             "regularMarketPrice": 10.0,
         },
         None,
-        "timestamp missing in metadata",
+        "timestamp missing",
+        None
     ),
 ]
 
 
-@pytest.mark.parametrize("fields, meta, expected, err", META_CASES)
-def test_get_from_meta_param(caplog, provider, fields, meta, expected, err):
-    with caplog.at_level(logging.ERROR):
-        result = provider._get_from_meta(fields, meta, "x")
+@pytest.mark.parametrize("fields, meta, expected, err, warn", META_CASES)
+def test_get_from_meta_param(provider, fields, meta, expected, err, warn):
+    result = provider._get_from_meta("x", fields, meta)
 
     if expected is None:
-        assert result == []
-        if err is not None:
-            assert err in caplog.text
+        assert not result.ok
+        assert "Cannot synthesize from metadata" in result.reason
+        if err is None:
+            assert result.error is None
         else:
-            # no error expected → no log
-            assert caplog.text == ""
+            assert err in result.error
+        return
     else:
-        assert len(result) == 1
-        assert result[0]["fields"] == expected
+        assert result.reason is None
+        assert result.ok
 
-        if err is not None:
-            assert err in caplog.text
-        else:
-            assert caplog.text == ""
+    if warn is None:
+        assert result.warning is None
+    else:
+        for warning in warn:
+            assert warning in result.warning
+
+    payload = result.payload
+    if expected is None:
+        assert payload == []
+    else:
+        assert len(payload) == 1
+        assert payload[0].fields == expected
 
 
 def test_metadata_price_and_close_equivalent():
@@ -169,8 +156,9 @@ def test_metadata_price_and_close_equivalent():
         "regularMarketPrice": 42.0,
     }
 
-    result = provider._get_from_meta(["price", "close"], meta)
-    fields = result[0]["fields"]
+    result = provider._get_from_meta("y", ["price", "close"], meta)
+    assert result.ok
+    fields = result.payload[0].fields
 
     assert fields == {
         "price": 42.0,

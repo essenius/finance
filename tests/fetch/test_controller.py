@@ -2,19 +2,24 @@
 # Licensed under the Apache License, Version 2.0. See the LICENSE file for details.
 # File: tests/fetch/test_controller.py
 
-import logging
-from typing import Any
+import time
 from unittest.mock import Mock
 
 import pytest
 
+from finance.common.model import MeasurementResult
 from finance.fetch.controller import FetchController
+from finance.state.manager import State
 
 
 def make_asset(
-    instrument="eur_usd", provider="yahoo", symbol="EURUSD=X", interval="10m", fields=None, timeseries="intraday"
+    instrument="eur_usd",
+    provider="yahoo",
+    symbol="EURUSD=X",
+    interval="10m",
+    fields=None,
+    timeseries="intraday",
 ):
-    # doing this to avoid mutable data structures in argument defaults, with risk of cross-contamination
     fields = ["close"] if fields is None else list(fields)
     series = f"{instrument}_{timeseries}"
     return {
@@ -29,30 +34,37 @@ def make_asset(
     }
 
 
+def single_result(fc, state):
+    results = list(fc.fetch_incrementally(state))
+    assert len(results) == 1
+    return results[0]
+
 # ----------------------------------------------------------------------
 # Freshness skipping
 # ----------------------------------------------------------------------
 
 
-def test_controller_skips_fresh():
+def test_controller_skips_fresh(state_env, monkeypatch):
+    state, ts, wal, path = state_env
+
     fake_provider = Mock()
-    fake_provider.fetch.return_value = {"timestamp": 999, "fields": {"close": 1.23}}
+    fake_provider.fetch.return_value = MeasurementResult.ok_payload("eur_usd_intraday", [])
 
     now = 1_000_000_000
-    assets = make_asset(interval="1h")
+    monkeypatch.setattr(time, "time", lambda: now)
 
+    assets = make_asset(interval="1h")
     fc = FetchController(assets, api_keys={}, now_provider=lambda: now)
     fc.providers["yahoo"] = fake_provider
 
-    state = {
-        "eur_usd_intraday": {
-            "last_try": now - 100,  # fresh vs 1h interval
-            "last_timestamp": 123456,
-        }
+    state.data.clear()
+    state.data["eur_usd_intraday"] = {
+        "last_try": now - 100,  # fresh vs 1h interval
+        "last_timestamp": 123456,
     }
 
-    results = fc.fetch_all(state)
-    assert results == {}
+    results = list(fc.fetch_incrementally(state))
+    assert results == []
     fake_provider.fetch.assert_not_called()
 
 
@@ -61,37 +73,32 @@ def test_controller_skips_fresh():
 # ----------------------------------------------------------------------
 
 
-def test_controller_fetches_when_stale():
+def test_controller_fetches_when_stale(state_env, monkeypatch):
+    state, ts, wal, path = state_env
+
     fake_provider = Mock()
-    fake_provider.fetch.return_value = {"timestamp": 777, "fields": {"close": 4.321}}
+    fake_provider.fetch.return_value = MeasurementResult.ok_payload("eur_usd_intraday", [])
 
     now = 1_000_000_000
-    assets = make_asset(interval="1h")
+    monkeypatch.setattr(time, "time", lambda: now)
 
+    assets = make_asset(interval="1h")
     fc = FetchController(assets, api_keys={}, now_provider=lambda: now)
     fc.providers["yahoo"] = fake_provider
 
-    state = {
-        "eur_usd_intraday": {
-            "last_try": now - 7200,  # stale vs 1h
-            "last_timestamp": 123456,
-        }
+    state.data.clear()
+    state.data["eur_usd_intraday"] = {
+        "last_try": now - 7200,  # stale vs 1h
+        "last_timestamp": 123456,
     }
 
-    results = fc.fetch_all(state)
 
-    series_name = next(iter(assets))
-    config = assets[series_name]
-    fake_provider.fetch.assert_called_once_with(config, 123456)
+    result = single_result(fc, state)
+    assert result.ok
+    assert result.measurement == "eur_usd_intraday"
 
-    assert results == {
-        "eur_usd_intraday": {
-            "timestamp": 777,
-            "fields": {"close": 4.321},
-        }
-    }
-
-    assert state["eur_usd_intraday"]["last_try"] == now
+    fake_provider.fetch.assert_called_once()
+    assert state.data["eur_usd_intraday"]["last_try"] == now
 
 
 # ----------------------------------------------------------------------
@@ -99,49 +106,22 @@ def test_controller_fetches_when_stale():
 # ----------------------------------------------------------------------
 
 
-def test_controller_unknown_provider(caplog):
+def test_controller_unknown_provider(state_env, monkeypatch, frozen_time):
+    state, ts, wal, path = state_env
+
+    now = frozen_time
+
     assets = make_asset(provider="mystery")
-
-    fc = FetchController(assets, api_keys={}, now_provider=lambda: 0)
-    state = {}
-
-    with caplog.at_level(logging.ERROR):
-        results = fc.fetch_all(state)
-
-    assert results == {}
-    assert state == {}
-    assert "no provider" in caplog.text
-
-
-@pytest.mark.parametrize(
-    "side_effect, expected_err",
-    [
-        (None, ""),
-        (RuntimeError("boom"), "Fetcher for eur_usd_intraday failed: boom"),
-    ],
-)
-def test_controller_provider_failure(caplog, side_effect, expected_err):
-    fake = Mock()
-    fake.fetch.side_effect = side_effect
-
-    now = 1_000_000_000
-    assets = make_asset()
-
     fc = FetchController(assets, api_keys={}, now_provider=lambda: now)
-    fc.providers["yahoo"] = fake
 
-    state = {"eur_usd_intraday": {}}
 
-    with caplog.at_level(logging.ERROR):
-        results = fc.fetch_all(state)
+    result = single_result(fc, state)
+    assert not result.ok
+    assert "no provider" in result.reason
+    assert result.measurement == "eur_usd_intraday"
 
-    assert results == {}
-    assert state["eur_usd_intraday"]["last_try"] == now
-
-    if expected_err:
-        assert expected_err in caplog.text
-    else:
-        assert caplog.text == ""
+    assert "eur_usd_intraday" in state.data
+    assert state.data["eur_usd_intraday"]["last_try"] == now
 
 
 # ----------------------------------------------------------------------
@@ -149,23 +129,23 @@ def test_controller_provider_failure(caplog, side_effect, expected_err):
 # ----------------------------------------------------------------------
 
 
-def test_controller_malformed_result():
+def test_controller_malformed_result(state_env, monkeypatch, frozen_time):
+    state, ts, wal, path = state_env
+
     fake_provider = Mock()
-    fake_provider.fetch.return_value = {"foo": 1}
+    fake_provider.fetch.return_value = MeasurementResult.fail("eur_usd_intraday", "bad data")
 
-    now = 1_000_000_000
+    now = frozen_time
+
     assets = make_asset()
-
     fc = FetchController(assets, api_keys={}, now_provider=lambda: now)
     fc.providers["yahoo"] = fake_provider
 
-    state = {"eur_usd_intraday": {}}
+    result = single_result(fc, state)
+    assert not result.ok
+    assert "bad data" in result.reason
 
-    results = fc.fetch_all(state)
-
-    fake_provider.fetch.assert_called_once()
-    assert results == {}
-    assert state["eur_usd_intraday"]["last_try"] == now
+    assert state.data["eur_usd_intraday"]["last_try"] == now
 
 
 # ----------------------------------------------------------------------
@@ -173,11 +153,13 @@ def test_controller_malformed_result():
 # ----------------------------------------------------------------------
 
 
-def test_controller_multiple_assets():
-    fake_provider = Mock()
-    fake_provider.fetch.return_value = {"timestamp": 333, "fields": {"close": 3.3}}
+def test_controller_multiple_assets(state_env, monkeypatch, frozen_time):
+    state, ts, wal, path = state_env
 
-    now = 1_000_000_000
+    fake_provider = Mock()
+    fake_provider.fetch.return_value = MeasurementResult.ok_payload("dummy", [])
+
+    now = frozen_time
 
     assets = {
         **make_asset(instrument="eur_usd_yahoo"),
@@ -187,13 +169,12 @@ def test_controller_multiple_assets():
     fc = FetchController(assets, api_keys={}, now_provider=lambda: now)
     fc.providers["yahoo"] = fake_provider
 
-    state = {}
-
-    results = fc.fetch_all(state)
+    results = list(fc.fetch_incrementally(state))
+    assert len(results) == 2
 
     assert fake_provider.fetch.call_count == 2
-    assert "eur_usd_yahoo_intraday" in results
-    assert "spx_yahoo_intraday" in results
+    assert "eur_usd_yahoo_intraday" in state.data
+    assert "spx_yahoo_intraday" in state.data
 
 
 # ----------------------------------------------------------------------
@@ -201,105 +182,56 @@ def test_controller_multiple_assets():
 # ----------------------------------------------------------------------
 
 
-def test_controller_respects_interval():
+def test_controller_respects_interval(state_env, monkeypatch, frozen_time):
+    state, ts, wal, path = state_env
+
     fake_provider = Mock()
-    fake_provider.fetch.return_value = {"timestamp": 444, "fields": {"close": 4.4}}
+    fake_provider.fetch.return_value = MeasurementResult.ok_payload("eur_usd_intraday", [])
+
+    now = frozen_time
 
     assets = make_asset(interval="10s")
-
-    now = 1_000_000_000
     fc = FetchController(assets, api_keys={}, now_provider=lambda: now)
     fc.providers["yahoo"] = fake_provider
 
-    state = {"eur_usd_intraday": {"last_try": now - 5}}
+    state.data.clear()
+    state.data["eur_usd_intraday"] = {"last_try": now - 5}
 
-    fc.fetch_all(state)
-
+    results = list(fc.fetch_incrementally(state))
+    assert results == []
     fake_provider.fetch.assert_not_called()
 
 
 # ----------------------------------------------------------------------
-# _validate_result tests
+# Interval parse failure
 # ----------------------------------------------------------------------
 
 
-@pytest.mark.parametrize(
-    "result",
-    [
-        None,
-        ["not", "a", "dict"],
-        {"timestamp": "not-int", "fields": {}},
-        {"timestamp": 123, "fields": ["not-dict"]},
-    ],
-)
-def test_validate_result_invalid(
-    result: None | list[str] | dict[str, str | dict[Any, Any]] | dict[str, int | list[str]],
-):
-    fc = FetchController({}, api_keys={}, now_provider=lambda: 0)
-    assert fc._validate_result(result) is None
+def test_controller_interval_parse_failure(state_env, monkeypatch, frozen_time):
+    state, ts, wal, path = state_env
+
+    now = frozen_time
+
+    assets = make_asset(interval="nonsense")
+    fc = FetchController(assets, api_keys={}, now_provider=lambda: now)
+
+    result = single_result(fc, state)
+    assert not result.ok
+    assert "could not parse interval" in result.reason
+    assert result.measurement == "eur_usd_intraday"
+
+    assert "eur_usd_intraday" in state.data
+    assert state.data["eur_usd_intraday"]["last_try"] == now
 
 
-@pytest.mark.parametrize(
-    "bad_asset",
-    [
-        # Missing provider
-        {
-            "asset": "eur_usd",
-            "symbol": "EURUSD=X",
-            "interval": "10m",
-            "fields": ["close"],
-            "timeseries": "intraday",
-        },
-        # Missing symbol
-        {
-            "asset": "eur_usd",
-            "provider": "yahoo",
-            "interval": "10m",
-            "fields": ["close"],
-            "timeseries": "intraday",
-        },
-        # Missing interval
-        {
-            "asset": "eur_usd",
-            "provider": "yahoo",
-            "symbol": "EURUSD=X",
-            "fields": ["close"],
-            "timeseries": "intraday",
-        },
-        # Missing fields
-        {
-            "asset": "eur_usd",
-            "provider": "yahoo",
-            "symbol": "EURUSD=X",
-            "interval": "10m",
-            "timeseries": "intraday",
-        },
-        # Missing timeseries
-        {
-            "asset": "eur_usd",
-            "provider": "yahoo",
-            "symbol": "EURUSD=X",
-            "interval": "10m",
-            "fields": ["close"],
-        },
-    ],
-)
-def test_controller_missing_asset_properties(bad_asset, caplog):
-    now = 1_000_000_000
+def test_controller_always_updates_state(state_env, frozen_time):
+    state, ts, wal, path = state_env
+    now = frozen_time
 
-    fc = FetchController({ "my_series": bad_asset }, api_keys={}, now_provider=lambda: now)
+    assets = make_asset(interval="nonsense")  # guaranteed fail
+    fc = FetchController(assets, api_keys={}, now_provider=lambda: now)
 
-    state = {}
+    _ = single_result(fc, state)
 
-    with caplog.at_level(logging.ERROR):
-        results = fc.fetch_all(state)
-
-    # No results produced
-    assert results == {}
-
-    # No state entry created
-    assert state == {}
-
-    # Error logged
-    assert "missing keys" in caplog.text
-    assert "my_series" in caplog.text
+    assert "eur_usd_intraday" in state.data
+    assert state.data["eur_usd_intraday"]["last_try"] == now

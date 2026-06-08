@@ -118,5 +118,3 @@ def test_make_legacy_ssl_context():
 
         # function returns the mocked context
         assert result is mock_ctx
-
-

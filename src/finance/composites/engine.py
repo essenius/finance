@@ -2,11 +2,16 @@
 # Licensed under the Apache License, Version 2.0. See the LICENSE file for details.
 # File: src/finance/composites/engine.py
 
+from __future__ import annotations
+
+import ast
 import re
+from collections.abc import Iterable
 
-from finance.common.log_mixin import LogMixin
-
-from .deps import extract_dependencies, topo_sort
+from ..common.introspection import here
+from ..common.model import FetchPoint, FetchResult, MeasurementResult, Result
+from ..state.manager import State
+from .deps import CycleError, extract_dependencies, topo_sort
 
 IDENTIFIER_RE = re.compile(r"\b([A-Za-z_][A-Za-z0-9_]*)\b")
 
@@ -18,20 +23,32 @@ class MetricProxy:
         self.__dict__.update(fields)
 
 
-class CompositeEngine(LogMixin):
+class DefaultFieldTransformer(ast.NodeTransformer):
+    def __init__(self, metric_names: set[str]):
+        self.metric_names = metric_names
+
+    def visit_Attribute(self, node: ast.Attribute):
+        # IMPORTANT: do NOT recurse into .value
+        # This prevents transforming the base of `gold.high`
+        return node
+
+    def visit_Name(self, node: ast.Name):
+        # Only bare metric identifiers get `.value`
+        if node.id in self.metric_names:
+            return ast.Attribute(value=node, attr="value", ctx=node.ctx)
+        return node
+
+
+class CompositeEngine:
     """Evaluate composites with implicit timeseries resolution and dependency ordering."""
 
-    def __init__(self, composites: dict, state: dict):
+    def __init__(self, composites: dict, state: State):
         """
         composites: dict[name] -> {
             "expression": str,
             "measurement": str,
             "timeseries": str,
             "tags": dict,
-        }
-        state: dict[metric_name] -> {
-            "fields": dict[field_name] -> value,
-            "last_timestamp": int,
         }
         """
         self.composites = composites
@@ -44,40 +61,41 @@ class CompositeEngine(LogMixin):
             cfg["timeseries"] = timeseries  # normalize in-place so rest of engine can rely on it
             self.composite_to_metric[name] = f"{name}_{timeseries}"
 
-        self.graph = self._build_graph()
-        self.order = topo_sort(self.graph)
+        # These are filled in by build()
+        self.graph = {}
+        self.order = []
+
+    @classmethod
+    def build(cls, composites: dict, state: State) -> Result[CompositeEngine]:
+        context = { "location": here() }
+        engine = cls(composites, state)
+
+        graph_result = engine._build_graph()
+        if not graph_result.ok:
+            return graph_result
+
+        try:
+            order = topo_sort(graph_result.payload)
+        except CycleError as exc:
+            return Result.fail(reason="Error in topo_sort", error=exc, meta=context)
+
+        engine.graph = graph_result.payload
+        engine.order = order
+        return Result.ok_payload(engine)
 
     # ------------------------------------------------------------------ #
     # Dependency graph (composite -> composite)
     # ------------------------------------------------------------------ #
 
-    # NOTE: We intentionally have two different dependency graph builders:
-    #
-    # 1) deps.build_composite_graph()
-    #    - Extracts *metric* dependencies (composite → metric)
-    #    - Used for evaluation and timestamp propagation
-    #    - Filters identifiers using state.keys()
-    #    - Returns (graph, errors)
-    #
-    # 2) CompositeEngine._build_graph()
-    #    - Extracts *composite* dependencies (composite → composite)
-    #    - Used only for topological sorting and cycle detection
-    #    - Filters identifiers using composites.keys()
-    #
-    # These graphs serve different purposes and cannot be merged.
-    # The topo-sort graph must ignore metric names, while the evaluation
-    # graph must include them. Keeping them separate avoids subtle bugs.
-
-    def _build_graph(self):
+    def _build_graph(self) -> Result[dict]:
         graph = {}
         for name, cfg in self.composites.items():
             expr = cfg["expression"]
-            deps, err = extract_dependencies(expr, self.composites.keys())
-            if err:
-                self.error(f"Composite {name}: {err}")
-                deps = []
-            graph[name] = deps
-        return graph
+            deps_result = extract_dependencies(expr, self.composites.keys())
+            if not deps_result.ok:
+                return deps_result
+            graph[name] = deps_result.payload
+        return Result.ok_payload(graph)
 
     # ------------------------------------------------------------------ #
     # Identifier resolution (composite/metric names, implicit timeseries)
@@ -101,7 +119,7 @@ class CompositeEngine(LogMixin):
             return identifier
 
         candidate = f"{identifier}{suffix}"
-        if candidate in self.state:
+        if candidate in self.state.data:
             return candidate
 
         return identifier
@@ -124,22 +142,12 @@ class CompositeEngine(LogMixin):
             gold_daily.high stays gold_daily.high
         """
 
-        def repl(match):
-            identifier = match.group(1)
-
-            # Not a known metric → leave as-is
-            if identifier not in self.state:
-                return identifier
-
-            # If the next character is '.', this is metric.field → leave as-is
-            end = match.end(1)
-            if end < len(expression) and expression[end] == ".":
-                return identifier
-
-            # Bare metric → metric.value
-            return f"{identifier}.value"
-
-        return IDENTIFIER_RE.sub(repl, expression)
+        tree = ast.parse(expression, mode="eval")
+        metric_names = set(self.state.data.keys()) | set(self.composite_to_metric.values())
+        transformer = DefaultFieldTransformer(metric_names)
+        new_tree = transformer.visit(tree)
+        ast.fix_missing_locations(new_tree)
+        return ast.unparse(new_tree)
 
     # ------------------------------------------------------------------ #
     # Namespace for eval()
@@ -150,73 +158,82 @@ class CompositeEngine(LogMixin):
         Example: gold_daily.high → state["gold_daily"]["fields"]["high"]
         """
         namespace = {}
-        for metric_name, entry in self.state.items():
-            namespace[metric_name] = MetricProxy(entry.get("fields", {}))
+        for metric_name, entry in self.state.iter_metrics():
+            fields = entry.get("fields", {})
+            namespace[metric_name] = MetricProxy(fields)
         return namespace
+
+    # ------------------------------------------------------------------ #
+    # Single composite evaluation
+    # ------------------------------------------------------------------ #
+
+    def _evaluate_single(self, name: str, namespace: dict) -> MeasurementResult[FetchPoint]:
+        context = { "location": here() }
+        cfg = self.composites[name]
+        raw_expression = cfg["expression"]
+        timeseries = cfg["timeseries"]
+
+        # 1) Rewrite identifiers
+        rewritten = self._rewrite_expression(raw_expression, timeseries)
+
+        # 2) Add default '.value'
+        rewritten = self._add_default_field(rewritten)
+
+        # 3) Evaluate safely
+        try:
+            value = eval(rewritten, {"__builtins__": {}}, namespace)
+        except Exception as e:
+            return MeasurementResult.fail(name, f"Evaluating composite {name} failed", e, meta=context)
+
+        # 4) Determine timestamp
+
+        deps_result = extract_dependencies(rewritten, self.state.data.keys())
+        # cannot fail if the eval succeeded
+
+        metric_dependencies = deps_result.payload
+
+        timestamps = [ts for m in metric_dependencies if (ts := self.state.get_last_timestamp(m)) is not None]
+
+        if timestamps:
+            timestamp = max(timestamps)
+        else:
+            # No metric deps → use freshest real metric timestamp
+            all_timestamps = [
+                entry["last_timestamp"]
+                for _, entry in self.state.iter_metrics()
+                if entry.get("last_timestamp") is not None
+            ]
+            timestamp = max(all_timestamps) if all_timestamps else 0
+
+        point = FetchPoint(fields={"value": value}, timestamp=timestamp)
+        return MeasurementResult.ok_payload(name, point)
 
     # ------------------------------------------------------------------ #
     # Public API
     # ------------------------------------------------------------------ #
-    def evaluate_all(self) -> dict:
-        """
-        Evaluate all composites in dependency order.
 
-        Returns:
-            dict[name] -> (fields_dict, timestamp)
+    def evaluate_incrementally(self) -> Iterable[FetchResult]:
         """
-        results = {}
+        Evaluate composites in dependency order, yielding results one by one.
+        Orchestrator ingests each result immediately.
+        """
         namespace = self._build_namespace()
 
         for name in self.order:
-            cfg = self.composites[name]
-            raw_expression = cfg["expression"]
-            timeseries = cfg["timeseries"]
+            single = self._evaluate_single(name, namespace)
 
-            # 1) Rewrite identifiers: composite names + implicit timeseries
-            rewritten_expression = self._rewrite_expression(raw_expression, timeseries)
-
-            # 2) Add default '.value' for bare metric references
-            rewritten_expression = self._add_default_field(rewritten_expression)
-
-            # 3) Evaluate safely
-            try:
-                value = eval(rewritten_expression, {"__builtins__": {}}, namespace)
-            except Exception as e:
-                self.error(f"Composite {name} failed: {e}")
+            if not single.ok:
+                # propagate failure for this composite, but continue with others
+                yield single
                 continue
 
-            # 4) Determine timestamp based on metric dependencies
-            #    err cannot be set, since the eval function would have failed otherwise.
-            metric_dependencies, _ = extract_dependencies(rewritten_expression, self.state.keys())
-
-            # Collect timestamps of metric dependencies
-            timestamps = [
-                self.state[m]["last_timestamp"]
-                for m in metric_dependencies
-                if self.state[m]["last_timestamp"] is not None
-            ]
-
-            if timestamps:
-                # Use timestamps of actual dependencies
-                timestamp = max(timestamps)
-            else:
-                # No metric dependencies → use freshest real metric timestamp in state
-                all_ts = [
-                    entry.get("last_timestamp")
-                    for entry in self.state.values()
-                    if entry.get("last_timestamp") is not None
-                ]
-                timestamp = max(all_ts) if all_ts else 0
-
-            # 5) Store result under composite name
-            results[name] = ({"value": value}, timestamp)
-
-            # 6) Feed result back into state + namespace under metric name
+            point = single.payload
             metric_name = self.composite_to_metric[name]
-            self.state[metric_name] = {
-                "fields": {"value": value},
-                "last_timestamp": timestamp,
-            }
-            namespace[metric_name] = MetricProxy({"value": value})
 
-        return results
+            # Update state
+            self.state.update_composite(metric_name, point.fields, point.timestamp)
+
+            # Update namespace
+            namespace[metric_name] = MetricProxy(point.fields)
+
+            yield FetchResult.ok_payload(name, [point])

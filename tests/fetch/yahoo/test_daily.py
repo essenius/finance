@@ -6,18 +6,20 @@ import datetime
 from datetime import UTC, timedelta
 from unittest.mock import Mock
 
+from finance.common.model import FetchResult, MeasurementResult, Result
+
 # ----------------------------------------------------------------------
 # Daily tests
 # ----------------------------------------------------------------------
 
 
-def test_daily_no_missing_days(provider):
+def test_daily_no_missing_days(provider, unwrap):
     today_ts = int(provider.now().timestamp())
-    result = provider._fetch_daily("EURUSD=X", ["close"], last_timestamp=today_ts)
+    result = unwrap(provider._fetch_daily("a", "EURUSD=X", ["close"], last_timestamp=today_ts))
     assert result == []
 
 
-def test_daily_missing_days_triggers_fetch(provider, capture_fetch, make_payload):
+def test_daily_missing_days_triggers_fetch(provider, capture_fetch, make_payload, unwrap):
     payload = make_payload(
         [1704825600],
         {"open": [1.1], "high": [1.2], "low": [1.0], "close": [1.15], "volume": [1000]},
@@ -26,11 +28,13 @@ def test_daily_missing_days_triggers_fetch(provider, capture_fetch, make_payload
     captured = capture_fetch(provider, payload)
 
     yesterday_ts = int(datetime.datetime(2024, 1, 9, 12, 0, tzinfo=UTC).timestamp())
-    result = provider._fetch_daily("EURUSD=X", ["open", "close"], last_timestamp=yesterday_ts)
+    result = unwrap(provider._fetch_daily("b", "EURUSD=X", ["open", "close"], last_timestamp=yesterday_ts))
 
     assert captured["interval"] == "1d"
     assert captured["range"] == "1d"
-    assert result == [{"timestamp": 1704825600, "fields": {"open": 1.1, "close": 1.15}}]
+    assert result[0].timestamp == 1704825600
+    assert result[0].fields["open"] == 1.1
+    assert result[0].fields["close"] == 1.15
 
 
 def test_daily_skips_today_candles(provider, capture_fetch, make_payload):
@@ -45,9 +49,9 @@ def test_daily_skips_today_candles(provider, capture_fetch, make_payload):
     capture_fetch(provider, payload)
 
     yesterday_ts = int(datetime.datetime(2024, 1, 9, 12, 0, tzinfo=UTC).timestamp())
-    result = provider._fetch_daily("EURUSD=X", ["close"], last_timestamp=yesterday_ts)
+    result = provider._fetch_daily("c", "EURUSD=X", ["close"], last_timestamp=yesterday_ts)
 
-    assert result == []
+    assert result.payload == []
 
 
 def test_daily_invalid_candles_filtered(provider, capture_fetch, make_payload):
@@ -59,18 +63,21 @@ def test_daily_invalid_candles_filtered(provider, capture_fetch, make_payload):
     capture_fetch(provider, payload)
 
     yesterday_ts = int(datetime.datetime(2024, 1, 9, 12, 0, tzinfo=UTC).timestamp())
-    result = provider._fetch_daily("EURUSD=X", ["open", "close"], last_timestamp=yesterday_ts)
+    result = provider._fetch_daily("d", "EURUSD=X", ["open", "close"], last_timestamp=yesterday_ts)
 
-    assert result == []
+    assert result.payload == []
 
 
 def test_daily_fetch_failure(provider, monkeypatch):
-    monkeypatch.setattr(provider, "_fetch", lambda *args, **kwargs: None)
+    monkeypatch.setattr(provider, "_fetch", lambda *args, **kwargs: FetchResult.fail("x", "failed", "network error"))
 
     yesterday_ts = int(datetime.datetime(2024, 1, 9, 12, 0, tzinfo=UTC).timestamp())
-    result = provider._fetch_daily("EURUSD=X", ["close"], last_timestamp=yesterday_ts)
+    result = provider._fetch_daily("e", "EURUSD=X", ["close"], last_timestamp=yesterday_ts)
 
-    assert result == []
+    assert not result.ok
+    assert result.payload is None
+    assert result.reason == "failed"
+    assert result.error == "network error"
 
 
 def test_daily_range_selection_none(provider, monkeypatch):
@@ -82,7 +89,7 @@ def test_daily_range_selection_none(provider, monkeypatch):
     # Not missing a day → range should be None and fetch not called
     today_ts = int(datetime.datetime(2024, 1, 10, 12, 0, tzinfo=UTC).timestamp())
 
-    provider._fetch_daily("EURUSD=X", ["close"], last_timestamp=today_ts)
+    provider._fetch_daily("f", "EURUSD=X", ["close"], last_timestamp=today_ts)
 
     mock.assert_not_called()
 
@@ -96,14 +103,14 @@ def test_daily_range_exceeds_history_limit(provider, monkeypatch):
 
     captured = {}
 
-    def fake_fetch(symbol, interval_str, range_str):
+    def fake_fetch(name, symbol, interval_str, range_str):
         captured["range"] = range_str
-        return {"chart": {"result": [{}]}}
+        return Result.ok_payload({"chart": {"result": [{}]}})
 
     monkeypatch.setattr(provider, "_fetch", fake_fetch)
     monkeypatch.setattr(provider, "_extract_candles", lambda data, symbol, today=None: [])
 
-    provider._fetch_daily("EURUSD=X", ["close"], last_timestamp=old_ts)
+    provider._fetch_daily("g", "EURUSD=X", ["close"], last_timestamp=old_ts)
 
     assert captured["range"] == "5d"
 
@@ -114,14 +121,14 @@ def test_daily_range_initial_load(provider, monkeypatch):
 
     captured = {}
 
-    def fake_fetch(symbol, interval_str, range_str):
+    def fake_fetch(name, symbol, interval_str, range_str):
         captured["range"] = range_str
-        return {"chart": {"result": [{}]}}
+        return FetchResult.ok_payload("h",{"chart": {"result": [{}]}})
 
     monkeypatch.setattr(provider, "_fetch", fake_fetch)
-    monkeypatch.setattr(provider, "_extract_candles", lambda data, symbol, today=None: [])
+    monkeypatch.setattr(provider, "_extract_candles", lambda data, symbol, today=None: MeasurementResult.ok_payload("h", []))
 
     # last_timestamp=None → initial load → must use history limit
-    provider._fetch_daily("EURUSD=X", ["close"], last_timestamp=None)
+    provider._fetch_daily("h", "EURUSD=X", ["close"], last_timestamp=None)
 
     assert captured["range"] == "5d"

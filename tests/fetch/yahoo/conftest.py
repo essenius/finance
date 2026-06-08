@@ -7,6 +7,7 @@ from datetime import UTC
 
 import pytest
 
+from finance.common.model import MeasurementResult
 from finance.fetch.yahoo import YahooProvider
 
 
@@ -21,11 +22,12 @@ def capture_fetch(monkeypatch):
     captured = {}
 
     def wrapper(provider, return_value):
-        def fake_fetch(symbol, interval_str, range_str):
+        def fake_fetch(name, symbol, interval_str, range_str):
+            captured["name"] = name
             captured["symbol"] = symbol
             captured["interval"] = interval_str
             captured["range"] = range_str
-            return return_value
+            return MeasurementResult.ok_payload(name, return_value)
 
         monkeypatch.setattr(provider, "_fetch", fake_fetch)
         return captured

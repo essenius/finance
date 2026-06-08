@@ -1,4 +1,3 @@
-from .client import TimeSeriesClient
-from .errors import TimeSeriesError
+from .influx import InfluxBackend
 
-__all__ = ["TimeSeriesClient", "TimeSeriesError"]
+__all__ = ["InfluxBackend"]

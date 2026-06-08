@@ -3,7 +3,11 @@
 # File: src/finance/write/wal.py
 
 import json
+from collections.abc import Iterable
+from dataclasses import asdict
 from pathlib import Path
+
+from ..common.model import TimeseriesWrite
 
 
 class JsonlWAL:
@@ -12,7 +16,7 @@ class JsonlWAL:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self.path.touch(exist_ok=True)
 
-    def _iter_valid_entries(self):
+    def _iter_valid_entries(self) -> Iterable[TimeseriesWrite]:
         """Yield valid JSON entries from the WAL in order."""
         with self.path.open() as wal_file:
             for line in wal_file:
@@ -20,27 +24,27 @@ class JsonlWAL:
                 if not stripped:
                     continue
                 try:
-                    yield json.loads(stripped)
+                    yield TimeseriesWrite(**json.loads(stripped))
                 except json.JSONDecodeError:
                     # ignore corrupt lines
                     continue
 
-    def enqueue(self, entry):
+    def enqueue(self, entry: TimeseriesWrite) -> None:
         """Append a new entry to the WAL."""
         with self.path.open("a") as wal_file:
-            wal_file.write(json.dumps(entry) + "\n")
+            wal_file.write(json.dumps(asdict(entry)) + "\n")
 
-    def read_all(self):
+    def read_all(self) -> Iterable[TimeseriesWrite]:
         """Yield all valid entries in order."""
         yield from self._iter_valid_entries()
 
-    def peek(self):
+    def peek(self) -> TimeseriesWrite | None:
         """Return the oldest valid entry without removing it."""
         for entry in self._iter_valid_entries():
             return entry
         return None
 
-    def dequeue(self):
+    def dequeue(self) -> TimeseriesWrite | None:
         """
         Remove and return the oldest valid entry.
         Returns None if no valid entries exist.
@@ -56,9 +60,9 @@ class JsonlWAL:
 
                 if not removed_entry_found:
                     try:
-                        removed_entry = json.loads(stripped)
+                        removed_entry = TimeseriesWrite(**json.loads(stripped))
                         removed_entry_found = True
-                        continue  # skip writing this line
+                        continue  # don't save this item
                     except json.JSONDecodeError:
                         # skip corrupt lines before first valid entry
                         continue

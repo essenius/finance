@@ -2,55 +2,33 @@
 # Licensed under the Apache License, Version 2.0. See the LICENSE file for details.
 # File: src/finance/fetch/yahoo.py
 
+import math
 from datetime import UTC, datetime
 from urllib.parse import quote, urlencode
 
 import requests
 
-from .model import Candle
+from ..common.model import FetchPoint, FetchResult, MeasurementResult
 from .parser import parse_duration
 from .provider import MarketDataProvider
 
-
-class CandleSeries:
-    def __init__(self, timestamps, opens, highs, lows, closes, volumes):
-        self.timestamps = timestamps
-        self.opens = opens
-        self.highs = highs
-        self.lows = lows
-        self.closes = closes
-        self.volumes = volumes
-
-    def __iter__(self):
-        for ts, open, high, low, close, volume in zip(
-            self.timestamps,
-            self.opens,
-            self.highs,
-            self.lows,
-            self.closes,
-            self.volumes,
-            strict=False,
-        ):
-            yield Candle(ts, open, high, low, close, volume)
-
+SUPPORTED_FIELDS = ["open", "high", "low", "close", "volume"]
 
 class YahooProvider(MarketDataProvider):
     """Unified Yahoo Finance data provider."""
 
     BASE_URL = "https://query1.finance.yahoo.com/v8/finance/chart/{symbol}"
-    VALID_CANDLE_FIELDS = {"open", "high", "low", "close", "volume"}
 
-    def fetch(self, asset, last_timestamp=None):
+    def fetch(self, name: str, asset: dict, last_timestamp: int | None = None) -> FetchResult:
         symbol = asset["symbol"]
         timeseries = asset["timeseries"]
         fields = asset["fields"]
 
         if timeseries == "intraday":
-            return self._fetch_intraday(symbol, fields, last_timestamp)
-        elif timeseries == "daily":
-            return self._fetch_daily(symbol, fields, last_timestamp)
+            return self._fetch_intraday(name, symbol, last_timestamp)
         else:
-            raise ValueError(f"Cannot handle timeseries '{timeseries}'")
+            # we don't have other options than "daily" now - enforced in config
+            return self._fetch_daily(name, symbol, fields, last_timestamp)
 
     # ----------------------------------------------------------------------
     # Helper methods
@@ -58,69 +36,68 @@ class YahooProvider(MarketDataProvider):
 
     def _get_intraday_range(self, last_timestamp: int | None, history_limit_text: str) -> str:
 
-        # Case 1: initial load
+        # Case 1: no history yet
         if last_timestamp is None:
             return history_limit_text
 
         # Case 2: gap larger than history limit
         history_limit_seconds = parse_duration(history_limit_text)
-        now_timestamp = int(self.now().timestamp())
-        if now_timestamp - last_timestamp > history_limit_seconds:
+        now = int(self.now().timestamp())
+        gap = now - last_timestamp
+        if gap > history_limit_seconds:
             return history_limit_text
 
-        # Case 3: incremental update (ask one minute)
-        return "1m"
+        # Case 3: request just the gap
+        gap_minutes = math.ceil(gap / 60)
+        return f"{gap_minutes}m"
 
-    def _fetch_intraday(self, symbol, fields, last_timestamp):
+    def _fetch_intraday(self, name: str, symbol: str, last_timestamp: int) -> FetchResult:
         """
-        Fetch intraday prices for a symbol. Always returns a list,
-        can contain multiple results in case last_timestamp is old (initial load).
-        Can return empty list if nothing was found or the call failed
-        Returns:
-        [
-            {
-                "timestamp": <unix_seconds>,
-                "fields": {
-                    fields[0]: <value>,
-                }
-            }
-        ]
+        Fetch intraday prices for a symbol.
+        Payload can contain multiple results in case last_timestamp is old (initial load).
+        It can also contain an empty list if nothing was found or the call failed
         """
 
+        fields = ["price"]
+        mapped_field = "close"
         history_limit_text = self.config.get("intraday_history_limit", "5d")
         range_str = self._get_intraday_range(last_timestamp, history_limit_text)
-        results = self._fetch(symbol=symbol, interval_str="1m", range_str=range_str)
-        return_value = []
+        result = self._fetch(name=name, symbol=symbol, interval_str="1m", range_str=range_str)
 
-        if results is None:
-            return return_value
+        if not result.ok:
+            # A failing MeasurementResult is semantically identical to a failing FetchResult
+            return result
 
-        candles = self._extract_candles(results, symbol)
+        candles = self._extract_candles(result, mapped_field)
         # if we don't have candles, fall back to meta data
-        if candles == []:
-            meta = results.get("meta", {})
-            return self._get_from_meta(fields, meta, symbol)
+        if not candles.ok or candles.payload == []:
+            meta = result.payload.get("meta", {})
+            return self._get_from_meta(name, fields, meta)
         else:
             # we do have candles. Pass back the close values.
-            for candle in candles:
-                mapped = self._map_fields(candle, fields)
-                return_value.append({"timestamp": candle["timestamp"], "fields": mapped})
+            return FetchResult.ok_payload(
+                name,
+                [
+                    FetchPoint(
+                        timestamp=candle.timestamp,
+                        fields={fields[0]: candle.fields[mapped_field]},
+                    )
+                    for candle in candles.payload
+                ],
+            )
 
-        return return_value
-
-    def _get_from_meta(self, fields, meta, symbol=None):
+    def _get_from_meta(self, name: str, fields: list[str], meta: dict) -> FetchResult:
         timestamp = meta.get("regularMarketTime")
-
-        # Only fallback if timestamp exists
+        reason = "Cannot synthesize from metadata"
+        # Only use fallback if timestamp exists
         if timestamp is None:
-            self.error("timestamp missing in metadata", symbol)
-            return []
+            return FetchResult.fail(name, reason, "timestamp missing")
 
         # Build synthetic fields
         synthetic = {}
-        fatal_config_error = False
         base_error = "Fallback failed: "
-
+        warnings = []
+        error = None
         # Candle subset mode
         for f in fields:
             if f in ("price", "close"):
@@ -132,26 +109,23 @@ class YahooProvider(MarketDataProvider):
             elif f == "volume":
                 v = meta.get("regularMarketVolume")
             elif f == "open":
-                self.error(f"{base_error}cannot synthesize 'open' from metadata", symbol)
-                fatal_config_error = True
+                error = f"{base_error}cannot synthesize 'open' from metadata"
                 continue
             else:
-                self.error(f"{base_error}unknown field '{f}'", symbol)
-                fatal_config_error = True
+                error = f"{base_error}unknown field '{f}'"
                 continue
             if v is None:
-                self.error(f"{base_error}metadata missing value for '{f}'", symbol)
+                warnings.append(f"{base_error}missing value for '{f}'")
                 continue
 
             synthetic[f] = float(v)
 
-        # If config error or nothing found → return empty list
-        if fatal_config_error or not synthetic:
-            return []
+        if error or not synthetic:
+            return FetchResult.fail(name, reason, error, warnings)
 
-        return [{"timestamp": timestamp, "fields": synthetic}]
+        return FetchResult.ok_payload(name, [FetchPoint(fields=synthetic, timestamp=timestamp)], warnings)
 
-    def _get_daily_range(self, missing_days: int | None, history_limit_text: str) -> bool:
+    def _get_daily_range(self, missing_days: int | None, history_limit_text: str) -> str:
 
         #  we already know that missing days is positive here, so we can ignore the case of 0 or negative missing days
 
@@ -165,68 +139,56 @@ class YahooProvider(MarketDataProvider):
 
         return f"{missing_days}d"
 
-    def _fetch_daily(self, symbol, fields, last_timestamp):
+    def _fetch_daily(self, name, symbol, fields, last_timestamp) -> FetchResult:
         """
         Fetch daily candles from Yahoo Finance.
-        [
-            {
-                "timestamp": <unix_seconds>,
-                "fields": {
-                    <field>: <value>,
-                    ...
-                }
-            }
-            ...
-        ]
         """
         now = self.now()
         today = now.date()
         missing_days = self._compute_missing_days(today, last_timestamp)
         if missing_days is not None and missing_days <= 0:
-            return []
+            return FetchResult.ok_payload(name, [])
 
         history_limit = self.config.get("daily_history_limit", "10y")
         range_str = self._get_daily_range(missing_days, history_limit)
 
-        results = self._fetch(symbol, "1d", range_str)
-        if results is None:
-            return []
-        candles = self._extract_candles(results, symbol, today)
+        results = self._fetch(name, symbol, "1d", range_str)
+        if not results.ok:
+            return results
+        return self._extract_candles(results, fields, today)
 
-        return [{"timestamp": c["timestamp"], "fields": self._map_fields(c, fields)} for c in candles]
 
-    def _fetch(self, symbol, interval_str, range_str):
+    def _fetch(self, name, symbol, interval_str, range_str) -> MeasurementResult[dict]:
         url = self._build_url(symbol, interval_str, range_str)
-        return self._safe(symbol, lambda: self._fetch_impl(url, symbol))
+        return self._safe_call(measurement=name, fn=lambda: self._fetch_impl(url, name), context="fetch")
 
-    def _fetch_impl(self, url, symbol):
+    def _fetch_impl(self, url, name) -> MeasurementResult[dict]:
+        """fetch the response from the provider. Is called from a _safe_call wrapper so can throw"""
         headers = {"User-Agent": "Mozilla/5.0"}
         response = requests.get(url, headers=headers, timeout=10)
         response.raise_for_status()
         data = response.json()
 
-        if self._is_error_response(data, symbol):
-            return []
+        error_response = self._error_response(data)
+        if error_response:
+            return MeasurementResult.fail(name, "Could not interpret fetch response", error_response)
 
         # must work since is_error_response checks for it
         value = data["chart"]["result"][0]
-        return value
+        return MeasurementResult.ok_payload(name, value)
 
-    def _is_error_response(self, data, symbol):
+    def _error_response(self, data) -> str | None:
         chart = data.get("chart", {})
         if chart == {}:
-            self.error("no 'chart' in response", symbol)
-            return True
+            return "no 'chart' in response"
         if chart.get("error"):
-            self.error(chart["error"], symbol)
-            return True
+            return str(chart["error"])
         result = chart.get("result")
-        result_empty = result is None or result == []
-        if result_empty:
-            self.error("result empty", symbol)
-        return result_empty
+        if result is None or result == []:
+            return "result empty"
+        return None
 
-    def _compute_missing_days(self, today, last_timestamp):
+    def _compute_missing_days(self, today, last_timestamp) -> int | None:
         if last_timestamp is None:
             return None
 
@@ -246,52 +208,71 @@ class YahooProvider(MarketDataProvider):
         base = f"https://query1.finance.yahoo.com/v8/finance/chart/{encoded_symbol}"
         return f"{base}?{urlencode(params)}"
 
-    def _extract_candles(self, results, symbol, today=None):
+    def _extract_candles(self, results: MeasurementResult[dict], fields: list[str]|None=None, today=None) -> FetchResult:
 
-        timestamps = results.get("timestamp") or []
+        name = results.measurement
+        payload = results.payload
+
+        if fields is None:
+            selected_fields = SUPPORTED_FIELDS
+        else:
+            unknown = [f for f in fields if f not in SUPPORTED_FIELDS]
+            if unknown:
+                return FetchResult.fail(name, f"Unknown fields requested: {unknown}. Supported: {SUPPORTED_FIELDS}")
+            selected_fields = fields
+
+        timestamps = payload.get("timestamp")
         if not timestamps:
-            self.error("no timestamp in result", symbol)
-            return []
+            return FetchResult.fail(name, "no timestamp in result")
 
-        quote, err = self._safe_get(results, ["indicators", "quote", 0])
-        if err:
-            self.error(f"{err} in path for quote list", symbol)
-            return []
+        quote_result = self._safe_get(payload, ["indicators", "quote", 0])
+        # empty quote list can happen, use meta instead then
+        if not quote_result.ok:
+            return FetchResult.fail(name, "unexpected quote structure", quote_result.reason)
 
-        opens = quote.get("open") or []
-        highs = quote.get("high") or []
-        lows = quote.get("low") or []
-        closes = quote.get("close") or []
-        volumes = quote.get("volume") or []
+        quote = quote_result.payload
+        # create arrays for all the fields we need
+        arrays = {f: quote.get(f) or [] for f in selected_fields}
 
+        # for daily we might need to skip entries for days that haven't finished yet
         today_midnight_timestamp = (
             int(datetime(today.year, today.month, today.day, tzinfo=UTC).timestamp()) if today is not None else None
         )
 
         candles = []
+        invalid_count = 0
 
-        series = CandleSeries(timestamps, opens, highs, lows, closes, volumes)
+        for i, ts in enumerate(timestamps):
+            values = {}
 
-        for candle in series:
-            if not candle.is_valid():
-                self.error(f"invalid candle: {candle.to_dict()}", symbol)
+            # Make a dict of the fields we need
+            for field in selected_fields:
+                arr = arrays[field]
+                values[field] = arr[i] if i < len(arr) else None
+
+            # Skip incomplete candles
+            if any(value is None for value in values.values()):
+                invalid_count += 1
                 continue
 
-            if today_midnight_timestamp is not None and candle.timestamp >= today_midnight_timestamp:
+            # Skip today's incomplete candles (only for daily, when today is set)
+            if today_midnight_timestamp is not None and ts >= today_midnight_timestamp:
                 continue
 
-            candles.append(candle.to_dict())
+            candles.append(FetchPoint(fields=values, timestamp=ts))
 
-        return candles
+        warnings = []
 
-    def _map_fields(self, candle, fields):
-        if fields == ["price"]:
-            return {"price": float(candle["fields"]["close"])}
+        if invalid_count:
+            warnings.append(f"Skipped {invalid_count} invalid candles")
 
-        # Candle subset mode
+        return FetchResult.ok_payload(name, candles, warnings)
+
+'''    def _map_fields(self, candle, fields):
         if set(fields).issubset(self.VALID_CANDLE_FIELDS):
             return {f: float(candle["fields"][f]) for f in fields}
 
         raise ValueError(
             "Yahoo provider only supports fields=['price'] or fields=['open','high','low','close','volume']"
         )
+'''

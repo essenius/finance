@@ -2,11 +2,27 @@
 # Licensed under the Apache License, Version 2.0. See the LICENSE file for details.
 # File: src/finance/write/influx.py
 
-import requests
+from dataclasses import dataclass
 
-from finance.common.log_mixin import LogMixin
+import requests
+from dateutil.parser import isoparse
+
+from finance.common.introspection import here
+from finance.common.model import Result, TimeseriesResult, TimeseriesWrite
 
 from .ssl_context_adapter import SSLContextAdapter, make_legacy_ssl_context
+
+
+@dataclass(frozen=True)
+class InfluxConfig:
+    ssl_verify: bool | str
+    version: int
+    base_url: str
+    org: str | None = None
+    write_token: str | None = None
+    read_token: str | None = None
+    db: str | None = None
+    auth: tuple[str, str] | None = None
 
 
 def configure_verify(session, mode, cert):
@@ -41,146 +57,214 @@ def configure_verify(session, mode, cert):
     raise ValueError(f"Unknown verify mode: {mode}")
 
 
-class InfluxBackend(LogMixin):
-    def __init__(self, secrets: dict):
+class InfluxBackend:
+    @classmethod
+    def from_secrets(cls, secrets: dict) -> Result["InfluxBackend"]:
+        try:
+            context = { "location": here() }
+            url = secrets["url"].rstrip("/")
+            cert = secrets.get("cert")
+            ssl_verify_mode = secrets.get("ssl_verify", "true")
 
-        url = secrets["url"].rstrip("/")
-        cert = secrets.get("cert", None)
-        ssl_verify = secrets.get("ssl_verify", "true")
+            session = requests.Session()
+            ssl_verify = configure_verify(session, ssl_verify_mode, cert)
+            warnings = []
+            config = None
+            if "org" in secrets:
+                base_url = f"{url}/api/v2/write"
+                config = InfluxConfig(
+                    ssl_verify=ssl_verify,
+                    version=2,
+                    base_url=base_url,
+                    org=secrets["org"],
+                    write_token=secrets["write-token"],
+                    read_token=secrets["read-token"],
+                )
 
-        self.session = requests.Session()
-        self.ssl_verify = configure_verify(self.session, ssl_verify, cert)
+            if "db" in secrets:
+                if "org" in secrets:
+                    warnings.append("secrets contain both 'org' (InfluxDb 2.x) and 'db' (InfluxDB 1.x), ignoring 'db'")
+                else:
+                    base_url = f"{url}/write"
+                    user = secrets.get("user")
+                    password = secrets.get("password")
+                    auth = (user, password) if user and password else None
+                    config = InfluxConfig(
+                        ssl_verify=ssl_verify,
+                        version=1,
+                        base_url=base_url,
+                        db=secrets["db"],
+                        auth=auth,
+                    )
 
-        self.is_v2 = "org" in secrets
-        self.is_v1 = "db" in secrets
+            if config is None:
+                return Result.fail("Secrets must contain either 'org' or 'db'", meta=context)
 
-        if self.is_v1 and self.is_v2:
-            self.warning("secrets contain both 'org' (InfluxDb 2.x) and 'db' (InfluxDB 1.x), ignoring 'db'")
+            return Result.ok_payload(cls(session, config), warnings, context)
 
-        if self.is_v2:
-            # InfluxDB 2.x
-            self.org = secrets["org"]
-            self.token = secrets["token"]
-            self.base_url = f"{url}/api/v2/write"
-            self.headers = {
-                "Authorization": f"Token {self.token}",
-                "Content-Type": "text/plain; charset=utf-8",
-            }
+        except Exception as e:
+            return Result.fail("Influx backend initialization failed", e, meta=context)
 
-        elif self.is_v1:
-            # InfluxDB 1.x
-            self.db = secrets["db"]
-            user = secrets.get("user")
-            password = secrets.get("password")
-            self.base_url = f"{url}/write"
-            self.auth = (user, password) if user and password else None
-            self.headers = {
-                "Content-Type": "text/plain; charset=utf-8",
-            }
+    def __init__(self, session: requests.Session, config: InfluxConfig):
+        print("InfluxBackend __init__ CALLED")
+        self.session = session
+        self.cfg = config
 
-        else:
-            raise ValueError("Secrets must contain either 'org' (InfluxDB 2.x) or 'db' (InfluxDB 1.x)")
-
-        self.debug("InfluxWriter initialized", base_url=self.base_url, verify=self.ssl_verify)
-
-
-    def read(self, bucket, measurement, start, stop):
+    def read(self, bucket: str, measurement: str) -> TimeseriesResult:
         """
         Unified read API for InfluxDB 1.x and 2.x.
 
-        bucket: string (InfluxDB 2.x only)
+        bucket: string (bucket for InfluxDB 2.x, retention policy for InfluxDB 1.x)
         measurement: string
         start, stop: unix timestamps (seconds)
         """
         try:
-            if self.is_v2:
-                return self._read_v2(bucket, measurement, start, stop)
+            if self.cfg.version == 2:
+                raw = self._read_v2(bucket, measurement)
+                return TimeseriesResult.ok_payload(measurement, self._parse_v2(bucket, measurement, raw))
             else:
-                return self._read_v1(measurement, start, stop)
+                raw = self._read_v1(bucket, measurement)
+                return TimeseriesResult.ok_payload(measurement, self._parse_v1(bucket, measurement, raw))
 
         except Exception as e:
-            self.error("Influx read failed", measurement=measurement, exception=e, args=e.args)
-            return {"ok": False, "error": str(e)}
+            return TimeseriesResult.fail(measurement, "Influx read failed", e)
 
-
-    def _read_v2(self, bucket, measurement, start, stop):
-        url = self.base_url.replace("/write", "/query")
+    def _read_v2(self, bucket: str, measurement: str) -> dict:
+        url = self.cfg.base_url.replace("/write", "/query")
 
         query = f'''
 from(bucket: "{bucket}")
-  |> range(start: {start}, stop: {stop})
+  |> range(start:0)
   |> filter(fn: (r) => r._measurement == "{measurement}")
+  |> last()
 '''
 
-        params = {"org": self.org}
+        params = {"org": self.cfg.org}
         headers = {
-            "Authorization": f"Token {self.token}",
+            "Authorization": f"Token {self.cfg.read_token}",
             "Content-Type": "application/vnd.flux",
         }
 
-        r = self.session.post(
-            url,
-            params=params,
-            data=query,
-            headers=headers,
-            timeout=5,
-            verify=self.ssl_verify,
-        )
+        r = self.session.post(url, params=params, data=query, headers=headers, timeout=5, verify=self.cfg.ssl_verify)
         r.raise_for_status()
-        return {"ok": True, "data": r.json()}
+        return r.json()
 
-
-    def _read_v1(self, measurement, start, stop):
-        url = self.base_url.replace("/write", "/query")
-
-        q = (
-            f"SELECT * FROM {measurement} "
-            f"WHERE time >= {start}s AND time <= {stop}s"
-        )
-
-        params = {"db": self.db, "q": q}
-
-        r = self.session.get(
-            url,
-            params=params,
-            auth=self.auth,
-            timeout=5,
-            verify=self.ssl_verify,
-        )
+    def _read_v1(self, bucket, measurement) -> dict:
+        url = self.cfg.base_url.replace("/write", "/query")
+        q = f'SELECT * FROM "{bucket}"."{measurement}" ORDER BY time DESC LIMIT 1'
+        params = {"db": self.cfg.db, "q": q}
+        r = self.session.get(url, params=params, auth=self.cfg.auth, timeout=5, verify=self.cfg.ssl_verify)
         r.raise_for_status()
-        return {"ok": True, "data": r.json()}
+        return r.json()
 
+    def _parse_v2(self, bucket: str, measurement: str, data: dict) -> TimeseriesWrite | None:
 
-    def write(self, bucket, measurement, fields, timestamp, tags=None):
+        tables = data.get("tables", [])
+        if not tables:
+            return None
+
+        # Flux returns one record per field
+        fields = {}
+        tags = {}
+        timestamp = None
+
+        for table in tables:
+            for rec in table.get("records", []):
+                if rec.get("_measurement") != measurement:
+                    continue
+
+                if timestamp is None:
+                    timestamp = int(isoparse(rec["_time"]).timestamp())
+
+                field = rec.get("_field")
+                value = rec.get("_value")
+
+                # Skip malformed Flux records
+                if field is None or value is None:
+                    continue
+
+                fields[field] = value
+
+                # Extract tags (everything except Flux internals)
+                for k, v in rec.items():
+                    if k.startswith("_"):
+                        continue
+                    if k in ["result", "table"]:
+                        continue
+                    tags[k] = v
+
+        if not fields:
+            return None
+
+        return TimeseriesWrite(measurement=measurement, fields=fields, tags=tags, timestamp=timestamp, bucket=bucket)
+
+    def _parse_v1(self, bucket: str, measurement: str, data: dict) -> TimeseriesWrite | None:
+        results = data.get("results", [])
+        if not results:
+            return None
+
+        series = results[0].get("series", [])
+        if not series:
+            return None
+
+        row = series[0]
+        columns = row.get("columns")
+        if not columns:
+            return None
+        values_list = row.get("values", [])
+        if not values_list:
+            return None
+
+        values = values_list[0]
+
+        record = dict(zip(columns, values, strict=True))
+
+        # Extract timestamp
+        timestamp = int(isoparse(record["time"]).timestamp())
+
+        fields = {}
+        tags = {}
+
+        for key, value in record.items():
+            if key == "time":
+                continue
+
+            # InfluxQL rule: tags are always strings. Assume there are no string fields
+            if isinstance(value, str):
+                tags[key] = value
+            else:
+                fields[key] = value
+
+        return TimeseriesWrite(measurement=measurement, fields=fields, tags=tags, timestamp=timestamp, bucket=bucket)
+
+    def write(self, entry: TimeseriesWrite) -> TimeseriesResult:
         """
-        bucket: string (InfluxDB 2.x only, ignored in 1.x)
-        measurement: string
-        fields: dict, e.g. {"value": 123.45}
-        timestamp: int (unix seconds)
+        write a time series entry to InfluxDB
         """
         tag_str = ""
-        if tags:
-            tag_str = "," + ",".join(f"{k}={v}" for k, v in tags.items())
-        field_str = ",".join(f"{k}={v}" for k, v in fields.items())
-        line = f"{measurement}{tag_str} {field_str} {timestamp}"
+        if entry.tags:
+            tag_str = "," + ",".join(f"{k}={v}" for k, v in entry.tags.items())
+        field_str = ",".join(f"{k}={v}" for k, v in entry.fields.items())
+        line = f"{entry.measurement}{tag_str} {field_str} {entry.timestamp}"
 
         base_params = {
             "data": line,
-            "headers": self.headers,
+            "headers": {"Content-Type": "text/plain; charset=utf-8"},
             "timeout": 5,
-            "verify": self.ssl_verify,
+            "verify": self.cfg.ssl_verify,
         }
+
         try:
-            if self.is_v2:
-                url = f"{self.base_url}?org={self.org}&bucket={bucket}&precision=s"
+            if self.cfg.version == 2:
+                base_params["headers"]["Authorization"] = f"Token {self.cfg.write_token}"
+                url = f"{self.cfg.base_url}?org={self.cfg.org}&bucket={entry.bucket}&precision=s"
                 r = self.session.post(url, **base_params)
             else:
-                url = f"{self.base_url}?db={self.db}&precision=s"
-                r = self.session.post(url, auth=self.auth, **base_params)
+                url = f"{self.cfg.base_url}?db={self.cfg.db}&rp={entry.bucket}&precision=s"
+                r = self.session.post(url, auth=self.cfg.auth, **base_params)
 
             r.raise_for_status()
-            return {"ok": True}
+            return TimeseriesResult.ok_payload(entry.measurement, None)
 
         except Exception as e:
-            self.error("Influx write failed", measurement=measurement, exception=e, args=e.args)
-            return {"ok": False, "error": str(e)}
+            return TimeseriesResult.fail(entry.measurement, "Influx write failed", e, meta={"attempted_timestamp": entry.timestamp})

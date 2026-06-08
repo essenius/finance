@@ -16,6 +16,7 @@ DURATION_UNITS = {
 
 
 def parse_duration(text: str) -> int:
+    """Returns duration in seconds of a duration string codified with a unit, e.g. '2h' -> 7200"""
     match = re.fullmatch(r"(\d+)([smhdwy])", text)
     if not match:
         raise ValueError(f"Invalid duration '{text}'")

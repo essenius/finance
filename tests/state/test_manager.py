@@ -8,7 +8,8 @@ from pathlib import Path
 
 import pytest
 
-from finance.state.manager import load_state, save_state
+from finance.common.model import TimeseriesResult, TimeseriesWrite
+from finance.state.manager import load_state, rebuild_measurement_state, save_state
 
 
 def test_load_state_missing_file(tmp_path):
@@ -178,98 +179,86 @@ def test_load_state_after_atomic_save(tmp_path, monkeypatch):
 # rebuild_measurement_state tests
 # ---------------------------------------------------------------------------
 
-def test_rebuild_measurement_state_prefers_wal(monkeypatch):
-    """If WAL has entries for the measurement, the newest one wins."""
 
-    from finance.state.manager import rebuild_measurement_state
+def test_rebuild_measurement_state_prefers_wal():
 
-    # Fake WAL with two entries
+
     class FakeWAL:
         def read_all(self):
             return [
-                {"measurement": "spx", "fields": {"value": 100}, "timestamp": 10},
-                {"measurement": "spx", "fields": {"value": 200}, "timestamp": 20},
+                TimeseriesWrite("spx", {"value": 100}, {}, 10, "bucket"),
+                TimeseriesWrite("spx", {"value": 200}, {}, 20, "bucket"),
             ]
 
-    # Influx should NOT be queried
     class FakeInflux:
-        def query_latest(self, m):
+        def read(self, bucket, measurement):
             raise AssertionError("Influx should not be queried when WAL has entries")
 
     wal = FakeWAL()
     influx = FakeInflux()
 
-    result = rebuild_measurement_state("spx", wal, influx)
+    result = rebuild_measurement_state("bucket", "spx", wal, influx)
 
     assert result == {"fields": {"value": 200}, "last_timestamp": 20}
 
 
 def test_rebuild_measurement_state_uses_influx_if_wal_empty():
-    """If WAL has no entries for the measurement, Influx is used."""
-
-    from finance.state.manager import rebuild_measurement_state
-
-    class FakeWAL:
-        def read_all(self):
-            return []  # empty WAL
-
-    class FakeInflux:
-        def query_latest(self, m):
-            assert m == "spx"
-            class R:
-                fields = {"value": 999}
-                timestamp = 123
-            return R()
-
-    wal = FakeWAL()
-    influx = FakeInflux()
-
-    result = rebuild_measurement_state("spx", wal, influx)
-
-    assert result == {"fields": {"value": 999}, "last_timestamp": 123}
-
-
-def test_rebuild_measurement_state_returns_none_if_no_history():
-    """If neither WAL nor Influx has data, return None."""
-
-    from finance.state.manager import rebuild_measurement_state
 
     class FakeWAL:
         def read_all(self):
             return []
 
     class FakeInflux:
-        def query_latest(self, m):
-            return None
+        def read(self, bucket, measurement):
+            assert measurement == "spx"
+            return TimeseriesResult.ok_payload(
+                "spx",
+                TimeseriesWrite("spx", {"value": 999}, {}, 123, bucket)
+            )
 
     wal = FakeWAL()
     influx = FakeInflux()
 
-    result = rebuild_measurement_state("spx", wal, influx)
+    result = rebuild_measurement_state("bucket", "spx", wal, influx)
+
+    assert result == {"fields": {"value": 999}, "last_timestamp": 123}
+
+
+def test_rebuild_measurement_state_returns_none_if_no_history():
+
+    class FakeWAL:
+        def read_all(self):
+            return []
+
+    class FakeInflux:
+        def read(self, bucket, measurement):
+            return TimeseriesResult.fail(measurement, "no data")
+
+    wal = FakeWAL()
+    influx = FakeInflux()
+
+    result = rebuild_measurement_state("bucket", "spx", wal, influx)
 
     assert result is None
 
 
 def test_rebuild_measurement_state_multiple_wal_entries_newest_wins():
-    """Ensure WAL replay picks the highest timestamp."""
-
-    from finance.state.manager import rebuild_measurement_state
 
     class FakeWAL:
         def read_all(self):
             return [
-                {"measurement": "spx", "fields": {"value": 1}, "timestamp": 10},
-                {"measurement": "spx", "fields": {"value": 2}, "timestamp": 30},
-                {"measurement": "spx", "fields": {"value": 3}, "timestamp": 20},
+                TimeseriesWrite("spx", {"value": 1}, {}, 10, "bucket"),
+                TimeseriesWrite("spx", {"value": 2}, {}, 30, "bucket"),
+                TimeseriesWrite("spx", {"value": 3}, {}, 20, "bucket"),
             ]
 
     class FakeInflux:
-        def query_latest(self, m):
+        def read(self, bucket, measurement):
             raise AssertionError("Should not query Influx when WAL has entries")
 
     wal = FakeWAL()
     influx = FakeInflux()
 
-    result = rebuild_measurement_state("spx", wal, influx)
+    result = rebuild_measurement_state("bucket", "spx", wal, influx)
 
     assert result == {"fields": {"value": 2}, "last_timestamp": 30}

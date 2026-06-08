@@ -1,10 +1,9 @@
-
 import pytest
 
 from finance.config.loader import normalize_assets
 
 
-def test_normalize_assets_basic():
+def test_normalize_assets_basic(unwrap):
     raw = {
         "eurusd": {
             "provider": "yahoo",
@@ -22,7 +21,7 @@ def test_normalize_assets_basic():
         }
     }
 
-    assets = normalize_assets(raw)
+    assets = unwrap(normalize_assets(raw))
 
     # loader expands into eurusd_intraday
     assert "eurusd_intraday" in assets
@@ -40,7 +39,7 @@ def test_normalize_assets_basic():
     assert a["fields"] == ["price"]
 
 
-def test_normalize_assets_default_fields():
+def test_normalize_assets_default_fields(unwrap):
     raw = {
         "spx": {
             "provider": "yahoo",
@@ -54,13 +53,13 @@ def test_normalize_assets_default_fields():
         }
     }
 
-    assets = normalize_assets(raw)
+    assets = unwrap(normalize_assets(raw))
     a = assets["spx_daily"]
 
     assert a["fields"] == ["price"]
 
 
-def test_normalize_assets_field_set_expansion():
+def test_normalize_assets_field_set_expansion(unwrap):
     raw = {
         "spx": {
             "provider": "yahoo",
@@ -71,13 +70,13 @@ def test_normalize_assets_field_set_expansion():
 
     field_sets = {"ohlc": ["open", "high", "low", "close"]}
 
-    assets = normalize_assets(raw, field_sets=field_sets)
+    assets = unwrap(normalize_assets(raw, field_sets=field_sets))
     a = assets["spx_daily"]
 
     assert a["fields"] == ["open", "high", "low", "close"]
 
 
-def test_normalize_assets_bucket_flattening():
+def test_normalize_assets_bucket_flattening(unwrap):
     raw = {
         "spx": {
             "provider": "yahoo",
@@ -91,13 +90,13 @@ def test_normalize_assets_bucket_flattening():
 
     buckets = {"intraday": "b_intraday", "daily": "b_daily"}
 
-    assets = normalize_assets(raw, buckets=buckets)
+    assets = unwrap(normalize_assets(raw, buckets=buckets))
 
     assert assets["spx_intraday"]["bucket"] == "b_intraday"
     assert assets["spx_daily"]["bucket"] == "b_daily"
 
 
-def test_normalize_assets_missing_required_field():
+def test_normalize_assets_missing_required_field(assert_error):
     raw = {
         "eurusd": {
             # "provider" is missing → should trigger ValueError
@@ -106,13 +105,24 @@ def test_normalize_assets_missing_required_field():
         }
     }
 
-    with pytest.raises(ValueError) as exc:
-        normalize_assets(raw)
-
-    assert "Missing required field 'provider' in asset 'eurusd'" in str(exc.value)
+    assert_error(normalize_assets(raw), "Missing required field 'provider' in asset 'eurusd'", None)
 
 
-def test_normalize_assets_missing_interval():
+def test_normalize_assets_unknown_series(assert_error):
+    raw = {
+        "spx": {
+            "provider": "yahoo",
+            "symbol": "^GSPC",
+            "timeseries": {
+                "boom": {
+                }
+            },
+        }
+    }
+
+    assert_error(normalize_assets(raw), "Unknown timeseries name 'boom' in asset 'spx'", None)
+
+def test_normalize_assets_missing_interval(assert_error):
     raw = {
         "spx": {
             "provider": "yahoo",
@@ -125,13 +135,10 @@ def test_normalize_assets_missing_interval():
         }
     }
 
-    with pytest.raises(ValueError) as exc:
-        normalize_assets(raw)
-
-    assert "Missing required field 'interval' in timeseries 'daily' in asset 'spx'" in str(exc.value)
+    assert_error(normalize_assets(raw), "Missing required field 'interval' in timeseries 'daily' in asset 'spx'", None)
 
 
-def test_normalize_assets_unknown_field_set():
+def test_normalize_assets_unknown_field_set(assert_error):
     raw = {
         "spx": {
             "provider": "yahoo",
@@ -142,8 +149,4 @@ def test_normalize_assets_unknown_field_set():
 
     field_sets = {"ohlc": ["open", "high", "low", "close"]}
 
-    with pytest.raises(ValueError) as exc:
-        normalize_assets(raw, field_sets=field_sets)
-
-    assert "Unknown field set 'does_not_exist' in asset 'spx'" in str(exc.value)
-
+    assert_error(normalize_assets(raw, field_sets=field_sets), "Unknown field set 'does_not_exist' in asset 'spx'", None)

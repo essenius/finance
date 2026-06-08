@@ -2,17 +2,17 @@
 # Licensed under the Apache License, Version 2.0. See the LICENSE file for details.
 # File: tests/composites/test_engine.py
 
-import logging
 import pytest
 
 from finance.composites.engine import CompositeEngine
+from finance.state.manager import State
 
 # ---------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------
 
 
-def make_state(**metrics):
+def make_state(state: State, **metrics):
     """
     Convenience helper:
     make_state(
@@ -20,9 +20,8 @@ def make_state(**metrics):
         B_daily = ({"value": 3}, 200)
     )
     """
-    state = {}
     for name, (fields, timestamp) in metrics.items():
-        state[name] = {
+        state.data[name] = {
             "fields": fields,
             "last_timestamp": timestamp,
         }
@@ -42,7 +41,7 @@ def make_state(**metrics):
         ("gold.high - gold.low", "gold_daily.high - gold_daily.low"),
     ],
 )
-def test_identifier_rewriting(expr, expected):
+def test_identifier_rewriting(expr, expected, unwrap, state_obj):
     composites = {
         "C": {
             "expression": expr,
@@ -52,13 +51,14 @@ def test_identifier_rewriting(expr, expected):
         }
     }
 
-    state = make_state(
+    state = make_state(state_obj,
         A_daily=({"value": 2}, 100),
         B_daily=({"value": 3}, 200),
         gold_daily=({"high": 2050, "low": 2000}, 500),
     )
 
-    engine = CompositeEngine(composites, state)
+
+    engine = unwrap(CompositeEngine.build(composites, state))
     rewritten = engine._rewrite_expression(expr, "daily")
     assert rewritten == expected
 
@@ -68,7 +68,7 @@ def test_identifier_rewriting(expr, expected):
 # ---------------------------------------------------------
 
 
-def test_field_access():
+def test_field_access(unwrap, state_obj):
     composites = {
         "RANGE": {
             "expression": "gold.high - gold.low",
@@ -78,15 +78,14 @@ def test_field_access():
         }
     }
 
-    state = make_state(
-        gold_daily=({"high": 2050, "low": 2000}, 500),
-    )
+    state = make_state(state_obj, gold_daily=({"high": 2050, "low": 2000}, 500))
 
-    engine = CompositeEngine(composites, state)
-    result = engine.evaluate_all()
-
-    assert result["RANGE"][0]["value"] == 50
-    assert result["RANGE"][1] == 500
+    engine = unwrap(CompositeEngine.build(composites, state))
+    result_list = list(engine.evaluate_incrementally())
+    assert not result_list[0].error
+    result = unwrap(result_list[0])
+    assert result[0].fields["value"] == 50
+    assert result[0].timestamp == 500
 
 
 # ---------------------------------------------------------
@@ -95,7 +94,7 @@ def test_field_access():
 
 
 @pytest.mark.parametrize(
-    "composites, state, expected",
+    "composites, initial_metrics, expected",
     [
         # Simple composite
         (
@@ -107,10 +106,10 @@ def test_field_access():
                     "tags": {},
                 }
             },
-            make_state(
-                A_daily=({"value": 2}, 900),
-                B_daily=({"value": 3}, 950),
-            ),
+            {
+                "A_daily": ({"value": 2}, 900),
+                "B_daily": ({"value": 3}, 950),
+            },
             {"C": ({"value": 5}, 950)},
         ),
         # Multi-level composite
@@ -129,12 +128,12 @@ def test_field_access():
                     "tags": {},
                 },
             },
-            make_state(
-                A_daily=({"value": 1}, 1000),
-                B_daily=({"value": 2}, 1100),
-                C_daily=({"value": None}, None),
-                D_daily=({"value": None}, None),
-            ),
+            {
+                "A_daily": ({"value": 1}, 1000),
+                "B_daily": ({"value": 2}, 1100),
+                "C_daily": ({"value": None}, None),
+                "D_daily": ({"value": None}, None),
+            },
             {
                 "C": ({"value": 3}, 1100),
                 "D": ({"value": 6}, 1100),
@@ -156,11 +155,11 @@ def test_field_access():
                     "tags": {},
                 },
             },
-            make_state(
-                A_daily=({"value": 1}, 1000),
-                B_daily=({"value": 2}, 1100),
-                X_daily=({"value": 5}, 2000),
-            ),
+            {
+                "A_daily": ({"value": 1}, 1000),
+                "B_daily": ({"value": 2}, 1100),
+                "X_daily": ({"value": 5}, 2000),
+            },
             {
                 "C": ({"value": 3}, 1100),
                 "D": ({"value": 15}, 2000),
@@ -168,13 +167,16 @@ def test_field_access():
         ),
     ],
 )
-def test_composite_evaluation(composites, state, expected):
-    engine = CompositeEngine(composites, state)
-    result = engine.evaluate_all()
+def test_composite_evaluation(unwrap, state_obj, composites, initial_metrics, expected):
 
+    state = make_state(state_obj, **initial_metrics)
+    engine = unwrap(CompositeEngine.build(composites, state))
+    list(engine.evaluate_incrementally())
     for key, (fields, ts) in expected.items():
-        assert result[key][0] == fields
-        assert result[key][1] == ts
+        metric = f"{key}_daily"
+        entry = state.get(metric)
+        assert entry["fields"] == fields
+        assert entry["last_timestamp"] == ts
 
 
 # ---------------------------------------------------------
@@ -182,7 +184,7 @@ def test_composite_evaluation(composites, state, expected):
 # ---------------------------------------------------------
 
 
-def test_missing_dependency(caplog):
+def test_missing_dependency(unwrap, assert_error, state_obj):
     composites = {
         "C": {
             "expression": "A + B",
@@ -192,21 +194,28 @@ def test_missing_dependency(caplog):
         }
     }
 
-    state = make_state(
+    state = make_state(state_obj,
         A_daily=({"value": 1}, 900),
         # B_daily missing
     )
 
-    engine = CompositeEngine(composites, state)
+    engine = unwrap(CompositeEngine.build(composites, state))
 
-    with caplog.at_level(logging.ERROR):
-        result = engine.evaluate_all()
+    results = list(engine.evaluate_incrementally())
 
-    assert result == {}
-    assert "Composite C failed" in caplog.text
+        # Expect exactly one failure
+    fail = [r for r in results if not r.ok]
+    assert len(fail) == 1
+
+    fr = fail[0]
+    assert fr.measurement == "C"
+    assert_error(fr, "failed", "name 'B' is not defined")
+
+    # No composite should be written to state
+    assert state.data.get("C_daily") is None
 
 
-def test_syntax_error_in_raw_expression(caplog):
+def test_syntax_error_in_raw_expression(state_obj):
     composites = {
         "C": {
             "expression": "A +",  # invalid raw expression
@@ -216,20 +225,18 @@ def test_syntax_error_in_raw_expression(caplog):
         }
     }
 
-    state = make_state(
-        A_daily=({"value": 1}, 100),
-    )
+    state = make_state(state_obj, A_daily=({"value": 1}, 100))
 
-    engine = CompositeEngine(composites, state)
+    engine = CompositeEngine.build(composites, state)
+    assert not engine.ok
+    assert "Syntax error in composite expression 'A +'" in engine.reason
+    assert "invalid syntax (<unknown>, line 1)" in engine.error
 
-    with caplog.at_level(logging.ERROR):
-        result = engine.evaluate_all()
-
-    assert result == {}
-    assert "Syntax error" in caplog.text
+    # No composite should be written to state
+    assert state.data.get("C_daily") is None
 
 
-def test_no_dependencies():
+def test_no_dependencies(unwrap, state_obj):
     composites = {
         "X": {
             "expression": "42",
@@ -239,12 +246,24 @@ def test_no_dependencies():
         }
     }
 
-    state = make_state(
-        dummy=({"value": 0}, 1234),
-    )
+    state = make_state(state_obj, dummy=({"value": 0}, 1234))
 
-    engine = CompositeEngine(composites, state)
-    result = engine.evaluate_all()
+    engine = unwrap(CompositeEngine.build(composites, state))
+    list(engine.evaluate_incrementally())
 
-    assert result["X"][0]["value"] == 42
-    assert result["X"][1] == 1234
+    entry = state.get("X_daily")
+    assert entry["fields"]["value"] == 42
+    assert entry["last_timestamp"] == 1234
+
+def test_cycle_error_in_build(state_obj, assert_error):
+    composites = {
+        "A": {
+            "expression": "A",   # self-reference
+            "timeseries": "daily",
+            "measurement": "test",
+            "tags": {},
+        }
+    }
+
+    result = CompositeEngine.build(composites, state_obj)
+    assert_error(result, "Error in topo_sort", "Cycle detected at A")

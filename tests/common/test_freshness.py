@@ -15,3 +15,7 @@ def test_is_recent_false():
 
 def test_is_recent_false_no_last_try():
     assert not is_recent({}, now=100, interval=60)
+
+
+def test_is_recent_false_none():
+    assert not is_recent(None, now=100, interval=60)

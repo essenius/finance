@@ -62,6 +62,7 @@ pyrightconfig.json
 
 # Environment variables
 .env
+wal.jsonl
 
 # Secrets (any file starting with "secret")
 secret*

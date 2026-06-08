@@ -6,71 +6,75 @@ from datetime import datetime
 
 import finance
 
-from .common.log_mixin import LogMixin
-from .composites import evaluate_composites
+from .common.applogger import AppLogger
+from .composites.engine import CompositeEngine
 from .config.loader import load_config
 from .fetch.controller import FetchController
+from .main_utils import process_result, unwrap
 from .state.manager import State
 from .state.wal import JsonlWAL
-from .timeseries import TimeSeriesClient
-from .write import write_metric
-
-
-class AppLogger(LogMixin):
-    pass
-
+from .timeseries import InfluxBackend
 
 logger = AppLogger()
 
-
 def main():
-    now = datetime.now().astimezone().isoformat(timespec="seconds")
-    logger.info(f"Finance version: {finance.__version__} started at {now}")
+    print("CALLSITE:", State, id(State))
 
-    config = load_config()
-    paths = config["paths"]
-    assets = config["assets"]
-    composites = config["composites"]
-    secrets = config["secrets"]
-    buckets = config["buckets"]
+    try:
+        now = datetime.now().astimezone().isoformat(timespec="seconds")
+        logger.info(f"Finance version: {finance.__version__} started at {now}")
 
-    timeseries_client = TimeSeriesClient(secrets["influx"])
-    wal = JsonlWAL(paths.get("wal"))
-    state = State(timeseries_client, wal, paths.get("state"))
+        config = unwrap(load_config())
 
-    # Fetch primary asset metrics
-    fetch_controller = FetchController(assets, secrets["api_keys"])
-    fetched = fetch_controller.fetch_all(state)
+        paths = config["paths"]
+        assets = config["assets"]
+        composites = config["composites"]
+        secrets = config["secrets"]
+        buckets = config["buckets"]
 
-    failures = 0
+        def bucket_for(measurement: str) -> str:
+            return config["measurements"][measurement]["bucket"]
 
-    for asset_name, (fields, timestamp) in fetched.items():
-        asset_cfg = assets[asset_name]
-        series_type = asset_cfg["timeseries"]
-        bucket = buckets[series_type]
-        measurement = asset_name
+        timeseries_client = InfluxBackend.from_secrets(secrets["influx"])
+        wal = JsonlWAL(paths.get("wal"))
+        state = State(timeseries_client=timeseries_client, wal=wal, path=paths.get("state"), bucket_for=bucket_for)
 
-        result = write_metric(bucket, measurement, fields, timestamp, state)
-        if not result["ok"]:
-            failures += 1
+        fetch_failures = 0
 
-    # Evaluate composites
-    computed = evaluate_composites(composites, state)
+        # Fetch and save primary asset metrics
+        fetch_controller = FetchController(assets, secrets.get("api_keys"))
+        for result in fetch_controller.fetch_incrementally(state):
+            cfg = assets[result.measurement]
+            if not process_result(result, state, cfg.get("tags"), cfg["bucket"]):
+                fetch_failures += 1
 
-    for name, (fields, timestamp) in computed.items():
-        composite_cfg = composites[name]
-        series_type = composite_cfg["timeseries"]
-        bucket = buckets[series_type]
-        measurement = name
+        if fetch_failures:
+            logger.error(f"Fetch completed with {fetch_failures} failures")
 
-        result = write_metric(bucket, measurement, fields, timestamp, state)
-        if not result["ok"]:
-            failures += 1
+        # calculate and save composites
+        engine = unwrap(CompositeEngine.build(composites, state))
 
-    # Persist state
-    state.save()
+        composite_failures = 0
 
-    if failures:
-        logger.error(f"Completed with {failures} write failures")
-        raise SystemExit(1)
-    logger.info("Done.")
+        for result in engine.evaluate_incrementally():
+            cfg = composites[result.measurement]
+            bucket = buckets[cfg["timeseries"]]
+            if not process_result(result, state, cfg.get("tags"), bucket):
+                composite_failures += 1
+
+        if composite_failures:
+            logger.error(f"Composite evaluation completed with {composite_failures} failures")
+
+        # Persist state
+        state.save()
+
+        if fetch_failures or composite_failures:
+            raise SystemExit(1)
+        logger.info("Done.")
+        return
+
+    # catch the unwrap errors
+    except Exception as e:
+        logger.error("Exiting due to error", error=e)
+        raise SystemExit(2) from None
+

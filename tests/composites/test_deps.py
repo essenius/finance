@@ -6,7 +6,6 @@ import pytest
 
 from finance.composites.deps import (
     CycleError,
-    build_composite_graph,
     extract_dependencies,
     topo_sort,
 )
@@ -136,9 +135,9 @@ def test_topo_sort_cycles(graph):
     ],
 )
 def test_extract_dependencies_ok(expr, candidates, expected):
-    deps, err = extract_dependencies(expr, candidates)
-    assert err is None
-    assert set(deps) == expected
+    result = extract_dependencies(expr, candidates)
+    assert result.ok
+    assert set(result.payload) == expected
 
 
 @pytest.mark.parametrize(
@@ -151,9 +150,9 @@ def test_extract_dependencies_ok(expr, candidates, expected):
     ],
 )
 def test_extract_dependencies_syntax_error(expr):
-    deps, err = extract_dependencies(expr, {"A", "B"})
-    assert deps == []
-    assert "Syntax error" in err
+    result = extract_dependencies(expr, {"A", "B"})
+    assert not result.ok
+    assert "Syntax error" in result.reason
 
 
 # -------------------------
@@ -161,53 +160,25 @@ def test_extract_dependencies_syntax_error(expr):
 # -------------------------
 
 
-@pytest.mark.parametrize(
-    "composites, state, expected",
-    [
-        # Simple
-        ({"C": "A + B"}, {"A": {}, "B": {}, "C": {}}, {"C": {"A", "B"}}),
-        # Multiple
-        (
-            {"C": "A + B", "D": "C * 2"},
-            {"A": {}, "B": {}, "C": {}, "D": {}},
-            {"C": {"A", "B"}, "D": {"C"}},
-        ),
-        # Composite depends on composite (your added case)
-        ({"C": "A + B", "D": "C * 2"}, {"A": {}, "B": {}, "C": {}, "D": {}}, {"C": {"A", "B"}, "D": {"C"}}),
-        # Unknown names ignored
-        (
-            {"X": "A + B + UNKNOWN"},
-            {"A": {}, "B": {}, "X": {}},
-            {"X": {"A", "B"}},
-        ),
-        # No dependencies
-        (
-            {"Z": "42"},
-            {"Z": {}},
-            {"Z": set()},
-        ),
-    ],
-)
-def test_build_composite_graph(composites, state, expected):
-    graph, errors = build_composite_graph(composites, state)
+def test_composite_graph_equivalent_behavior():
+    composites = {"C": "A + B", "D": "C * 2"}
+    state = {"A": {}, "B": {}, "C": {}, "D": {}}
 
-    # Graph correctness
-    for key, deps in expected.items():
-        assert set(graph[key]) == deps
+    # Extract deps using the new Result API
+    deps = {}
+    for name, expr in composites.items():
+        result = extract_dependencies(expr, state.keys())
+        assert result.ok, f"Unexpected parse error: {result.reason}"
+        deps[name] = set(result.payload)
 
-    # No errors expected in these cases
-    assert errors == {}
+    # Only composite→composite edges matter
+    graph = {
+        name: [dep for dep in deps[name] if dep in composites]
+        for name in composites
+    }
+
+    order = topo_sort(graph)
+
+    assert order == ["C", "D"]
 
 
-@pytest.mark.parametrize(
-    "expr",
-    ["A +", "(", "A * * B", "A + (B * )"],
-)
-def test_build_composite_graph_syntax_errors(expr):
-    composites = {"C": expr}
-    state = {"A": {}, "B": {}, "C": {}}
-
-    graph, errors = build_composite_graph(composites, state)
-
-    assert graph["C"] == []
-    assert "Syntax error" in errors["C"]

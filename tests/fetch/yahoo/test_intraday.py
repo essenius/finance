@@ -11,68 +11,82 @@ from datetime import timedelta
 
 import pytest
 
+from finance.common.model import FetchPoint, FetchResult
+
 INTRADAY_CASES = [
-    # _fetch returns None → []
-    (
-        lambda provider: None,  # _fetch
-        lambda data, symbol: [],  # _extract_candles
-        [],  # expected
+    # 1) _fetch fails → return FetchResult.fail
+    dict(
+        fetch_result=FetchResult.fail("eurusd", "boom"),
+        candle_result=None,  # won't be used
+        expected_ok=False,
+        expected_payload=None,
     ),
-    # candles returned → use candles
-    (
-        lambda provider: {"chart": {"result": [{}]}},
-        lambda data, symbol: [
-            {"timestamp": 100, "fields": {"close": 1.1}},
-            {"timestamp": 200, "fields": {"close": 1.2}},
-        ],
-        [
-            {"timestamp": 100, "fields": {"close": 1.1}},
-            {"timestamp": 200, "fields": {"close": 1.2}},
+
+    # 2) candles exist → convert to FetchPoints
+    dict(
+        fetch_result=FetchResult.ok_payload("eurusd", payload={"chart": {"result": [{}]}}),
+        candle_result=FetchResult.ok_payload(
+            "eurusd",
+            payload=[
+                FetchPoint(timestamp=100, fields={ "open":0, "high": 0, "low": 0, "close": 1.1, "volume": 0}),
+                FetchPoint(timestamp=200, fields={ "open":0, "high": 0, "low": 0, "close": 1.2, "volume": 0}),
+            ],
+        ),
+        expected_ok=True,
+        expected_payload=[
+            FetchPoint(timestamp=100, fields={"price": 1.1}),
+            FetchPoint(timestamp=200, fields={"price": 1.2}),
         ],
     ),
-    # no candles → fallback to metadata
-    (
-        lambda provider: {
-            "meta": {
-                "regularMarketTime": 1000,
-                "regularMarketPrice": 1.234,
-            }
-        },
-        lambda data, symbol: [],
-        [
-            {"timestamp": 1000, "fields": {"close": 1.234}},
+
+    # 3) no candles → fallback to metadata
+    dict(
+        fetch_result=FetchResult.ok_payload(
+            "eurusd",
+            payload={"meta": {"regularMarketTime": 1000, "regularMarketPrice": 1.234}},
+        ),
+        candle_result=FetchResult.ok_payload("eurusd", payload=[]),
+        expected_ok=True,
+        expected_payload=[
+            FetchPoint(timestamp=1000, fields={"price": 1.234}),
         ],
     ),
 ]
 
+@pytest.mark.parametrize("case", INTRADAY_CASES)
+def test_intraday_basic(provider, monkeypatch, case):
+    # Patch _fetch to return the pre-baked FetchResult
+    monkeypatch.setattr(provider, "_fetch", lambda *a, **kw: case["fetch_result"])
 
-@pytest.mark.parametrize("fetch_fn, candle_fn, expected", INTRADAY_CASES)
-def test_intraday_basic(provider, monkeypatch, fetch_fn, candle_fn, expected):
-    monkeypatch.setattr(provider, "_fetch", lambda *a, **kw: fetch_fn(provider))
-    monkeypatch.setattr(provider, "_extract_candles", candle_fn)
+    # Patch _extract_candles to return the pre-baked candle list
+    if case["candle_result"] is not None:
+        monkeypatch.setattr(provider, "_extract_candles", lambda results, fields=None, today=None: case["candle_result"])
 
-    result = provider._fetch_intraday("EURUSD=X", ["close"], last_timestamp=None)
-    assert result == expected
+    result = provider._fetch_intraday(name="eurusd", symbol="EURUSD=X", last_timestamp=None)
+
+    assert result.ok == case["expected_ok"]
+    assert result.payload == case["expected_payload"]
+
 
 
 def test_intraday_range_initial_load(provider, monkeypatch):
     provider.config["intraday_history_limit"] = "5d"
 
     # First call: ignore result, just warm up
-    monkeypatch.setattr(provider, "_fetch", lambda *a, **kw: {"chart": {"result": [{}]}})
-    monkeypatch.setattr(provider, "_extract_candles", lambda data, symbol: [])
+    monkeypatch.setattr(provider, "_fetch", lambda *a, **kw: FetchResult.ok_payload("eurusd", {"chart": {"result": [{}]}}))
+    monkeypatch.setattr(provider, "_extract_candles", lambda results, fields=None, today=None: FetchResult.ok_payload("eurusd", []))
 
-    provider._fetch_intraday("EURUSD=X", ["close"], last_timestamp=None)
+    provider._fetch_intraday("eurusd", "EURUSD=X", last_timestamp=None)
 
-    # Capture the actual range passed
+    # Capture the actual range passed to make last_timestamp known.
     captured = {}
 
-    def fake_fetch(symbol, interval_str, range_str):
+    def fake_fetch(name, symbol, interval_str, range_str):
         captured["range"] = range_str
-        return {"chart": {"result": [{}]}}
+        return FetchResult.ok_payload("eurusd", {"chart": {"result": [{}]}})
 
     monkeypatch.setattr(provider, "_fetch", fake_fetch)
-    provider._fetch_intraday("EURUSD=X", ["close"], last_timestamp=None)
+    provider._fetch_intraday("eurusd", "EURUSD=X", last_timestamp=None)
 
     assert captured["range"] == "5d"
 
@@ -85,14 +99,14 @@ def test_intraday_range_incremental(provider, monkeypatch):
 
     captured = {}
 
-    def fake_fetch(symbol, interval_str, range_str):
+    def fake_fetch(name, symbol, interval_str, range_str):
         captured["range"] = range_str
-        return {"chart": {"result": [{}]}}
+        return FetchResult.ok_payload("eurusd", {"chart": {"result": [{}]}})
 
     monkeypatch.setattr(provider, "_fetch", fake_fetch)
-    monkeypatch.setattr(provider, "_extract_candles", lambda data, symbol: [])
+    monkeypatch.setattr(provider, "_extract_candles", lambda results, fields=None, today=None: FetchResult.ok_payload("eurusd",[]))
 
-    provider._fetch_intraday("EURUSD=X", ["close"], last_timestamp=recent_ts)
+    provider._fetch_intraday("eurusd", "EURUSD=X", last_timestamp=recent_ts)
 
     assert captured["range"] == "1m"
 
@@ -106,13 +120,13 @@ def test_intraday_range_exceeds_history_limit(provider, monkeypatch):
 
     captured = {}
 
-    def fake_fetch(symbol, interval_str, range_str):
+    def fake_fetch(name, symbol, interval_str, range_str):
         captured["range"] = range_str
-        return {"chart": {"result": [{}]}}
+        return FetchResult.ok_payload("eurusd", {"chart": {"result": [{}]}})
 
     monkeypatch.setattr(provider, "_fetch", fake_fetch)
-    monkeypatch.setattr(provider, "_extract_candles", lambda data, symbol: [])
+    monkeypatch.setattr(provider, "_extract_candles", lambda results, fields=None, today=None: FetchResult.ok_payload("eurusd", []))
 
-    provider._fetch_intraday("EURUSD=X", ["close"], last_timestamp=old_ts)
+    provider._fetch_intraday("eurusd", "EURUSD=X", last_timestamp=old_ts)
 
     assert captured["range"] == "5d"

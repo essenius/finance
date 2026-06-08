@@ -18,6 +18,7 @@ dependencies = [
     "python-dotenv",
     "requests",
     "PyYAML",
+    "python-dateutil"
 ]
 
 [tool.setuptools.packages.find]

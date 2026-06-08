@@ -40,7 +40,9 @@ def resolve_config_path(value: str | None, default_filename: str) -> Path:
 
     return resolved
 
+
 '''
+TODO: delete
 def get_path(path: Path | None, default_file) -> Path:
     """return path if it is defined, otherwise a default in the project root"""
     if path is not None:
@@ -48,4 +50,3 @@ def get_path(path: Path | None, default_file) -> Path:
     root = get_project_root()
     return root / default_file
 '''
-

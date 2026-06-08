@@ -6,14 +6,13 @@ environment:
   logging:
     level: info
   paths:
-    wal: "wal.jsonl"
-    state: "state.json"
+    wal: wal.jsonl
+    state: state.json
+  buckets:
+    intraday: investing_intraday
+    daily: investing_daily
 
 business:
-  buckets:
-    intraday: "finance_intraday"
-    daily: "finance_daily"
-
   providers:
     yahoo:
       default_interval: 10m
@@ -30,7 +29,7 @@ business:
     # -------------------------
     eurusd_yahoo:
       provider: yahoo
-      symbol: "EURUSD=X"
+      symbol: EURUSD=X
       tags:
         symbol: EURUSD
         instrument: forex
@@ -51,7 +50,7 @@ business:
     # -------------------------
     eurusd_ecb:
       provider: ecb
-      symbol: "USD_EUR"
+      symbol: USD_EUR
       tags:
         symbol: EURUSD
         instrument: forex
@@ -69,7 +68,7 @@ business:
     # -------------------------
     gold:
       provider: yahoo
-      symbol: "GC=F"
+      symbol: GC=F
       tags:
         symbol: GOLD
         instrument: commodity
@@ -87,7 +86,7 @@ business:
 
     wti:
       provider: yahoo
-      symbol: "CL=F"
+      symbol: CL=F
       tags:
         symbol: WTI
         instrument: commodity
@@ -105,7 +104,7 @@ business:
 
     brent:
       provider: yahoo
-      symbol: "BZ=F"
+      symbol: BZ=F
       tags:
         symbol: BRENT
         instrument: commodity
@@ -126,7 +125,7 @@ business:
     # -------------------------
     shell:
       provider: yahoo
-      symbol: "SHEL"
+      symbol: SHEL
       tags:
         symbol: SHEL
         instrument: equity
@@ -144,7 +143,7 @@ business:
 
     shell_as:
       provider: yahoo
-      symbol: "SHELL.AS"
+      symbol: SHELL.AS
       tags:
         symbol: SHELL.AS
         instrument: equity
@@ -165,7 +164,7 @@ business:
     # -------------------------
     spx:
       provider: yahoo
-      symbol: "^GSPC"
+      symbol: ^GSPC
       tags:
         symbol: SPX
         instrument: index
@@ -181,7 +180,7 @@ business:
 
     vix:
       provider: yahoo
-      symbol: "^VIX"
+      symbol: ^VIX
       tags:
         symbol: VIX
         instrument: index
@@ -221,7 +220,7 @@ business:
     # -------------------------
     fred_10y_nominal:
       provider: fred
-      symbol: "DGS10"
+      symbol: DGS10
       tags:
         symbol: 10Y_NOMINAL
         instrument: macro
@@ -234,7 +233,7 @@ business:
 
     fred_10y_breakeven:
       provider: fred
-      symbol: "T10YIE"
+      symbol: T10YIE
       tags:
         symbol: 10Y_BREAKEVEN
         instrument: macro
@@ -247,7 +246,7 @@ business:
 
     fed_balance_sheet:
       provider: fred
-      symbol: "WALCL"
+      symbol: WALCL
       tags:
         symbol: BALANCE_SHEET
         instrument: macro
@@ -260,7 +259,7 @@ business:
 
     treasury_avg:
       provider: treasury
-      symbol: "avg_interest_rate"
+      symbol: avg_interest_rate
       tags:
         symbol: AVG_INTEREST_RATE
         instrument: macro

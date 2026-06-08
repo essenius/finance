@@ -1,69 +1,70 @@
-from unittest.mock import Mock, patch
+# Copyright 2026 Rik Essenius
+# Licensed under the Apache License, Version 2.0. See the LICENSE file for details.
+# File: tests/timeseries/test_influx_read.py
 
-from finance.timeseries.influx import InfluxBackend
+from unittest.mock import Mock
 
-
-def test_influx_backend_read_v2_flux():
-    secrets = {
-        "url": "https://example.com",
-        "org": "myorg",
-        "token": "abc123",
-        "ssl_verify": "false",
-    }
-
-    backend = InfluxBackend(secrets)
-
-    mock_response = Mock()
-    mock_response.json.return_value = {"results": "ok"}
-    mock_response.raise_for_status.return_value = None
-
-    with patch.object(backend.session, "post", return_value=mock_response) as mock_post:
-        result = backend.read("finance_intraday", "eurusd", 1000, 2000)
-
-    assert result["ok"] is True
-    assert result["data"] == {"results": "ok"}
-
-    # Verify Flux query was sent
-    args, kwargs = mock_post.call_args
-    assert "from(bucket: \"finance_intraday\")" in kwargs["data"]
-    assert "eurusd" in kwargs["data"]
+from finance.timeseries.influx import InfluxBackend, InfluxConfig
 
 
-def test_influx_backend_read_v1_influxql():
-    secrets = {
-        "url": "https://example.com",
-        "db": "finance",
-        "ssl_verify": "false",
-    }
+def test_read_v1():
+    session = Mock()
+    session.get.return_value = Mock(
+        raise_for_status=lambda: None,
+        json=lambda: {
+            "results": [{
+                "series": [{
+                    "columns": ["time", "value"],
+                    "values": [["2024-01-01T00:00:00Z", 10]],
+                }]
+            }]
+        },
+    )
 
-    backend = InfluxBackend(secrets)
+    cfg = InfluxConfig(True, 1, "http://x/write", db="d")
+    backend = InfluxBackend(session, cfg)
 
-    mock_response = Mock()
-    mock_response.json.return_value = {"series": []}
-    mock_response.raise_for_status.return_value = None
-
-    with patch.object(backend.session, "get", return_value=mock_response) as mock_get:
-        result = backend.read(None, "eurusd", 1000, 2000)
-
-    assert result["ok"] is True
-    assert result["data"] == {"series": []}
-
-    args, kwargs = mock_get.call_args
-    assert "SELECT * FROM eurusd" in kwargs["params"]["q"]
+    result = backend.read("bucket", "m")
+    assert result.ok
+    assert result.payload.fields == {"value": 10}
 
 
-def test_influx_backend_read_error():
-    secrets = {
-        "url": "https://example.com",
-        "org": "myorg",
-        "token": "abc123",
-        "ssl_verify": "false",
-    }
+def test_read_v2_exception():
+    session = Mock()
+    session.post.side_effect = Exception("fail")
 
-    backend = InfluxBackend(secrets)
+    cfg = InfluxConfig(True, 2, "https://x/api/v2/write", org="o", read_token="t")
+    backend = InfluxBackend(session, cfg)
 
-    with patch.object(backend.session, "post", side_effect=Exception("boom")):
-        result = backend.read("bucket", "eurusd", 0, 10)
+    result = backend.read("bucket", "m")
+    assert not result.ok
+    assert "Influx read failed" in result.reason
 
-    assert result["ok"] is False
-    assert "boom" in result["error"]
+
+def test_read_v1_exception():
+    session = Mock()
+    session.get.side_effect = Exception("fail")
+
+    cfg = InfluxConfig(True, 1, "http://x/write", db="d")
+    backend = InfluxBackend(session, cfg)
+
+    result = backend.read("bucket", "m")
+    assert not result.ok
+    assert "Influx read failed" in result.reason
+
+
+def test_read_v2_url_and_headers():
+    session = Mock()
+    fake_response = Mock()
+    fake_response.raise_for_status.return_value = None
+    fake_response.json.return_value = {"tables": []}
+    session.post.return_value = fake_response
+
+    cfg = InfluxConfig(True, 2, "https://example/api/v2/write", org="rik", read_token="abc")
+    backend = InfluxBackend(session, cfg)
+
+    backend.read("bucket", "m")
+
+    url = session.post.call_args.args[0]
+    assert url.endswith("/query")
+    assert session.post.call_args.kwargs["headers"]["Authorization"] == "Token abc"

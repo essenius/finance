@@ -3,13 +3,15 @@
 # File: src/finance/fetch/controller.py
 
 import time
+from collections.abc import Iterable
 
-from finance.common.freshness import is_recent
-from finance.common.intervals import parse_interval
-from finance.common.log_mixin import LogMixin
-from finance.fetch.ecb import EcbProvider
-from finance.fetch.fred import FredProvider
-from finance.fetch.yahoo import YahooProvider
+from ..common.freshness import is_recent
+from ..common.intervals import parse_interval
+from ..common.model import FetchResult
+from ..state.manager import State
+from .ecb import EcbProvider
+from .fred import FredProvider
+from .yahoo import YahooProvider
 
 PROVIDER_REGISTRY = {
     "yahoo": YahooProvider,
@@ -18,84 +20,45 @@ PROVIDER_REGISTRY = {
 }
 
 
-class FetchController(LogMixin):
-    def __init__(self, assets, api_keys, now_provider=time.time):
+class FetchController:
+    def __init__(self, assets: dict, api_keys: dict|None=None, now_provider=time.time):
         self.assets = assets
-        self.api_keys = api_keys
+        self.api_keys = api_keys or {}
         self.now = now_provider
 
         # Instantiate all providers with their API key (or None)
         self.providers = {
-            name: provider_class(api_keys.get(name)) for name, provider_class in PROVIDER_REGISTRY.items()
+            name: provider_class(self.api_keys.get(name)) for name, provider_class in PROVIDER_REGISTRY.items()
         }
 
-    def _validate_result(self, result):
-        if not isinstance(result, dict):
-            return None
-
-        timestamp = result.get("timestamp")
-        fields = result.get("fields")
-
-        if not isinstance(timestamp, int):
-            return None
-
-        if not isinstance(fields, dict):
-            return None
-
-        return result
-
-    def fetch_one(self, name, asset, state: dict):
+    def fetch_one_series(self, name: str, asset: dict, state: State) -> FetchResult:
 
         provider = self.providers.get(asset["provider"])
         if provider is None:
-            self.error(f"Skipping {asset['provider']} series {name} - no provider")
-            return None
+            result = FetchResult.fail(name, f"no provider '{asset['provider']}'", f"Skipped series {name}")
+        else:
+            last_timestamp = state.get(name, {}).get("last_timestamp")
+            result = provider.fetch(name, asset, last_timestamp)
 
+        state.update_after_fetch(result)
+        return result
+
+    def fetch_incrementally(self, state: State) -> Iterable[FetchResult]:
         now = int(self.now())
-
-        last_timestamp = state.get(name, {}).get("last_timestamp")
-
-        try:
-            result = provider.fetch(asset, last_timestamp)
-
-        except Exception as ex:
-            self.error(f"Fetcher for {name} failed: {ex}")
-            entry = state.setdefault(name, {})
-            entry["last_try"] = now
-            return None
-
-        validated = self._validate_result(result)
-        entry = state.setdefault(name, {})
-        entry["last_try"] = now
-
-        if validated is None:
-            return None
-
-        timestamp = validated["timestamp"]
-        fields = validated["fields"]
-        entry["last_timestamp"] = timestamp
-        return {"timestamp": timestamp, "fields": fields}
-
-    def fetch_all(self, state: dict):
-        now = int(self.now())
-        results = {}
 
         for name, asset in self.assets.items():
-            required = ["asset", "provider", "symbol", "interval", "fields", "timeseries"]
-            missing = [k for k in required if k not in asset]
-            if missing:
-                self.error(f"Asset {name} missing keys: {missing}")
+            # Freshness check
+            try:
+                interval_s = parse_interval(asset["interval"])
+            except ValueError as ve:
+                result = FetchResult.fail(name, f"could not parse interval '{asset['interval']}'", ve)
+                state.update_after_fetch(result)
+                yield result
+                continue
+            state_entry = state.get(name)
+            if is_recent(state_entry, now, interval_s):
+                # not an error, just skip
                 continue
 
-            interval_s = parse_interval(asset["interval"])
-
-            entry = state.get(name, {})
-            if is_recent(entry, now, interval_s):
-                continue
-
-            fetched = self.fetch_one(name, asset, state)
-
-            if fetched is not None:
-                results[name] = fetched
-
-        return results
+            # Fetch
+            yield self.fetch_one_series(name, asset, state)

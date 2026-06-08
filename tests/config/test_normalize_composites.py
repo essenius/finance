@@ -1,7 +1,7 @@
 from finance.config.loader import normalize_composites
 
 
-def test_normalize_composites_basic():
+def test_normalize_composites_basic(unwrap):
     raw = {
         "REAL10Y": {
             "expression": "fred_10y_nominal_daily - fred_10y_breakeven_daily",
@@ -9,7 +9,7 @@ def test_normalize_composites_basic():
         }
     }
 
-    composites = normalize_composites(raw)
+    composites = unwrap(normalize_composites(raw))
 
     assert "REAL10Y" in composites
     c = composites["REAL10Y"]
@@ -20,7 +20,7 @@ def test_normalize_composites_basic():
     assert "bucket" not in c
 
 
-def test_normalize_composites_with_timeseries_and_buckets():
+def test_normalize_composites_with_timeseries_and_buckets(unwrap):
     raw = {
         "SPREAD": {
             "expression": "t10y_daily - t2y_daily",
@@ -31,14 +31,14 @@ def test_normalize_composites_with_timeseries_and_buckets():
 
     buckets = {"intraday": "b_intraday", "daily": "b_daily"}
 
-    composites = normalize_composites(raw, buckets=buckets)
+    composites = unwrap(normalize_composites(raw, buckets=buckets))
     c = composites["SPREAD"]
 
     assert c["timeseries"] == "daily"
     assert c["bucket"] == "b_daily"
 
 
-def test_normalize_composites_bucket_branch():
+def test_normalize_composites_bucket_branch(unwrap):
     raw = {
         "SPREAD": {
             "expression": "t10y_daily - t2y_daily",
@@ -47,7 +47,7 @@ def test_normalize_composites_bucket_branch():
         }
     }
 
-    composites = normalize_composites(raw)
+    composites = unwrap(normalize_composites(raw))
     c = composites["SPREAD"]
 
     assert c.get("bucket") is None

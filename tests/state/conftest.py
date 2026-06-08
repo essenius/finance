@@ -1,50 +1,60 @@
-from unittest.mock import Mock
-
 import pytest
 
+from finance.common.model import TimeseriesWrite
 from finance.state.manager import State
 
-
-@pytest.fixture
-def state_env(tmp_path):
-    """Provides a State with mocked WAL + TS client + resolved path."""
-
-    wal = Mock()
-    ts = Mock()
-    wal.peek.return_value = None
-
-    path = tmp_path / "state.json"
-
-    state = State(ts, wal, path)
-    return state, ts, wal, path
+# state_env is defined in the parent folder's conftest.py
 
 
 @pytest.fixture
-def make_entry():
-    return lambda m="spx", v=1, ts=100, b="bucket": {
-        "bucket": b,
-        "measurement": m,
-        "fields": {"v": v},
-        "timestamp": ts,
-    }
+def state(state_env) -> State:
+    state, ts, wal, path = state_env
+    return state
+
+
+@pytest.fixture
+def make_entry() -> TimeseriesWrite:
+    def _make(measurement="spx", value=1, timestamp=100, bucket="bucket"):
+        return TimeseriesWrite(
+            measurement=measurement,
+            fields={"v": value},
+            timestamp=timestamp,
+            bucket=bucket,
+            tags={},
+        )
+    return _make
+
 
 @pytest.fixture
 def mock_rebuild(monkeypatch):
-    return lambda result: monkeypatch.setattr(
-        "finance.state.manager.rebuild_measurement_state",
-        lambda m, w, t: result
-    )
+    def apply(result):
+        monkeypatch.setattr(
+            "finance.state.manager.rebuild_measurement_state",
+            lambda bucket, measurement, wal, ts_client: result
+        )
+    return apply
+
 
 @pytest.fixture
 def wal_sequence():
     return lambda wal, seq: setattr(wal.peek, "side_effect", seq)
 
+
 @pytest.fixture
 def two_wal_entries(make_entry):
-    return lambda me=make_entry: [
-        me("a", 1, 10, "b"),
-        me("a", 2, 20, "b"),
-    ]
+    def _entries():
+        return [
+            make_entry(measurement="a", value=1, timestamp=10),
+            make_entry(measurement="a", value=2, timestamp=20),
+        ]
+    return _entries
+
 @pytest.fixture
-def two_wal_entries_with_none(two_wal_entries):
-    return lambda: two_wal_entries() + [None]
+def two_wal_entries_with_none(make_entry):
+    def _entries():
+        return [
+            make_entry(measurement="a", value=1, timestamp=10),
+            make_entry(measurement="a", value=2, timestamp=20),
+            None,
+        ]
+    return _entries

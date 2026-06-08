@@ -14,6 +14,7 @@ def clean_env(monkeypatch):
         "INFLUX_DB",
         "INFLUX_ORG",
         "INFLUX_TOKEN",
+        "INFLUX_READ_TOKEN",
         "INFLUX_WRITE_TOKEN",
         "INFLUX_USER",
         "INFLUX_PASSWORD",
@@ -23,7 +24,7 @@ def clean_env(monkeypatch):
         monkeypatch.delenv(var, raising=False)
 
 
-def test_load_env_secrets_influx1(monkeypatch, tmp_path):
+def test_load_env_secrets_influx1(monkeypatch, tmp_path, unwrap):
     env = tmp_path / ".env"
     env.write_text("INFLUX_URL=http://x\nINFLUX_DB=db\nFRED_API_KEY=abc\n")
 
@@ -32,7 +33,7 @@ def test_load_env_secrets_influx1(monkeypatch, tmp_path):
     monkeypatch.setenv("YAHOO_API_KEY", "yahoo123")
     monkeypatch.setenv("FRED_API_KEY", "overwritten")
 
-    secrets = load_env_secrets(env)
+    secrets = unwrap(load_env_secrets(env))["secrets"]
 
     assert secrets["influx"]["url"] == "http://x"
     assert secrets["influx"]["db"] == "db"
@@ -43,37 +44,59 @@ def test_load_env_secrets_influx1(monkeypatch, tmp_path):
     assert secrets["api_keys"]["yahoo"] == "yahoo123"
 
 
-def test_load_env_secrets_influx2(monkeypatch, tmp_path):
+def test_load_env_secrets_influx2_one_token(tmp_path, unwrap):
     env = tmp_path / ".env"
     env.write_text("INFLUX_URL=http://x\nINFLUX_ORG=myorg\nINFLUX_TOKEN=tok123\n")
 
-    secrets = load_env_secrets(env)
+    secrets = unwrap(load_env_secrets(env))["secrets"]
 
     assert secrets["influx"]["url"] == "http://x"
     assert secrets["influx"]["org"] == "myorg"
-    assert secrets["influx"]["token"] == "tok123"
+    assert secrets["influx"]["write-token"] == "tok123"
+    assert secrets["influx"]["read-token"] == "tok123"
 
 
-def test_missing_url_raises(monkeypatch, tmp_path):
+def test_load_env_secrets_influx2_two_tokens(tmp_path, unwrap):
+    env = tmp_path / ".env"
+    env.write_text("INFLUX_URL=http://x\nINFLUX_ORG=myorg\nINFLUX_READ_TOKEN=tok123\nINFLUX_WRITE_TOKEN=123tok\n")
+
+    secrets = unwrap(load_env_secrets(env))["secrets"]
+
+    assert secrets["influx"]["url"] == "http://x"
+    assert secrets["influx"]["org"] == "myorg"
+    assert secrets["influx"]["write-token"] == "123tok"
+    assert secrets["influx"]["read-token"] == "tok123"
+
+
+def test_load_env_secrets_influx2_fallback_token(tmp_path, unwrap):
+    env = tmp_path / ".env"
+    env.write_text("INFLUX_URL=http://x\nINFLUX_ORG=myorg\nINFLUX_READ_TOKEN=tok123\nINFLUX_TOKEN=123tok\n")
+
+    secrets = unwrap(load_env_secrets(env))["secrets"]
+
+    assert secrets["influx"]["url"] == "http://x"
+    assert secrets["influx"]["org"] == "myorg"
+    assert secrets["influx"]["write-token"] == "123tok"
+    assert secrets["influx"]["read-token"] == "tok123"
+
+
+def test_missing_url_fails(tmp_path, assert_error):
     env = tmp_path / ".env"
     env.write_text("")  # no INFLUX_URL
 
-    with pytest.raises(RuntimeError, match="requires URL"):
-        load_env_secrets(env)
+    assert_error(load_env_secrets(env), "requires URL", None)
 
 
-def test_missing_db_in_influx1(monkeypatch, tmp_path):
+def test_missing_db_in_influx1(tmp_path, assert_error):
     env = tmp_path / ".env"
     env.write_text("INFLUX_URL=http://x\n")  # no INFLUX_DB
 
-    with pytest.raises(RuntimeError, match="InfluxDB 1.x requires database"):
-        load_env_secrets(env)
+    assert_error(load_env_secrets(env), "InfluxDB 1.x requires database", None)
 
 
-def test_missing_token_in_influx2(monkeypatch, tmp_path):
+def test_missing_token_in_influx2(tmp_path, assert_error):
     env = tmp_path / ".env"
     env.write_text("INFLUX_URL=http://x\nINFLUX_ORG=o\n")  # no token
 
-    with pytest.raises(RuntimeError, match="requires INFLUX_WRITE_TOKEN"):
-        load_env_secrets(env)
+    assert_error(load_env_secrets(env), "requires INFLUX_WRITE_TOKEN", None)
 

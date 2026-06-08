@@ -4,13 +4,4 @@
 
 from .engine import CompositeEngine
 
-__all__ = ["evaluate_composites"]
-
-
-def evaluate_composites(composites, state):
-    """
-    Public API for evaluating composites.
-    Keeps CompositeEngine internal.
-    """
-    engine = CompositeEngine(composites, state)
-    return engine.evaluate_all()
+__all__ = ["CompositeEngine"]

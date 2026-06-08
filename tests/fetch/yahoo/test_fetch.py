@@ -2,30 +2,31 @@
 # Licensed under the Apache License, Version 2.0. See the LICENSE file for details.
 # File: tests/fetch/yahoo/test_fetch.py
 
-import logging
 from unittest.mock import Mock
 
 import pytest
 
+from finance.common.model import FetchResult
+
 
 def test_fetch_dispatches_to_intraday(provider, monkeypatch):
-    mock = Mock(return_value=["intraday-result"])
+    mock = Mock(return_value=FetchResult.ok_payload("x", []))
     monkeypatch.setattr(provider, "_fetch_intraday", mock)
 
     asset = {
         "symbol": "EURUSD=X",
         "timeseries": "intraday",
-        "fields": ["close"],
+        "fields": ["price"],
     }
 
-    result = provider.fetch(asset, last_timestamp=123)
-
-    assert result == ["intraday-result"]
-    mock.assert_called_once_with("EURUSD=X", ["close"], 123)
+    result = provider.fetch("x", asset, last_timestamp=123)
+    assert result.ok
+    assert result.payload == []
+    mock.assert_called_once_with("x", "EURUSD=X", 123)
 
 
 def test_fetch_dispatches_to_daily(provider, monkeypatch):
-    mock = Mock(return_value=["daily-result"])
+    mock = Mock(return_value=FetchResult.ok_payload("x", []))
     monkeypatch.setattr(provider, "_fetch_daily", mock)
 
     asset = {
@@ -34,23 +35,10 @@ def test_fetch_dispatches_to_daily(provider, monkeypatch):
         "fields": ["close"],
     }
 
-    result = provider.fetch(asset, last_timestamp=456)
+    result = provider.fetch("y", asset, last_timestamp=456)
 
-    assert result == ["daily-result"]
-    mock.assert_called_once_with("AAPL", ["close"], 456)
-
-
-def test_fetch_raises_for_unknown_timeseries(provider):
-    asset = {
-        "symbol": "BTC-USD",
-        "timeseries": "weekly",
-        "fields": ["close"],
-    }
-
-    with pytest.raises(ValueError) as exc:
-        provider.fetch(asset)
-
-    assert "weekly" in str(exc.value)
+    assert result.payload == []
+    mock.assert_called_once_with("y", "AAPL", ["close"], 456)
 
 
 # -------------------------------
@@ -59,43 +47,39 @@ def test_fetch_raises_for_unknown_timeseries(provider):
 
 
 @pytest.mark.parametrize(
-    "data, expected_is_error, expected_message",
+    "data, expected_message",
     [
         # explicit Yahoo error
-        ({"chart": {"error": {"code": "Not Found"}}}, True, "{'code': 'Not Found'}"),
+        ({"chart": {"error": {"code": "Not Found"}}}, "{'code': 'Not Found'}"),
         # missing chart
-        ({"bogus": False}, True, "no 'chart' in response"),
+        ({"bogus": False}, "no 'chart' in response"),
         # missing result
-        ({"chart": {"result": None}}, True, "result empty"),
+        ({"chart": {"result": None}}, "result empty"),
         # valid
-        ({"chart": {"result": [{}]}}, False, None),
+        ({"chart": {"result": [{}]}}, None),
     ],
 )
-def test_is_error_response(provider, caplog, data, expected_is_error, expected_message):
-    symbol = "x"
-    with caplog.at_level(logging.ERROR):
-        result = provider._is_error_response(data, symbol)
+def test_error_response(provider, data, expected_message):
+    result = provider._error_response(data)
 
-    assert result is expected_is_error
-
-    if expected_is_error:
-        assert f"Error fetching Yahoo data for x: {expected_message}" in caplog.text
+    if expected_message is None:
+        assert result is None
     else:
-        assert caplog.text == ""
+        assert result == expected_message
 
 
-def test_fetch_success(provider, monkeypatch, caplog):
+def test_fetch_success(provider, monkeypatch):
     mock_response = Mock()
     mock_response.raise_for_status.return_value = None
     mock_response.json.return_value = {"chart": {"result": [{}]}}
 
     monkeypatch.setattr("requests.get", lambda *a, **kw: mock_response)
 
-    with caplog.at_level(logging.ERROR):
-        result = provider._fetch("EURUSD=X", "1d", "5d")
+    result = provider._fetch("z", "EURUSD=X", "1d", "5d")
 
-    assert result == {}
-    assert caplog.text == ""   # no errors logged
+    assert result.ok
+    assert result.payload == {}
+
 
 
 @pytest.mark.parametrize(
@@ -113,7 +97,7 @@ def test_fetch_success(provider, monkeypatch, caplog):
         ),
     ],
 )
-def test_fetch_errors(provider, monkeypatch, caplog, response_setup, expected_error):
+def test_fetch_errors(provider, monkeypatch, response_setup, expected_error):
     mock_response = Mock()
     mock_response.raise_for_status.return_value = None
     mock_response.json.return_value = {"chart": {"result": [{}]}}
@@ -127,18 +111,21 @@ def test_fetch_errors(provider, monkeypatch, caplog, response_setup, expected_er
 
     monkeypatch.setattr("requests.get", lambda *a, **kw: mock_response)
 
-    with caplog.at_level(logging.ERROR):
-        result = provider._fetch("EURUSD=X", "1d", "5d")
+    result = provider._fetch("r", "EURUSD=X", "1d", "5d")
 
-    assert result == []
-    assert expected_error in caplog.text
+    assert not result.ok
+    assert expected_error in result.error
+    assert 'Exception during fetch' in result.reason
 
 
 def test_fetch_returns_data_but_no_results(provider, monkeypatch):
     mock_response = Mock()
     mock_response.raise_for_status.return_value = None
-    mock_response.json.return_value = {"chart": {"result": []}}
+    mock_response.json.return_value = {"chart":{"result":None,"error":{"code":"Not Found","description":"No data found, symbol may be delisted"}}}
 
     monkeypatch.setattr("requests.get", lambda *a, **kw: mock_response)
-    result = provider._fetch("EURUSD=X", "1d", "5d")
-    assert result == []
+    result = provider._fetch("s", "EURUSD=X", "1d", "5d")
+    assert not result.ok
+    assert result.reason == "Could not interpret fetch response"
+    assert result.error == "{'code': 'Not Found', 'description': 'No data found, symbol may be delisted'}"
+

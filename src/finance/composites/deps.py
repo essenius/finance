@@ -3,19 +3,23 @@
 # File: src/finance/composites/deps.py
 
 import ast
+from collections.abc import Iterable
+
+from ..common.introspection import here
+from ..common.model import Result
 
 
-def extract_dependencies(expr: str, candidates) -> list[str]:
+def extract_dependencies(expr: str, candidates: Iterable[str]) -> Result[list[str]]:
     """
     Extract variable names from a composite expression using Python's AST.
     Only returns identifiers that are present in `candidates`.
     """
+    context = { "location": here() }
 
     try:
         tree = ast.parse(expr, mode="eval")
     except SyntaxError as e:
-        # Log the error — replace with your mixin if available
-        return [], f"Syntax error in composite expression '{expr}': {e}"
+        return Result.fail(f"Syntax error in composite expression '{expr}'", e, meta=context)
 
     names = set()
 
@@ -25,7 +29,8 @@ def extract_dependencies(expr: str, candidates) -> list[str]:
 
     NameCollector().visit(tree)
 
-    return [name for name in names if name in candidates], None
+    deps = [name for name in names if name in candidates]
+    return Result.ok_payload(deps)
 
 
 class CycleError(Exception):
@@ -60,14 +65,3 @@ def topo_sort(graph):
         visit(node)
 
     return order
-
-
-def build_composite_graph(composites, state):
-    graph = {}
-    errors = {}
-    for measurement, expr in composites.items():
-        deps, err = extract_dependencies(expr, state.keys())
-        graph[measurement] = deps
-        if err:
-            errors[measurement] = err
-    return graph, errors

@@ -3,7 +3,9 @@
 # File: src/finance/common/freshness.py
 
 
-def is_recent(entry, now, interval):
+def is_recent(entry: dict | None, now: int, interval: int) -> bool:
+    if entry is None:
+        return False
     last_try = entry.get("last_try")
     if last_try is None:
         return False

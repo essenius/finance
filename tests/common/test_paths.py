@@ -3,7 +3,6 @@
 # File: tests/common/test_paths.py
 
 from pathlib import Path
-from unittest.mock import Mock
 
 import pytest
 
@@ -12,6 +11,7 @@ import finance.common.paths as paths
 # -------------------------------
 # get_project_root tests
 # -------------------------------
+
 
 def test_get_project_root_valid(monkeypatch, tmp_path):
     """
@@ -47,9 +47,11 @@ def test_get_project_root_does_not_fallback(monkeypatch, tmp_path):
     with pytest.raises(RuntimeError):
         paths.get_project_root()
 
+
 # -------------------------------
 # resolve_config_path tests
 # -------------------------------
+
 
 def test_none_uses_project_root_default(monkeypatch, tmp_path):
     """If value=None, return project_root/default_filename."""
@@ -102,7 +104,6 @@ def test_relative_directory_path_appends_default(monkeypatch, tmp_path):
     result = paths.resolve_config_path("logs", "wal.jsonl")
 
     assert result == logs_dir / "wal.jsonl"
-
 
 
 def test_relative_nonexistent_path_is_treated_as_file(monkeypatch, tmp_path):

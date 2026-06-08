@@ -167,7 +167,7 @@ def normalize_assets(raw_assets: dict, field_sets: dict = None, buckets: dict = 
 
         return Result.ok_payload(metrics)
 
-    except ValueError as exc: # by require()
+    except ValueError as exc:  # by require()
         return Result.fail(str(exc), meta=context)
 
 

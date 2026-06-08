@@ -21,15 +21,14 @@ INTRADAY_CASES = [
         expected_ok=False,
         expected_payload=None,
     ),
-
     # 2) candles exist → convert to FetchPoints
     dict(
         fetch_result=FetchResult.ok_payload("eurusd", payload={"chart": {"result": [{}]}}),
         candle_result=FetchResult.ok_payload(
             "eurusd",
             payload=[
-                FetchPoint(timestamp=100, fields={ "open":0, "high": 0, "low": 0, "close": 1.1, "volume": 0}),
-                FetchPoint(timestamp=200, fields={ "open":0, "high": 0, "low": 0, "close": 1.2, "volume": 0}),
+                FetchPoint(timestamp=100, fields={"open": 0, "high": 0, "low": 0, "close": 1.1, "volume": 0}),
+                FetchPoint(timestamp=200, fields={"open": 0, "high": 0, "low": 0, "close": 1.2, "volume": 0}),
             ],
         ),
         expected_ok=True,
@@ -38,7 +37,6 @@ INTRADAY_CASES = [
             FetchPoint(timestamp=200, fields={"price": 1.2}),
         ],
     ),
-
     # 3) no candles → fallback to metadata
     dict(
         fetch_result=FetchResult.ok_payload(
@@ -53,6 +51,7 @@ INTRADAY_CASES = [
     ),
 ]
 
+
 @pytest.mark.parametrize("case", INTRADAY_CASES)
 def test_intraday_basic(provider, monkeypatch, case):
     # Patch _fetch to return the pre-baked FetchResult
@@ -60,7 +59,9 @@ def test_intraday_basic(provider, monkeypatch, case):
 
     # Patch _extract_candles to return the pre-baked candle list
     if case["candle_result"] is not None:
-        monkeypatch.setattr(provider, "_extract_candles", lambda results, fields=None, today=None: case["candle_result"])
+        monkeypatch.setattr(
+            provider, "_extract_candles", lambda results, fields=None, today=None: case["candle_result"]
+        )
 
     result = provider._fetch_intraday(name="eurusd", symbol="EURUSD=X", last_timestamp=None)
 
@@ -68,13 +69,16 @@ def test_intraday_basic(provider, monkeypatch, case):
     assert result.payload == case["expected_payload"]
 
 
-
 def test_intraday_range_initial_load(provider, monkeypatch):
     provider.config["intraday_history_limit"] = "5d"
 
     # First call: ignore result, just warm up
-    monkeypatch.setattr(provider, "_fetch", lambda *a, **kw: FetchResult.ok_payload("eurusd", {"chart": {"result": [{}]}}))
-    monkeypatch.setattr(provider, "_extract_candles", lambda results, fields=None, today=None: FetchResult.ok_payload("eurusd", []))
+    monkeypatch.setattr(
+        provider, "_fetch", lambda *a, **kw: FetchResult.ok_payload("eurusd", {"chart": {"result": [{}]}})
+    )
+    monkeypatch.setattr(
+        provider, "_extract_candles", lambda results, fields=None, today=None: FetchResult.ok_payload("eurusd", [])
+    )
 
     provider._fetch_intraday("eurusd", "EURUSD=X", last_timestamp=None)
 
@@ -104,7 +108,9 @@ def test_intraday_range_incremental(provider, monkeypatch):
         return FetchResult.ok_payload("eurusd", {"chart": {"result": [{}]}})
 
     monkeypatch.setattr(provider, "_fetch", fake_fetch)
-    monkeypatch.setattr(provider, "_extract_candles", lambda results, fields=None, today=None: FetchResult.ok_payload("eurusd",[]))
+    monkeypatch.setattr(
+        provider, "_extract_candles", lambda results, fields=None, today=None: FetchResult.ok_payload("eurusd", [])
+    )
 
     provider._fetch_intraday("eurusd", "EURUSD=X", last_timestamp=recent_ts)
 
@@ -125,7 +131,9 @@ def test_intraday_range_exceeds_history_limit(provider, monkeypatch):
         return FetchResult.ok_payload("eurusd", {"chart": {"result": [{}]}})
 
     monkeypatch.setattr(provider, "_fetch", fake_fetch)
-    monkeypatch.setattr(provider, "_extract_candles", lambda results, fields=None, today=None: FetchResult.ok_payload("eurusd", []))
+    monkeypatch.setattr(
+        provider, "_extract_candles", lambda results, fields=None, today=None: FetchResult.ok_payload("eurusd", [])
+    )
 
     provider._fetch_intraday("eurusd", "EURUSD=X", last_timestamp=old_ts)
 

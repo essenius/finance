@@ -14,13 +14,15 @@ def make_provider(api_key="TESTKEY"):
 def make_asset(symbol="T10YIE", field="price"):
     return {"symbol": symbol, "fields": [field]}
 
-'''
+
+"""
 def mock_fred_response(monkeypatch, status, json_data):
     mock_resp = Mock()
     mock_resp.status_code = status
     mock_resp.json.return_value = json_data
     monkeypatch.setattr("finance.fetch.fred.requests.get", lambda *a, **k: mock_resp)
-'''
+"""
+
 
 def test_fred_fetch_normal(monkeypatch, assert_ok, mock_get_response):
 
@@ -86,7 +88,6 @@ def test_fred_malformed_cases(monkeypatch, assert_error, api_key, json_data, exp
     assert_error(result, expected_error, None)
 
 
-
 def test_fred_fetch_network_error(monkeypatch, assert_error):
 
     monkeypatch.setattr("finance.fetch.fred.requests.get", lambda *a, **k: (_ for _ in ()).throw(Exception("boom")))
@@ -104,5 +105,4 @@ def test_fred_status_code_not_200(monkeypatch, assert_error, mock_get_response):
     provider = make_provider()
 
     result = provider.fetch("f4", make_asset(), None)
-    assert_error(result,  "Exception during fetch", "status 500" )
-
+    assert_error(result, "Exception during fetch", "status 500")

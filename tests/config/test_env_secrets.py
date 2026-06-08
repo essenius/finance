@@ -1,3 +1,7 @@
+# Copyright 2026 Rik Essenius
+# Licensed under the Apache License, Version 2.0. See the LICENSE file for details.
+# File: tests/config/test_env_secrets.py
+
 import pytest
 
 from finance.config.loader import load_env_secrets
@@ -99,4 +103,3 @@ def test_missing_token_in_influx2(tmp_path, assert_error):
     env.write_text("INFLUX_URL=http://x\nINFLUX_ORG=o\n")  # no token
 
     assert_error(load_env_secrets(env), "requires INFLUX_WRITE_TOKEN", None)
-

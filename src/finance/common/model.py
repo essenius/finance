@@ -1,6 +1,6 @@
 # Copyright 2026 Rik Essenius
 # Licensed under the Apache License, Version 2.0. See the LICENSE file for details.
-# File: src/finance/fetch/model.py
+# File: src/finance/common/model.py
 
 from __future__ import annotations
 
@@ -81,12 +81,20 @@ class Result(Generic[T]):
         return "\n".join(warnings)
 
     @staticmethod
-    def ok_payload(payload: T, warnings: list[str]|None = None, meta: dict | None = None) -> Result[T]:
+    def ok_payload(payload: T, warnings: list[str] | None = None, meta: dict | None = None) -> Result[T]:
         return Result(ok=True, payload=payload, warning=Result.parse_warnings(warnings), meta=meta)
 
     @staticmethod
-    def fail(reason: str, error: str | None = None, warnings: list[str]|None = None, meta: dict | None = None) -> Result[None]:
-        return Result(ok=False, reason=reason, error=None if error is None else str(error), meta=meta, warning=Result.parse_warnings(warnings))
+    def fail(
+        reason: str, error: str | None = None, warnings: list[str] | None = None, meta: dict | None = None
+    ) -> Result[None]:
+        return Result(
+            ok=False,
+            reason=reason,
+            error=None if error is None else str(error),
+            meta=meta,
+            warning=Result.parse_warnings(warnings),
+        )
 
     def with_measurement(self, measurement: str) -> MeasurementResult[T]:
         return MeasurementResult.from_result(self, measurement)
@@ -110,14 +118,24 @@ class MeasurementResult(Result[T]):
         )
 
     @staticmethod
-    def ok_payload(measurement: str, payload: T, warnings: list[str]|None = None, meta: dict|None = None) -> MeasurementResult[T]:
+    def ok_payload(
+        measurement: str, payload: T, warnings: list[str] | None = None, meta: dict | None = None
+    ) -> MeasurementResult[T]:
         return Result.ok_payload(payload, warnings, meta).with_measurement(measurement)
 
     @staticmethod
-    def fail(measurement: str, reason: str, error: str | None = None, warnings: list[str]|None = None, meta: dict | None = None) -> MeasurementResult[None]:
+    def fail(
+        measurement: str,
+        reason: str,
+        error: str | None = None,
+        warnings: list[str] | None = None,
+        meta: dict | None = None,
+    ) -> MeasurementResult[None]:
         return Result.fail(reason, error, warnings, meta).with_measurement(measurement)
 
+
 FetchResult = MeasurementResult[list[FetchPoint]]
+
 
 @dataclass
 class TimeseriesWrite:
@@ -128,4 +146,4 @@ class TimeseriesWrite:
     bucket: str
 
 
-TimeseriesResult = MeasurementResult[TimeseriesWrite|None]
+TimeseriesResult = MeasurementResult[TimeseriesWrite | None]

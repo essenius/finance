@@ -1,3 +1,7 @@
+# Copyright 2026 Rik Essenius
+# Licensed under the Apache License, Version 2.0. See the LICENSE file for details.
+# File: tests/test_main.py
+
 from unittest.mock import Mock
 
 import pytest
@@ -8,8 +12,10 @@ from finance.common.model import FetchPoint, MeasurementResult, Result, Timeseri
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 class FakeFetchController:
     """Simulates fetch_incrementally() producing FetchResult objects."""
+
     def __init__(self, outputs):
         # outputs = [(measurement, fields, timestamp), ...]
         self.outputs = outputs
@@ -18,11 +24,12 @@ class FakeFetchController:
         for measurement, fields, ts in self.outputs:
             fp = FetchPoint(fields=fields, timestamp=ts)
             # FetchResult = MeasurementResult[list[FetchPoint]]
-            yield  MeasurementResult.ok_payload(measurement, [fp])
+            yield MeasurementResult.ok_payload(measurement, [fp])
 
 
 class FakeState:
     instance = None
+
     def __init__(self, *args, **kwargs):
         self.calls = []
         self.saved = False
@@ -39,10 +46,12 @@ class FakeState:
 
 class FailingState(FakeState):
     instance = None
+
     def __init__(self, *args, **kwargs):
         FailingState.instance = self
 
     """State that fails ingest for testing failure path."""
+
     def ingest(self, write: TimeseriesWrite):
         return Result.fail(write.measurement, "simulated failure")
 
@@ -57,11 +66,14 @@ class FakeInfluxBackend:
 
 def make_influx_backend(monkeypatch):
     fake_backend = FakeInfluxBackend()
+
     def fake_from_secrets(secrets):
         return Result.ok_payload(fake_backend)
+
     monkeypatch.setattr("finance.timeseries.influx.InfluxBackend.from_secrets", fake_from_secrets)
     monkeypatch.setattr("finance.timeseries.influx.InfluxBackend", lambda *a, **kw: fake_backend)
     return fake_backend
+
 
 def make_composite_engine(monkeypatch, outputs, fail=None):
     """
@@ -91,14 +103,13 @@ def make_composite_engine(monkeypatch, outputs, fail=None):
             return Result.ok_payload(FakeCompositeEngine(outputs, fail == "eval"))
 
     # Patch the *method*, not the class
-    monkeypatch.setattr(
-        "finance.composites.engine.CompositeEngine.build",
-        fake_build
-    )
+    monkeypatch.setattr("finance.composites.engine.CompositeEngine.build", fake_build)
+
 
 # ---------------------------------------------------------------------------
 # Test: Happy path
 # ---------------------------------------------------------------------------
+
 
 def test_main_happy_path(monkeypatch, tmp_path, caplog):
     import finance.main as main_mod
@@ -115,13 +126,7 @@ def test_main_happy_path(monkeypatch, tmp_path, caplog):
             "influx": {"url": "http://x", "db": "finance"},
             "api_keys": {"yahoo": "YKEY"},
         },
-        "assets": {
-            "spx": {
-                "tags": {"m": "s"},
-                "timeseries": "intraday",
-                "bucket": "finance_intraday"
-            }
-        },
+        "assets": {"spx": {"tags": {"m": "s"}, "timeseries": "intraday", "bucket": "finance_intraday"}},
         "composites": {
             "spread": {
                 "tags": {"c": "s"},
@@ -139,7 +144,7 @@ def test_main_happy_path(monkeypatch, tmp_path, caplog):
     make_influx_backend(monkeypatch)
     monkeypatch.setattr(main_mod, "State", FakeState)
 
-    fetch_outputs = [ ("spx", {"price": 4321}, 100) ]
+    fetch_outputs = [("spx", {"price": 4321}, 100)]
     monkeypatch.setattr(main_mod, "FetchController", lambda assets, keys: FakeFetchController(fetch_outputs))
 
     composite_outputs = [("spread", {"value": 10}, 200)]
@@ -174,6 +179,7 @@ def test_main_happy_path(monkeypatch, tmp_path, caplog):
 # Test: Failure path
 # ---------------------------------------------------------------------------
 
+
 def test_main_failure(monkeypatch, tmp_path, caplog):
     import finance.main as main_mod
 
@@ -188,13 +194,7 @@ def test_main_failure(monkeypatch, tmp_path, caplog):
             "influx": {"url": "http://x", "db": "finance"},
             "api_keys": {"yahoo": "YKEY"},
         },
-        "assets": {
-            "boom": {
-                "tags": {},
-                "timeseries": "daily",
-                "bucket": "finance_daily"
-            }
-        },
+        "assets": {"boom": {"tags": {}, "timeseries": "daily", "bucket": "finance_daily"}},
         "composites": {},
         "buckets": {
             "daily": "finance_daily",
@@ -209,7 +209,7 @@ def test_main_failure(monkeypatch, tmp_path, caplog):
     monkeypatch.setattr(main_mod, "State", FailingState)
 
     # Fake fetch controller producing one metric
-    fetch_outputs = [ ("boom", {"value": 1}, 100) ]
+    fetch_outputs = [("boom", {"value": 1}, 100)]
     monkeypatch.setattr(main_mod, "FetchController", lambda assets, keys: FakeFetchController(fetch_outputs))
 
     # No composites
@@ -225,6 +225,7 @@ def test_main_failure(monkeypatch, tmp_path, caplog):
 
 def test_main_bucket_for_closure(monkeypatch, tmp_path, caplog):
     import finance.main as main_mod
+
     # Minimal config that main() expects
     fake_config = {
         "assets": {},
@@ -232,7 +233,7 @@ def test_main_bucket_for_closure(monkeypatch, tmp_path, caplog):
         "measurements": {"spread": {"bucket": "daily"}},
         "paths": {"state": tmp_path / "state.json", "wal": tmp_path / "wal.jsonl"},
         "secrets": {"influx": {"url": "x", "db": "y"}},
-        "buckets": { "daily": "d", "intraday": "i" }
+        "buckets": {"daily": "d", "intraday": "i"},
     }
 
     monkeypatch.setattr(main_mod, "load_config", lambda: Result.ok_payload(fake_config))
@@ -265,7 +266,7 @@ def test_main_composite_failure_increments(monkeypatch, tmp_path, caplog):
         "measurements": {"spread": {"bucket": "daily"}},
         "paths": {"state": tmp_path / "state.json", "wal": tmp_path / "wal.jsonl"},
         "secrets": {"influx": {"url": "x", "db": "y"}},
-        "buckets": { "daily": "d", "intraday": "i" }
+        "buckets": {"daily": "d", "intraday": "i"},
     }
     monkeypatch.setattr(main_mod, "load_config", lambda: Result.ok_payload(fake_config))
     make_influx_backend(monkeypatch)
@@ -294,8 +295,7 @@ def test_main_unwrap_error_triggers_exit_2(monkeypatch, tmp_path, caplog):
         "measurements": {},
         "paths": {"state": tmp_path / "state.json", "wal": tmp_path / "wal.jsonl"},
         "secrets": {"influx": {"url": "x", "db": "y"}},
-        "buckets": { "daily": "d", "intraday": "i" }
-
+        "buckets": {"daily": "d", "intraday": "i"},
     }
 
     monkeypatch.setattr(main_mod, "load_config", lambda: Result.ok_payload(fake_config))

@@ -1,10 +1,14 @@
+# Copyright 2026 Rik Essenius
+# Licensed under the Apache License, Version 2.0. See the LICENSE file for details.
+# File: tests/fetch/conftest.py
+
 import time
 from unittest.mock import Mock
 
 import pytest
 import requests
 
-from finance.common.model import FetchResult, Result
+from finance.common.model import FetchResult
 
 
 @pytest.fixture
@@ -14,6 +18,7 @@ def assert_ok():
         point = result.payload[0]
         assert point.timestamp == timestamp
         assert point.fields == {"price": value}
+
     return _assert_ok
 
 
@@ -33,7 +38,9 @@ def mock_get_response():
             mock_resp.text = text  # if text else json.dumps(json_data)
 
         monkeypatch.setattr(f"finance.fetch.{target}.requests.get", lambda *a, **k: mock_resp)
+
     return _mock_get_response
+
 
 @pytest.fixture
 def frozen_time(monkeypatch):

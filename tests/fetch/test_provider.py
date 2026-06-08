@@ -12,7 +12,9 @@ from finance.fetch.provider import MarketDataProvider
 
 class DummyProvider(MarketDataProvider):
     def fetch(self, asset: str, last_timestamp: int) -> FetchResult:
-        return  FetchResult.ok_payload(measurement=asset, payload=[FetchPoint(timestamp=last_timestamp, fields={"price": 10})])
+        return FetchResult.ok_payload(
+            measurement=asset, payload=[FetchPoint(timestamp=last_timestamp, fields={"price": 10})]
+        )
 
 
 def test_init_defaults():
@@ -31,7 +33,7 @@ def test_safe_call_success():
     p = DummyProvider()
 
     def good():
-        return MeasurementResult.ok_payload("x",[1, 2, 3])
+        return MeasurementResult.ok_payload("x", [1, 2, 3])
 
     result = p._safe_call("ABC", good, "context")
     assert result.ok

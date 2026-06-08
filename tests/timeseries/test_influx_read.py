@@ -12,12 +12,16 @@ def test_read_v1():
     session.get.return_value = Mock(
         raise_for_status=lambda: None,
         json=lambda: {
-            "results": [{
-                "series": [{
-                    "columns": ["time", "value"],
-                    "values": [["2024-01-01T00:00:00Z", 10]],
-                }]
-            }]
+            "results": [
+                {
+                    "series": [
+                        {
+                            "columns": ["time", "value"],
+                            "values": [["2024-01-01T00:00:00Z", 10]],
+                        }
+                    ]
+                }
+            ]
         },
     )
 

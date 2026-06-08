@@ -1,3 +1,7 @@
+# Copyright 2026 Rik Essenius
+# Licensed under the Apache License, Version 2.0. See the LICENSE file for details.
+# File: tests/config/test_normalize_composites.py
+
 from finance.config.loader import normalize_composites
 
 

@@ -172,13 +172,8 @@ def test_composite_graph_equivalent_behavior():
         deps[name] = set(result.payload)
 
     # Only composite→composite edges matter
-    graph = {
-        name: [dep for dep in deps[name] if dep in composites]
-        for name in composites
-    }
+    graph = {name: [dep for dep in deps[name] if dep in composites] for name in composites}
 
     order = topo_sort(graph)
 
     assert order == ["C", "D"]
-
-

@@ -64,11 +64,9 @@ class State:
 
         return last_persisted_ts is None or newest_provider_ts > last_persisted_ts
 
-
     @property
     def data(self) -> dict:
         return self._state
-
 
     def _compute_policy(self, measurement: str, timestamp: int) -> dict:
         entry = self._state.get(measurement)
@@ -84,7 +82,6 @@ class State:
             return {"skipped": True, "reason": "unchanged"}
 
         return {"skipped": True, "reason": "older"}
-
 
     def ingest(self, write: TimeseriesWrite) -> TimeseriesResult:
         """

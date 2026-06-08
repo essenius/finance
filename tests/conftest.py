@@ -1,3 +1,7 @@
+# Copyright 2026 Rik Essenius
+# Licensed under the Apache License, Version 2.0. See the LICENSE file for details.
+# File: tests/conftest.py
+
 from pathlib import Path
 from unittest.mock import Mock
 
@@ -10,6 +14,7 @@ from finance.timeseries.influx import InfluxBackend
 
 def bucket_for_test(measurement: str) -> str:
     return "test_bucket"
+
 
 @pytest.fixture
 def state_env(tmp_path) -> tuple[State, InfluxBackend, JsonlWAL, Path]:
@@ -34,12 +39,13 @@ def unwrap():
         assert result.ok
         assert result.payload is not None
         return result.payload
+
     return _unwrap
 
 
 @pytest.fixture
 def assert_error():
-    def _assert_error(result: Result, reason: str, error: str|None):
+    def _assert_error(result: Result, reason: str, error: str | None):
         assert not result.ok
         assert result.payload is None
         assert reason in result.reason
@@ -47,4 +53,5 @@ def assert_error():
             assert error in result.error
         else:
             assert result.error is None
+
     return _assert_error

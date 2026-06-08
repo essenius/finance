@@ -51,12 +51,12 @@ def test_identifier_rewriting(expr, expected, unwrap, state_obj):
         }
     }
 
-    state = make_state(state_obj,
+    state = make_state(
+        state_obj,
         A_daily=({"value": 2}, 100),
         B_daily=({"value": 3}, 200),
         gold_daily=({"high": 2050, "low": 2000}, 500),
     )
-
 
     engine = unwrap(CompositeEngine.build(composites, state))
     rewritten = engine._rewrite_expression(expr, "daily")
@@ -194,7 +194,8 @@ def test_missing_dependency(unwrap, assert_error, state_obj):
         }
     }
 
-    state = make_state(state_obj,
+    state = make_state(
+        state_obj,
         A_daily=({"value": 1}, 900),
         # B_daily missing
     )
@@ -203,7 +204,7 @@ def test_missing_dependency(unwrap, assert_error, state_obj):
 
     results = list(engine.evaluate_incrementally())
 
-        # Expect exactly one failure
+    # Expect exactly one failure
     fail = [r for r in results if not r.ok]
     assert len(fail) == 1
 
@@ -255,10 +256,11 @@ def test_no_dependencies(unwrap, state_obj):
     assert entry["fields"]["value"] == 42
     assert entry["last_timestamp"] == 1234
 
+
 def test_cycle_error_in_build(state_obj, assert_error):
     composites = {
         "A": {
-            "expression": "A",   # self-reference
+            "expression": "A",  # self-reference
             "timeseries": "daily",
             "measurement": "test",
             "tags": {},

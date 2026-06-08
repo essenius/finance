@@ -1,6 +1,6 @@
 # Copyright 2026 Rik Essenius
 # Licensed under the Apache License, Version 2.0. See the LICENSE file for details.
-# File: tests/timeseries/test_influx.py
+# File: tests/timeseries/test_influx_parse.py
 
 from unittest.mock import Mock
 
@@ -11,18 +11,23 @@ def test_parse_v1_basic():
     backend = InfluxBackend(Mock(), InfluxConfig(True, 1, "x", db="d"))
 
     data = {
-        "results": [{
-            "series": [{
-                "columns": ["time", "value", "tag1"],
-                "values": [["2024-01-01T00:00:00Z", 123, "abc"]],
-            }]
-        }]
+        "results": [
+            {
+                "series": [
+                    {
+                        "columns": ["time", "value", "tag1"],
+                        "values": [["2024-01-01T00:00:00Z", 123, "abc"]],
+                    }
+                ]
+            }
+        ]
     }
 
     result = backend._parse_v1("bucket", "m", data)
     assert result.measurement == "m"
     assert result.fields == {"value": 123}
     assert result.tags == {"tag1": "abc"}
+
 
 def test_parse_v2_basic():
     backend = InfluxBackend(Mock(), InfluxConfig(True, 2, "x", org="o"))
@@ -70,14 +75,11 @@ def test_parse_v2_wrong_measurement():
 def test_parse_v2_no_fields():
     backend = InfluxBackend(Mock(), InfluxConfig(True, 2, "x", org="o"))
 
-    data = {
-        "tables": [
-            {"records": [{"_measurement": "m", "_time": "2024-01-01T00:00:00Z"}]}
-        ]
-    }
+    data = {"tables": [{"records": [{"_measurement": "m", "_time": "2024-01-01T00:00:00Z"}]}]}
 
     result = backend._parse_v2("bucket", "m", data)
     assert result is None
+
 
 def test_parse_v2_skips_malformed_records():
     backend = InfluxBackend(Mock(), InfluxConfig(True, 2, "x", org="o"))
@@ -132,6 +134,7 @@ def test_parse_v2_skips_result_and_table_keys():
     # Only tag1 should remain
     assert result.tags == {"tag1": "ok"}
 
+
 def test_parse_v1_no_results():
     backend = InfluxBackend(Mock(), InfluxConfig(True, 1, "x", db="d"))
     result = backend._parse_v1("bucket", "m", {"results": []})
@@ -142,12 +145,16 @@ def test_parse_v1_missing_values():
     backend = InfluxBackend(Mock(), InfluxConfig(True, 1, "x", db="d"))
 
     data = {
-        "results": [{
-            "series": [{
-                "columns": ["time", "value"],
-                "values": [],
-            }]
-        }]
+        "results": [
+            {
+                "series": [
+                    {
+                        "columns": ["time", "value"],
+                        "values": [],
+                    }
+                ]
+            }
+        ]
     }
 
     result = backend._parse_v1("bucket", "m", data)
@@ -158,12 +165,16 @@ def test_parse_v1_missing_columns():
     backend = InfluxBackend(Mock(), InfluxConfig(True, 1, "x", db="d"))
 
     data = {
-        "results": [{
-            "series": [{
-                # missing "columns"
-                "values": [["2024-01-01T00:00:00Z", 10]],
-            }]
-        }]
+        "results": [
+            {
+                "series": [
+                    {
+                        # missing "columns"
+                        "values": [["2024-01-01T00:00:00Z", 10]],
+                    }
+                ]
+            }
+        ]
     }
 
     result = backend._parse_v1("bucket", "m", data)
@@ -174,9 +185,11 @@ def test_parse_v1_missing_series_returns_none():
     backend = InfluxBackend(Mock(), InfluxConfig(True, 1, "x", db="d"))
 
     data = {
-        "results": [{
-            "series": []   # triggers line 207
-        }]
+        "results": [
+            {
+                "series": []  # triggers line 207
+            }
+        ]
     }
 
     result = backend._parse_v1("bucket", "m", data)

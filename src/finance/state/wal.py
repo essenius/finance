@@ -1,6 +1,6 @@
 # Copyright 2026 Rik Essenius
 # Licensed under the Apache License, Version 2.0. See the LICENSE file for details.
-# File: src/finance/write/wal.py
+# File: src/finance/state/wal.py
 
 import json
 from collections.abc import Iterable

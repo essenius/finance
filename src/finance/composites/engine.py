@@ -67,7 +67,7 @@ class CompositeEngine:
 
     @classmethod
     def build(cls, composites: dict, state: State) -> Result[CompositeEngine]:
-        context = { "location": here() }
+        context = {"location": here()}
         engine = cls(composites, state)
 
         graph_result = engine._build_graph()
@@ -168,7 +168,7 @@ class CompositeEngine:
     # ------------------------------------------------------------------ #
 
     def _evaluate_single(self, name: str, namespace: dict) -> MeasurementResult[FetchPoint]:
-        context = { "location": here() }
+        context = {"location": here()}
         cfg = self.composites[name]
         raw_expression = cfg["expression"]
         timeseries = cfg["timeseries"]

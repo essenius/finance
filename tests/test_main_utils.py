@@ -1,3 +1,6 @@
+# Copyright 2026 Rik Essenius
+# Licensed under the Apache License, Version 2.0. See the LICENSE file for details.
+# File: tests/test_main_utils.py
 
 import pytest
 
@@ -7,6 +10,7 @@ from finance.main_utils import process_result, unwrap
 # ---------------------------------------------------------------------------
 # unwrap tests
 # ---------------------------------------------------------------------------
+
 
 def test_unwrap_success_no_warning(caplog):
     caplog.set_level("DEBUG")
@@ -40,8 +44,10 @@ def test_unwrap_failure_with_throw():
 # process_result tests
 # ---------------------------------------------------------------------------
 
+
 class FakeState:
     """State that records ingest calls."""
+
     def __init__(self):
         self.calls = []
 
@@ -52,6 +58,7 @@ class FakeState:
 
 class SkipState(FakeState):
     """State that returns skip (payload=None)."""
+
     def ingest(self, write: TimeseriesWrite):
         self.calls.append(write)
         return Result.ok_payload(None)  # skip
@@ -59,6 +66,7 @@ class SkipState(FakeState):
 
 class FailingState(FakeState):
     """State that returns failure."""
+
     def ingest(self, write: TimeseriesWrite):
         self.calls.append(write)
         return Result.fail(write.measurement, "ingest failed")

@@ -123,10 +123,12 @@ def test_daily_range_initial_load(provider, monkeypatch):
 
     def fake_fetch(name, symbol, interval_str, range_str):
         captured["range"] = range_str
-        return FetchResult.ok_payload("h",{"chart": {"result": [{}]}})
+        return FetchResult.ok_payload("h", {"chart": {"result": [{}]}})
 
     monkeypatch.setattr(provider, "_fetch", fake_fetch)
-    monkeypatch.setattr(provider, "_extract_candles", lambda data, symbol, today=None: MeasurementResult.ok_payload("h", []))
+    monkeypatch.setattr(
+        provider, "_extract_candles", lambda data, symbol, today=None: MeasurementResult.ok_payload("h", [])
+    )
 
     # last_timestamp=None → initial load → must use history limit
     provider._fetch_daily("h", "EURUSD=X", ["close"], last_timestamp=None)

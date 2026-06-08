@@ -11,7 +11,7 @@ from ..common.model import FetchResult, MeasurementResult, Result, T
 class MarketDataProvider:
     """Base interface for all market data providers."""
 
-    def __init__(self, config: dict=None, now_provider: Callable[[], datetime]=None):
+    def __init__(self, config: dict = None, now_provider: Callable[[], datetime] = None):
 
         self.config = config or {}
         self.now = now_provider or (lambda: datetime.now(UTC))
@@ -42,13 +42,15 @@ class MarketDataProvider:
         return key
     """
 
-    def _safe_call(self, measurement: str, fn: Callable[[], MeasurementResult[T]], context: str) -> MeasurementResult[T]:
+    def _safe_call(
+        self, measurement: str, fn: Callable[[], MeasurementResult[T]], context: str
+    ) -> MeasurementResult[T]:
         try:
             return fn()
         except Exception as exc:
             return MeasurementResult.fail(measurement, f"Exception during {context}", exc)
 
-    def _safe_get(self, obj: dict|list, path: list[str|int]) -> Result[any]:
+    def _safe_get(self, obj: dict | list, path: list[str | int]) -> Result[any]:
         """
         Walk nested dict/list structures safely.
         Returns (value, None) on success.

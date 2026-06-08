@@ -51,9 +51,7 @@ class EcbProvider(MarketDataProvider):
             return FetchResult.fail(name, f"Could not interpret path for {field}", value_result.reason)
 
         value = value_result.payload
-        timestamp_result = self._safe_get(
-            data, ["structure", "dimensions", "observation", 0, "values", 0, "start"]
-        )
+        timestamp_result = self._safe_get(data, ["structure", "dimensions", "observation", 0, "values", 0, "start"])
 
         if not timestamp_result.ok:
             return FetchResult.fail(name, "Could not interpret path for timestamp", timestamp_result.reason)

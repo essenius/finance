@@ -1,3 +1,7 @@
+# Copyright 2026 Rik Essenius
+# Licensed under the Apache License, Version 2.0. See the LICENSE file for details.
+# File: tests/state/test_wal.py
+
 import json
 from dataclasses import asdict
 
@@ -8,11 +12,14 @@ from finance.state.wal import JsonlWAL
 
 
 def make(measurement="m", field=None, timestamp=0, bucket="b", tags=None):
-    return TimeseriesWrite(measurement=measurement, fields=field or {}, timestamp=timestamp, bucket=bucket, tags=tags or {})
+    return TimeseriesWrite(
+        measurement=measurement, fields=field or {}, timestamp=timestamp, bucket=bucket, tags=tags or {}
+    )
 
 
 def write_series(f: File, series: TimeseriesWrite):
     f.write(json.dumps(asdict(series)) + "\n")
+
 
 def test_wal_enqueue_and_read_all(tmp_path):
     wal_path = tmp_path / "wal.jsonl"

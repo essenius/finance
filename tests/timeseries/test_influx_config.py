@@ -1,19 +1,13 @@
 # Copyright 2026 Rik Essenius
 # Licensed under the Apache License, Version 2.0. See the LICENSE file for details.
-# File: tests/timeseries/test_influx.py
+# File: tests/timeseries/test_influx_config.py
 
-from unittest.mock import Mock, patch
+from unittest.mock import Mock
 
 import pytest
 
-from finance.common.model import (
-    Result,
-    TimeseriesResult,
-    TimeseriesWrite,
-)
 from finance.timeseries.influx import (
     InfluxBackend,
-    InfluxConfig,
     configure_verify,
 )
 from finance.timeseries.ssl_context_adapter import SSLContextAdapter
@@ -21,6 +15,7 @@ from finance.timeseries.ssl_context_adapter import SSLContextAdapter
 # -----------------------
 # Configure Verify tests
 # -----------------------
+
 
 def test_configure_verify_true_mode():
     session = Mock()
@@ -45,6 +40,7 @@ def test_configure_verify_pinned_uses_cert():
     result = configure_verify(session, "pinned", "/tmp/cert.pem")
     assert result == "/tmp/cert.pem"
 
+
 def test_configure_verify_legacy_with_cert(monkeypatch):
     session = Mock()
     fake_ctx = Mock()
@@ -56,6 +52,7 @@ def test_configure_verify_legacy_with_cert(monkeypatch):
     result = configure_verify(session, "legacy", "/tmp/cert.pem")
     assert result is True
     session.mount.assert_called_once()
+
 
 def test_configure_verify_invalid_mode():
     session = Mock()
@@ -92,9 +89,11 @@ def test_configure_verify_legacy_uses_default_cert(monkeypatch):
     assert args[0] == "https://"
     assert isinstance(args[1], SSLContextAdapter)
 
+
 # -----------------------
 # From Secrets tests
 # -----------------------
+
 
 def test_from_secrets_v2_success(monkeypatch):
     session = Mock()
@@ -115,6 +114,7 @@ def test_from_secrets_v2_success(monkeypatch):
     assert backend.cfg.org == "rik"
     assert backend.cfg.write_token == "w"
 
+
 def test_from_secrets_v1_success(monkeypatch):
     session = Mock()
     monkeypatch.setattr("requests.Session", lambda: session)
@@ -134,9 +134,11 @@ def test_from_secrets_v1_success(monkeypatch):
     assert backend.cfg.db == "finance"
     assert backend.cfg.auth == ("u", "p")
 
+
 def test_from_secrets_missing_both():
     result = InfluxBackend.from_secrets({"url": "x"})
     assert not result.ok
+
 
 def test_from_secrets_org_and_db(monkeypatch):
     session = Mock()
@@ -175,8 +177,7 @@ def test_from_secrets_exception_path(monkeypatch):
 
     # Force configure_verify to throw inside the try block
     monkeypatch.setattr(
-        "finance.timeseries.influx.configure_verify",
-        lambda *args, **kwargs: (_ for _ in ()).throw(Exception("boom"))
+        "finance.timeseries.influx.configure_verify", lambda *args, **kwargs: (_ for _ in ()).throw(Exception("boom"))
     )
 
     secrets = {"url": "https://example", "db": "x"}

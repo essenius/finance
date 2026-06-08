@@ -82,7 +82,7 @@ META_CASES = [
             "missing value for 'high'",
             "missing value for 'low'",
             "missing value for 'volume'",
-        ]
+        ],
     ),
     # open requested → fail fast
     (
@@ -93,7 +93,7 @@ META_CASES = [
         },
         None,
         "cannot synthesize 'open' from metadata",
-        None
+        None,
     ),
     # unknown field → fail fast
     (
@@ -104,7 +104,7 @@ META_CASES = [
         },
         None,
         "unknown field 'foo'",
-        None
+        None,
     ),
     # missing timestamp → empty
     (
@@ -114,7 +114,7 @@ META_CASES = [
         },
         None,
         "timestamp missing",
-        None
+        None,
     ),
 ]
 

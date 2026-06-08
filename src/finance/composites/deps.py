@@ -14,7 +14,7 @@ def extract_dependencies(expr: str, candidates: Iterable[str]) -> Result[list[st
     Extract variable names from a composite expression using Python's AST.
     Only returns identifiers that are present in `candidates`.
     """
-    context = { "location": here() }
+    context = {"location": here()}
 
     try:
         tree = ast.parse(expr, mode="eval")

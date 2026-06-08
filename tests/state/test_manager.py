@@ -182,7 +182,6 @@ def test_load_state_after_atomic_save(tmp_path, monkeypatch):
 
 def test_rebuild_measurement_state_prefers_wal():
 
-
     class FakeWAL:
         def read_all(self):
             return [
@@ -211,10 +210,7 @@ def test_rebuild_measurement_state_uses_influx_if_wal_empty():
     class FakeInflux:
         def read(self, bucket, measurement):
             assert measurement == "spx"
-            return TimeseriesResult.ok_payload(
-                "spx",
-                TimeseriesWrite("spx", {"value": 999}, {}, 123, bucket)
-            )
+            return TimeseriesResult.ok_payload("spx", TimeseriesWrite("spx", {"value": 999}, {}, 123, bucket))
 
     wal = FakeWAL()
     influx = FakeInflux()

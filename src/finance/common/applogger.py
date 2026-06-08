@@ -1,6 +1,6 @@
 # Copyright 2026 Rik Essenius
 # Licensed under the Apache License, Version 2.0. See the LICENSE file for details.
-# File: src/finance/common/log_mixin.py
+# File: src/finance/common/applogger.py
 
 import inspect
 import logging
@@ -19,7 +19,7 @@ class AppLogger:
         # Each class gets its own logger name
         return logging.getLogger(self.__class__.__name__)
 
-    def log(self, level: str, msg: str=None, **context) -> dict:
+    def log(self, level: str, msg: str = None, **context) -> dict:
 
         py_level = LOG_LEVELS[level]
 
@@ -30,7 +30,7 @@ class AppLogger:
         frame = inspect.currentframe()
         stacklevel = 1
 
-        while frame: # pragma: no cover - currentframe() never returns None
+        while frame:  # pragma: no cover - currentframe() never returns None
             code = frame.f_code
             if code.co_name not in ("log", "error", "warning", "info", "debug"):
                 break

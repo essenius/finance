@@ -1,3 +1,7 @@
+# Copyright 2026 Rik Essenius
+# Licensed under the Apache License, Version 2.0. See the LICENSE file for details.
+# File: tests/state/conftest.py
+
 import pytest
 
 from finance.common.model import TimeseriesWrite
@@ -22,6 +26,7 @@ def make_entry() -> TimeseriesWrite:
             bucket=bucket,
             tags={},
         )
+
     return _make
 
 
@@ -29,9 +34,9 @@ def make_entry() -> TimeseriesWrite:
 def mock_rebuild(monkeypatch):
     def apply(result):
         monkeypatch.setattr(
-            "finance.state.manager.rebuild_measurement_state",
-            lambda bucket, measurement, wal, ts_client: result
+            "finance.state.manager.rebuild_measurement_state", lambda bucket, measurement, wal, ts_client: result
         )
+
     return apply
 
 
@@ -47,7 +52,9 @@ def two_wal_entries(make_entry):
             make_entry(measurement="a", value=1, timestamp=10),
             make_entry(measurement="a", value=2, timestamp=20),
         ]
+
     return _entries
+
 
 @pytest.fixture
 def two_wal_entries_with_none(make_entry):
@@ -57,4 +64,5 @@ def two_wal_entries_with_none(make_entry):
             make_entry(measurement="a", value=2, timestamp=20),
             None,
         ]
+
     return _entries

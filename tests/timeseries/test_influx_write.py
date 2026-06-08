@@ -1,6 +1,6 @@
 # Copyright 2026 Rik Essenius
 # Licensed under the Apache License, Version 2.0. See the LICENSE file for details.
-# File: tests/timeseries/test_influx.py
+# File: tests/timeseries/test_influx_write.py
 
 from unittest.mock import Mock
 
@@ -69,6 +69,7 @@ def test_write_v2_success():
 
     headers = session.post.call_args.kwargs["headers"]
     assert headers["Authorization"] == "Token abc"
+
 
 def test_write_failure():
     session = Mock()

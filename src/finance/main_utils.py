@@ -1,3 +1,7 @@
+# Copyright 2026 Rik Essenius
+# Licensed under the Apache License, Version 2.0. See the LICENSE file for details.
+# File: src/finance/main_utils.py
+
 from dataclasses import asdict
 from typing import TypeVar
 
@@ -8,6 +12,7 @@ from finance.state.manager import State
 logger = AppLogger()
 
 T = TypeVar("T")
+
 
 def unwrap(result: Result[T], throw: bool | None = True) -> T | None:
     """
@@ -46,7 +51,7 @@ def process_result(result: FetchResult, state: State, tags: dict, bucket: str) -
         return False
 
     if not payload:
-        return True # nothing to do
+        return True  # nothing to do
 
     all_ok = True
 

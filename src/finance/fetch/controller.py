@@ -21,7 +21,7 @@ PROVIDER_REGISTRY = {
 
 
 class FetchController:
-    def __init__(self, assets: dict, api_keys: dict|None=None, now_provider=time.time):
+    def __init__(self, assets: dict, api_keys: dict | None = None, now_provider=time.time):
         self.assets = assets
         self.api_keys = api_keys or {}
         self.now = now_provider

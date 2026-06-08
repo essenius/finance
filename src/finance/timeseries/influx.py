@@ -1,6 +1,6 @@
 # Copyright 2026 Rik Essenius
 # Licensed under the Apache License, Version 2.0. See the LICENSE file for details.
-# File: src/finance/write/influx.py
+# File: src/finance/timeseries/influx.py
 
 from dataclasses import dataclass
 
@@ -61,7 +61,7 @@ class InfluxBackend:
     @classmethod
     def from_secrets(cls, secrets: dict) -> Result["InfluxBackend"]:
         try:
-            context = { "location": here() }
+            context = {"location": here()}
             url = secrets["url"].rstrip("/")
             cert = secrets.get("cert")
             ssl_verify_mode = secrets.get("ssl_verify", "true")
@@ -267,4 +267,6 @@ from(bucket: "{bucket}")
             return TimeseriesResult.ok_payload(entry.measurement, None)
 
         except Exception as e:
-            return TimeseriesResult.fail(entry.measurement, "Influx write failed", e, meta={"attempted_timestamp": entry.timestamp})
+            return TimeseriesResult.fail(
+                entry.measurement, "Influx write failed", e, meta={"attempted_timestamp": entry.timestamp}
+            )

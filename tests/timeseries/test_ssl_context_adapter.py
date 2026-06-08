@@ -1,3 +1,7 @@
+# Copyright 2026 Rik Essenius
+# Licensed under the Apache License, Version 2.0. See the LICENSE file for details.
+# File: tests/timeseries/test_ssl_context_adapter.py
+
 import ssl
 from unittest.mock import MagicMock, patch
 

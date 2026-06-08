@@ -1,3 +1,7 @@
+# Copyright 2026 Rik Essenius
+# Licensed under the Apache License, Version 2.0. See the LICENSE file for details.
+# File: tests/state/test_state.py
+
 import json
 import time
 from unittest.mock import Mock
@@ -100,7 +104,9 @@ def test_ingest_stops_on_first_failure(state_env, make_entry, wal_sequence, two_
 
     wal_sequence(wal, two_wal_entries())
 
-    ts.write.return_value = TimeseriesResult.fail(measurement="a", reason="down", error="x", meta={ "failed_timestamp": 100})
+    ts.write.return_value = TimeseriesResult.fail(
+        measurement="a", reason="down", error="x", meta={"failed_timestamp": 100}
+    )
 
     result = state.ingest(make_entry("a", 3, 30))
 
@@ -133,9 +139,9 @@ def test_ingest_flushes_remaining_after_recovery(state_env, make_entry, wal_sequ
     wal_sequence(wal, entries)
     w1, w2, _ = entries
     ts.write.side_effect = [
-        TimeseriesResult.fail(w1.measurement, "down"),   # first attempt fails
-        TimeseriesResult.ok_payload(w1.measurement, w1), # retry succeeds
-        TimeseriesResult.ok_payload(w2.measurement, w2), # next entry succeeds
+        TimeseriesResult.fail(w1.measurement, "down"),  # first attempt fails
+        TimeseriesResult.ok_payload(w1.measurement, w1),  # retry succeeds
+        TimeseriesResult.ok_payload(w2.measurement, w2),  # next entry succeeds
     ]
 
     entry = make_entry(measurement="a", value=3, timestamp=30)

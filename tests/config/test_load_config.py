@@ -1,6 +1,6 @@
 # Copyright 2026 Rik Essenius
 # Licensed under the Apache License, Version 2.0. See the LICENSE file for details.
-# File: tests/config/test_loader.py
+# File: tests/config/test_load_config.py
 
 from finance.config.loader import load_config, load_yaml_config
 
@@ -88,7 +88,9 @@ def test_load_config_missing_file(tmp_path, assert_error):
 def test_load_config_dev_mode(monkeypatch, tmp_path, unwrap):
     monkeypatch.chdir(tmp_path)
 
-    (tmp_path / "config.yaml").write_text("environment:\n  buckets:\n    intraday: a\n    daily: b\nbusiness:\n  providers: {}\n  assets: {}\n  composites: {}\n")
+    (tmp_path / "config.yaml").write_text(
+        "environment:\n  buckets:\n    intraday: a\n    daily: b\nbusiness:\n  providers: {}\n  assets: {}\n  composites: {}\n"
+    )
     (tmp_path / ".env").write_text("INFLUX_URL=http://x\nINFLUX_DB=db\n")
 
     result = load_config()

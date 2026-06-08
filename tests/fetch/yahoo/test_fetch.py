@@ -81,7 +81,6 @@ def test_fetch_success(provider, monkeypatch):
     assert result.payload == {}
 
 
-
 @pytest.mark.parametrize(
     "response_setup, expected_error",
     [
@@ -115,17 +114,21 @@ def test_fetch_errors(provider, monkeypatch, response_setup, expected_error):
 
     assert not result.ok
     assert expected_error in result.error
-    assert 'Exception during fetch' in result.reason
+    assert "Exception during fetch" in result.reason
 
 
 def test_fetch_returns_data_but_no_results(provider, monkeypatch):
     mock_response = Mock()
     mock_response.raise_for_status.return_value = None
-    mock_response.json.return_value = {"chart":{"result":None,"error":{"code":"Not Found","description":"No data found, symbol may be delisted"}}}
+    mock_response.json.return_value = {
+        "chart": {
+            "result": None,
+            "error": {"code": "Not Found", "description": "No data found, symbol may be delisted"},
+        }
+    }
 
     monkeypatch.setattr("requests.get", lambda *a, **kw: mock_response)
     result = provider._fetch("s", "EURUSD=X", "1d", "5d")
     assert not result.ok
     assert result.reason == "Could not interpret fetch response"
     assert result.error == "{'code': 'Not Found', 'description': 'No data found, symbol may be delisted'}"
-

@@ -14,6 +14,7 @@ from .provider import MarketDataProvider
 
 SUPPORTED_FIELDS = ["open", "high", "low", "close", "volume"]
 
+
 class YahooProvider(MarketDataProvider):
     """Unified Yahoo Finance data provider."""
 
@@ -157,7 +158,6 @@ class YahooProvider(MarketDataProvider):
             return results
         return self._extract_candles(results, fields, today)
 
-
     def _fetch(self, name, symbol, interval_str, range_str) -> MeasurementResult[dict]:
         url = self._build_url(symbol, interval_str, range_str)
         return self._safe_call(measurement=name, fn=lambda: self._fetch_impl(url, name), context="fetch")
@@ -208,7 +208,9 @@ class YahooProvider(MarketDataProvider):
         base = f"https://query1.finance.yahoo.com/v8/finance/chart/{encoded_symbol}"
         return f"{base}?{urlencode(params)}"
 
-    def _extract_candles(self, results: MeasurementResult[dict], fields: list[str]|None=None, today=None) -> FetchResult:
+    def _extract_candles(
+        self, results: MeasurementResult[dict], fields: list[str] | None = None, today=None
+    ) -> FetchResult:
 
         name = results.measurement
         payload = results.payload
@@ -268,11 +270,12 @@ class YahooProvider(MarketDataProvider):
 
         return FetchResult.ok_payload(name, candles, warnings)
 
-'''    def _map_fields(self, candle, fields):
+
+"""    def _map_fields(self, candle, fields):
         if set(fields).issubset(self.VALID_CANDLE_FIELDS):
             return {f: float(candle["fields"][f]) for f in fields}
 
         raise ValueError(
             "Yahoo provider only supports fields=['price'] or fields=['open','high','low','close','volume']"
         )
-'''
+"""

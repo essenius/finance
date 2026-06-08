@@ -40,7 +40,8 @@ def test_ecb_fetch_real_fixture(monkeypatch, assert_ok):
     provider = EcbProvider()
     result = provider.fetch("eurusd_1", make_asset(), last_timestamp=None)
 
-    assert_ok(result, timestamp=1778191200, value=1.1761 )
+    assert_ok(result, timestamp=1778191200, value=1.1761)
+
 
 def test_ecb_fetch_ok(monkeypatch, assert_ok):
     fake_json = {
@@ -52,7 +53,7 @@ def test_ecb_fetch_ok(monkeypatch, assert_ok):
     provider = EcbProvider()
     result = provider.fetch("eurusd_2", make_asset(), last_timestamp=None)
 
-    assert_ok(result, timestamp=1778191200, value=1.1761 )
+    assert_ok(result, timestamp=1778191200, value=1.1761)
 
 
 @pytest.mark.parametrize(
@@ -69,6 +70,7 @@ def test_ecb_fetch_wrong_symbol(symbol):
     assert not result.ok
     assert f"Could not split symbol '{symbol}' into base_quote" in result.reason
     assert result.payload is None
+
 
 def test_ecb_fetch_non_200(monkeypatch):
     mock_ecb_response(monkeypatch, 500, "", "Internal Server Error")

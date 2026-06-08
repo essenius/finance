@@ -1,4 +1,6 @@
-import pytest
+# Copyright 2026 Rik Essenius
+# Licensed under the Apache License, Version 2.0. See the LICENSE file for details.
+# File: tests/config/test_normalize_assets.py
 
 from finance.config.loader import normalize_assets
 
@@ -113,14 +115,12 @@ def test_normalize_assets_unknown_series(assert_error):
         "spx": {
             "provider": "yahoo",
             "symbol": "^GSPC",
-            "timeseries": {
-                "boom": {
-                }
-            },
+            "timeseries": {"boom": {}},
         }
     }
 
     assert_error(normalize_assets(raw), "Unknown timeseries name 'boom' in asset 'spx'", None)
+
 
 def test_normalize_assets_missing_interval(assert_error):
     raw = {
@@ -149,4 +149,6 @@ def test_normalize_assets_unknown_field_set(assert_error):
 
     field_sets = {"ohlc": ["open", "high", "low", "close"]}
 
-    assert_error(normalize_assets(raw, field_sets=field_sets), "Unknown field set 'does_not_exist' in asset 'spx'", None)
+    assert_error(
+        normalize_assets(raw, field_sets=field_sets), "Unknown field set 'does_not_exist' in asset 'spx'", None
+    )

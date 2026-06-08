@@ -1,3 +1,7 @@
+# Copyright 2026 Rik Essenius
+# Licensed under the Apache License, Version 2.0. See the LICENSE file for details.
+# File: tests/common/test_model_result.py
+
 from finance.common.model import MeasurementResult
 
 
@@ -12,6 +16,7 @@ def test_result_success_payload():
     assert result.reason is None
     assert result.meta is None
 
+
 def test_result_success_no_payload():
     result = MeasurementResult.ok_payload("spx", None)
 
@@ -23,8 +28,9 @@ def test_result_success_no_payload():
     assert result.reason is None
     assert result.meta is None
 
+
 def test_result_success_with_warning():
-    result = MeasurementResult.ok_payload("spx",[42], ["partial data"], meta={"location": "here"})
+    result = MeasurementResult.ok_payload("spx", [42], ["partial data"], meta={"location": "here"})
 
     assert result.ok is True
     assert result.measurement == "spx"
@@ -33,6 +39,7 @@ def test_result_success_with_warning():
     assert result.error is None
     assert result.reason is None
     assert result.meta == {"location": "here"}
+
 
 def test_result_success_with_multiple_warnings():
     result = MeasurementResult.ok_payload("spx", [1], ["slow response", "rate limited"])
@@ -45,6 +52,7 @@ def test_result_success_with_multiple_warnings():
     assert result.reason is None
     assert result.meta is None
 
+
 def test_result_success_with_empty_warnings():
     result = MeasurementResult.ok_payload("spx", payload=[1], warnings=[])
 
@@ -54,6 +62,7 @@ def test_result_success_with_empty_warnings():
     assert result.warning is None
     assert result.error is None
     assert result.reason is None
+
 
 def test_result_error_reason_only():
     result = MeasurementResult.fail("spx", "timeout")
@@ -65,9 +74,10 @@ def test_result_error_reason_only():
     assert result.warning is None
     assert result.error is None
 
+
 def test_result_error_with_exception_and_meta():
     exc = ValueError("boom")
-    result = MeasurementResult.fail("spx","bad data", exc, meta={ "other": 1})
+    result = MeasurementResult.fail("spx", "bad data", exc, meta={"other": 1})
 
     assert result.ok is False
     assert result.payload is None

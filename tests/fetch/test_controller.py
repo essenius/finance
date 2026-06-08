@@ -5,11 +5,8 @@
 import time
 from unittest.mock import Mock
 
-import pytest
-
 from finance.common.model import MeasurementResult
 from finance.fetch.controller import FetchController
-from finance.state.manager import State
 
 
 def make_asset(
@@ -38,6 +35,7 @@ def single_result(fc, state):
     results = list(fc.fetch_incrementally(state))
     assert len(results) == 1
     return results[0]
+
 
 # ----------------------------------------------------------------------
 # Freshness skipping
@@ -92,7 +90,6 @@ def test_controller_fetches_when_stale(state_env, monkeypatch):
         "last_timestamp": 123456,
     }
 
-
     result = single_result(fc, state)
     assert result.ok
     assert result.measurement == "eur_usd_intraday"
@@ -113,7 +110,6 @@ def test_controller_unknown_provider(state_env, monkeypatch, frozen_time):
 
     assets = make_asset(provider="mystery")
     fc = FetchController(assets, api_keys={}, now_provider=lambda: now)
-
 
     result = single_result(fc, state)
     assert not result.ok

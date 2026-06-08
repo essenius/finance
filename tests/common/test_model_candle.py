@@ -1,6 +1,6 @@
 # Copyright 2026 Rik Essenius
 # Licensed under the Apache License, Version 2.0. See the LICENSE file for details.
-# File: tests/fetch/test_model_candle.py
+# File: tests/common/test_model_candle.py
 
 import pytest
 

@@ -17,6 +17,7 @@ from .timeseries import InfluxBackend
 
 logger = AppLogger()
 
+
 def main():
     print("CALLSITE:", State, id(State))
 
@@ -77,4 +78,3 @@ def main():
     except Exception as e:
         logger.error("Exiting due to error", error=e)
         raise SystemExit(2) from None
-

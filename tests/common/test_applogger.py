@@ -1,6 +1,6 @@
 # Copyright 2026 Rik Essenius
 # Licensed under the Apache License, Version 2.0. See the LICENSE file for details.
-# File: tests/common/test_log_mixin.py
+# File: tests/common/test_applogger.py
 
 import logging
 

@@ -1,3 +1,7 @@
+# Copyright 2026 Rik Essenius
+# Licensed under the Apache License, Version 2.0. See the LICENSE file for details.
+# File: tests/config/test_loader_errors.py
+
 import os
 
 from finance.config.loader import load_config, load_yaml_config
@@ -6,16 +10,18 @@ from finance.config.loader import load_config, load_yaml_config
 # load_yaml_config
 # ---------------------------------------------------------------------------
 
+
 def test_load_yaml_config_invalid_yaml(tmp_path, assert_error):
     bad_yaml = tmp_path / "bad.yaml"
     bad_yaml.write_text("this: [unclosed")
 
-    assert_error(load_yaml_config(bad_yaml), "Invalid YAML",  "while parsing a flow sequence")
+    assert_error(load_yaml_config(bad_yaml), "Invalid YAML", "while parsing a flow sequence")
 
 
 # ---------------------------------------------------------------------------
 # normalize_assets
 # ---------------------------------------------------------------------------
+
 
 def test_normalize_assets_missing_required(tmp_path, assert_error):
     yaml_file = tmp_path / "config.yaml"
@@ -41,6 +47,7 @@ environment:
 # ---------------------------------------------------------------------------
 # load_environment_config
 # ---------------------------------------------------------------------------
+
 
 def test_load_environment_config_missing_buckets(tmp_path, assert_error):
     yaml_file = tmp_path / "config.yaml"
@@ -84,9 +91,11 @@ environment:
     result = load_config(yaml_file, env_file)
     assert_error(result, "Invalid bucket keys: ['bogus']. Allowed keys: ['daily', 'intraday']", None)
 
+
 # ---------------------------------------------------------------------------
 # load_business_config
 # ---------------------------------------------------------------------------
+
 
 def test_load_business_config_invalid_asset(tmp_path, assert_error):
     yaml_file = tmp_path / "config.yaml"
@@ -145,11 +154,11 @@ environment:
     intraday: i
 """)
 
-
     env_file = tmp_path / ".env"
     env_file.write_text("INFLUX_URL=x\nINFLUX_DB=y\n")
     result = load_config(yaml_file, env_file)
     assert_error(result, "Unknown timeseries name 'bogus' in asset 'spx'", None)
+
 
 def test_load_business_config_invalid_composite(tmp_path, assert_error):
     yaml_file = tmp_path / "config.yaml"
@@ -172,9 +181,11 @@ environment:
     result = load_config(yaml_file, env_file)
     assert_error(result, "Missing required field 'expression' in composite 'spread'", None)
 
+
 # ---------------------------------------------------------------------------
 # load_config
 # ---------------------------------------------------------------------------
+
 
 def test_load_config_missing_env_secrets(monkeypatch, tmp_path, assert_error):
 

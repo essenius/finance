@@ -10,6 +10,8 @@ import time
 from dateutil.parser import isoparse
 from requests import Response, Session
 
+from finance.timeseries.ssl_context_adapter import SSLContextAdapter, make_legacy_ssl_context
+
 from ..common.model import BatchWriteResult, Result, TimeseriesResult, TimeseriesWrite
 from .config import ConfigFactory, InfluxConfig
 
@@ -24,6 +26,7 @@ class InfluxBackend:
             if not influx_config.ok:
                 return influx_config
             warnings = influx_config.warnings
+
             return Result.ok_payload(cls(session, influx_config.payload, now), warnings)
 
         except Exception as e:
@@ -32,6 +35,14 @@ class InfluxBackend:
     def __init__(self, session: Session, config: InfluxConfig, now=None):
         self.session = session
         self.cfg = config
+        self.session.verify = config.ssl_verify
+        self.session.timeout = 5
+
+        if config.ssl_use_legacy:
+            ctx = make_legacy_ssl_context(config.ssl_verify if isinstance(config.ssl_verify, str) else None)
+            self.session.mount("https://", SSLContextAdapter(ctx))
+
+        # TODO fix this use of time.time
         self.now = now or time.time
 
         # batching state
@@ -84,7 +95,7 @@ from(bucket: "{bucket}")
             "Content-Type": "application/vnd.flux",
         }
 
-        r = self.session.post(url, params=params, data=query, headers=headers, timeout=5, verify=self.cfg.ssl_verify)
+        r = self.session.post(url, params=params, data=query, headers=headers)
         r.raise_for_status()
         return r.json()
 
@@ -93,7 +104,7 @@ from(bucket: "{bucket}")
         order = "ASC" if asc else "DESC"
         q = f'SELECT * FROM "{bucket}"."{measurement}" ORDER BY time {order} LIMIT 1'
         params = {"db": self.cfg.db, "q": q}
-        r = self.session.get(url, params=params, auth=self.cfg.auth, timeout=5, verify=self.cfg.ssl_verify)
+        r = self.session.get(url, params=params, auth=self.cfg.auth)
         r.raise_for_status()
         return r.json()
 
@@ -198,8 +209,8 @@ from(bucket: "{bucket}")
         base_params = {
             "data": line,
             "headers": {"Content-Type": "text/plain; charset=utf-8"},
-            "timeout": 5,
-            "verify": self.cfg.ssl_verify,
+            # "timeout": 5,
+            # "verify": self.cfg.ssl_verify,
         }
 
         try:
@@ -325,7 +336,7 @@ from(bucket: "{bucket}")
         count = len(entries)
         all_indices = list(range(count))
         try:
-            r = self.session.post(url, data=payload, headers=headers, timeout=5, verify=self.cfg.ssl_verify)
+            r = self.session.post(url, data=payload, headers=headers)
 
             # --- Full success ---
             if r.status_code == 204:

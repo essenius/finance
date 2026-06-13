@@ -3,6 +3,7 @@
 # File: src/finance/timeseries/ssl_context_adapter.py
 
 import ssl
+from unittest.mock import MagicMock, patch
 
 from requests.adapters import HTTPAdapter
 
@@ -17,13 +18,15 @@ class SSLContextAdapter(HTTPAdapter):
         return super().init_poolmanager(*args, **kwargs)
 
 
-def make_legacy_ssl_context(cafile: str) -> ssl.SSLContext:
+def make_legacy_ssl_context(cafile: str | None) -> ssl.SSLContext:
     ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
     ctx.verify_mode = ssl.CERT_REQUIRED
     ctx.check_hostname = True
-    ctx.load_verify_locations(cafile)
+    if cafile:
+        ctx.load_verify_locations(cafile)
 
     # The key line: restore OpenSSL 1.1‑style permissiveness
     ctx.set_ciphers("DEFAULT:@SECLEVEL=1")
 
     return ctx
+

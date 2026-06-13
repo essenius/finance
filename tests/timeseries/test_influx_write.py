@@ -218,6 +218,7 @@ def test_batch_write_v2_line_errors_with_non_dict(backend_v2, make_entries, mock
 def test_write_entry_v1_bypasses_batching(make_entry, monkeypatch):
     cfg = InfluxConfig(
         ssl_verify=True,
+        ssl_use_legacy=False,
         version=1,
         base_url="https://example/api/v2/write",
         org="rik",

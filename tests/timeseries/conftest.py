@@ -31,6 +31,7 @@ def backend_v1():
     session = Mock()
     cfg = InfluxConfig(
         ssl_verify=True,
+        ssl_use_legacy=False,
         version=1,
         base_url="http://x/write",
         db="finance",
@@ -46,6 +47,7 @@ def backend_v2():
     session = Mock()
     cfg = InfluxConfig(
         ssl_verify=True,
+        ssl_use_legacy=False,
         version=2,
         base_url="https://example/api/v2/write",
         org="rik",
@@ -86,7 +88,7 @@ def make_entries(make_entry):
 
 
 @pytest.fixture
-def mock_post(monkeypatch):
+def mock_post():
     def _mock(backend, *, status, text="", json_data=None, exception=None):
         class MockResponse:
             def __init__(self):
@@ -116,7 +118,7 @@ def mock_post(monkeypatch):
                 raise exception
             return MockResponse()
 
-        mock = Mock(side_effect=fake_post)
-        monkeypatch.setattr(backend.session, "post", mock)
+        backend.session = Mock()
+        backend.session.post = Mock(side_effect=fake_post)
 
     return _mock

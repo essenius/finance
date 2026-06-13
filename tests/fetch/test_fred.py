@@ -70,7 +70,6 @@ def test_fred_malformed_cases(assert_error, fred_provider, api_key, json_data, e
 def test_fred_fetch_network_error(assert_error, fred_provider):
     provider = fred_provider()
     provider.session.queue_error(Exception("Boom!"))
-    # monkeypatch.setattr("finance.fetch.fred.requests.get", lambda *a, **k: (_ for _ in ()).throw(Exception("boom")))
 
     result = provider.fetch("f3", make_asset(), 0, 1000)
 

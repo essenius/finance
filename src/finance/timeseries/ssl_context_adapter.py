@@ -3,7 +3,6 @@
 # File: src/finance/timeseries/ssl_context_adapter.py
 
 import ssl
-from unittest.mock import MagicMock, patch
 
 from requests.adapters import HTTPAdapter
 
@@ -29,4 +28,3 @@ def make_legacy_ssl_context(cafile: str | None) -> ssl.SSLContext:
     ctx.set_ciphers("DEFAULT:@SECLEVEL=1")
 
     return ctx
-

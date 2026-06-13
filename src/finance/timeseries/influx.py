@@ -42,7 +42,6 @@ class InfluxBackend:
             ctx = make_legacy_ssl_context(config.ssl_verify if isinstance(config.ssl_verify, str) else None)
             self.session.mount("https://", SSLContextAdapter(ctx))
 
-        # TODO fix this use of time.time
         self.now = now or time.time
 
         # batching state

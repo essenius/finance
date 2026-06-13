@@ -39,4 +39,3 @@ def resolve_config_path(value: str | None, default_filename: str, project_root: 
         return resolved / default_filename
 
     return resolved
-

@@ -27,6 +27,7 @@ class VerifyConfig:
     ssl_verify: bool | str
     ssl_use_legacy: bool = False
 
+
 class ConfigFactory:
     def __init__(self, config: dict, secrets: dict):
         self.config = config
@@ -67,16 +68,17 @@ class ConfigFactory:
             if not read_token or not write_token:
                 return Result.fail("InfluxDB 2 requires INFLUX_WRITE_TOKEN and INFLUX_READ_TOKEN, or INFLUX_TOKEN")
             warnings = ["both org and db specified, assuming InfluxDB 2.x and ignoring db"] if db else None
-            args.update({
-                "version": 2,
-                "base_url": f"{url}/api/v2/",
-                "org":org,
-                "write_token": write_token,
-                "read_token":read_token,
-                "max_batch_size": self.get_config("max_batch_size", 20),
-                "max_batch_age_seconds": self.get_config("max_batch_age_seconds", 2.0),
-
-            })
+            args.update(
+                {
+                    "version": 2,
+                    "base_url": f"{url}/api/v2/",
+                    "org": org,
+                    "write_token": write_token,
+                    "read_token": read_token,
+                    "max_batch_size": self.get_config("max_batch_size", 20),
+                    "max_batch_age_seconds": self.get_config("max_batch_age_seconds", 2.0),
+                }
+            )
             return Result.ok_payload(InfluxConfig(**args), warnings=warnings)
 
         if not db:
@@ -86,17 +88,18 @@ class ConfigFactory:
         user = self.get_config("user")
         password = self.get_config("password")
 
-        args.update({
-            "version": 1,
-            "base_url": url,
-            "db": db,
-            "auth": (user, password) if user and password else None,
-            "max_batch_size": self.get_config("max_batch_size", 1),
-            "max_batch_age_seconds": self.get_config("max_batch_age_seconds", 0.0),
-        })
+        args.update(
+            {
+                "version": 1,
+                "base_url": url,
+                "db": db,
+                "auth": (user, password) if user and password else None,
+                "max_batch_size": self.get_config("max_batch_size", 1),
+                "max_batch_age_seconds": self.get_config("max_batch_age_seconds", 0.0),
+            }
+        )
 
         return Result.ok_payload(InfluxConfig(**args))
-
 
     def configure_verify(self, mode: str, cert: str | None) -> Result[VerifyConfig]:
         mode = mode.lower()
@@ -116,37 +119,3 @@ class ConfigFactory:
             return Result.ok_payload(VerifyConfig(ssl_verify=cert if cert else True, ssl_use_legacy=True))
 
         return Result.fail(f"Unknown verify mode: {mode}")
-
-'''
-TODO delete
-def configure_verify(session, mode, cert):
-    mode = mode.lower()
-
-    # --- Strict mode: system CA store ---
-    if mode == "true":
-        return cert if cert else True
-
-    # --- Insecure mode ---
-    if mode == "false":
-        return False
-
-    # --- Pinned mode: cert required ---
-    if mode == "pinned":
-        if not cert:
-            raise ValueError("Pinned mode requires a certificate path")
-        return cert
-
-    # --- Legacy mode: cert optional ---
-    if mode == "legacy":
-        if cert:
-            # Legacy CA mode
-            ctx = make_legacy_ssl_context(cert)
-        else:
-            # Legacy system CA mode
-            ctx = make_legacy_ssl_context("/etc/ssl/certs/ca-certificates.crt")
-
-        session.mount("https://", SSLContextAdapter(ctx))
-        return True  # verify=True but SSLContext overrides behavior
-
-    raise ValueError(f"Unknown verify mode: {mode}")
-'''

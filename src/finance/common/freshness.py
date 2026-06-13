@@ -6,7 +6,7 @@
 def is_recent(entry: dict | None, now: int, interval: int) -> bool:
     if entry is None:
         return False
-    last_try = entry.get("last_try")
+    last_try = entry.get("last_timestamp")
     if last_try is None:
         return False
 

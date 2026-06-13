@@ -10,7 +10,7 @@ from collections.abc import Iterable
 
 from ..common.introspection import here
 from ..common.model import FetchPoint, FetchResult, MeasurementResult, Result
-from ..state.manager import State
+from ..state.state import State
 from .deps import CycleError, extract_dependencies, topo_sort
 
 IDENTIFIER_RE = re.compile(r"\b([A-Za-z_][A-Za-z0-9_]*)\b")

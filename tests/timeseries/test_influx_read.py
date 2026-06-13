@@ -4,71 +4,130 @@
 
 from unittest.mock import Mock
 
-from finance.timeseries.influx import InfluxBackend, InfluxConfig
+import pytest
 
 
-def test_read_v1():
-    session = Mock()
-    session.get.return_value = Mock(
-        raise_for_status=lambda: None,
-        json=lambda: {
-            "results": [
-                {
-                    "series": [
-                        {
-                            "columns": ["time", "value"],
-                            "values": [["2024-01-01T00:00:00Z", 10]],
-                        }
-                    ]
-                }
-            ]
-        },
-    )
+@pytest.mark.parametrize(
+    "backend_fixture, asc, expected_method, expected_query_check",
+    [
+        # v1 first
+        (
+            "backend_v1",
+            True,
+            "get",
+            "ORDER BY time ASC LIMIT 1",
+        ),
+        # v1 last
+        (
+            "backend_v1",
+            False,
+            "get",
+            "ORDER BY time DESC LIMIT 1",
+        ),
+        # v2 first
+        (
+            "backend_v2",
+            True,
+            "post",
+            'sort(columns: ["_time"], desc: false)',
+        ),
+        # v2 last
+        (
+            "backend_v2",
+            False,
+            "post",
+            'sort(columns: ["_time"], desc: true)',
+        ),
+    ],
+)
+def test_read_one_unified(request, backend_fixture, asc, expected_method, expected_query_check):
+    backend = request.getfixturevalue(backend_fixture)
+    session = backend.session
 
-    cfg = InfluxConfig(True, 1, "http://x/write", db="d")
-    backend = InfluxBackend(session, cfg)
+    # --- Mock backend responses ---
+    if backend_fixture == "backend_v1":
+        session.get.return_value = Mock(
+            raise_for_status=lambda: None,
+            json=lambda: {
+                "results": [
+                    {
+                        "series": [
+                            {
+                                "columns": ["time", "value"],
+                                "values": [["2024-01-01T00:00:00Z", 10]],
+                            }
+                        ]
+                    }
+                ]
+            },
+        )
+    else:
+        session.post.return_value = Mock(
+            raise_for_status=lambda: None,
+            json=lambda: {
+                "tables": [
+                    {
+                        "records": [
+                            {
+                                "_measurement": "m",
+                                "_time": "2024-01-01T00:00:00Z",
+                                "_field": "value",
+                                "_value": 10,
+                            }
+                        ]
+                    }
+                ]
+            },
+        )
 
-    result = backend.read("bucket", "m")
+    # --- Execute ---
+    result = backend.read_one("bucket", "m", asc=asc)
+
+    # --- Unified result assertions ---
     assert result.ok
     assert result.payload.fields == {"value": 10}
+    assert result.payload.timestamp == 1704067200
+
+    # --- Query verification ---
+    if expected_method == "get":
+        session.get.assert_called_once()
+        args, kwargs = session.get.call_args
+        q = kwargs["params"]["q"]
+        assert expected_query_check in q
+    else:
+        session.post.assert_called_once()
+        args, kwargs = session.post.call_args
+        body = kwargs["data"]
+        assert expected_query_check in body
 
 
-def test_read_v2_exception():
-    session = Mock()
+def test_read_v2_exception(backend_v2):
+    session = backend_v2.session
     session.post.side_effect = Exception("fail")
 
-    cfg = InfluxConfig(True, 2, "https://x/api/v2/write", org="o", read_token="t")
-    backend = InfluxBackend(session, cfg)
-
-    result = backend.read("bucket", "m")
+    result = backend_v2.read_first("bucket", "m")
     assert not result.ok
     assert "Influx read failed" in result.reason
 
 
-def test_read_v1_exception():
-    session = Mock()
+def test_read_v1_exception(backend_v1):
+    session = backend_v1.session
     session.get.side_effect = Exception("fail")
 
-    cfg = InfluxConfig(True, 1, "http://x/write", db="d")
-    backend = InfluxBackend(session, cfg)
-
-    result = backend.read("bucket", "m")
+    result = backend_v1.read_last("bucket", "m")
     assert not result.ok
     assert "Influx read failed" in result.reason
 
 
-def test_read_v2_url_and_headers():
-    session = Mock()
+def test_read_v2_url_and_headers(backend_v2):
+    session = backend_v2.session
     fake_response = Mock()
     fake_response.raise_for_status.return_value = None
     fake_response.json.return_value = {"tables": []}
     session.post.return_value = fake_response
 
-    cfg = InfluxConfig(True, 2, "https://example/api/v2/write", org="rik", read_token="abc")
-    backend = InfluxBackend(session, cfg)
-
-    backend.read("bucket", "m")
+    backend_v2.read_first("bucket", "m")
 
     url = session.post.call_args.args[0]
     assert url.endswith("/query")
-    assert session.post.call_args.kwargs["headers"]["Authorization"] == "Token abc"
+    assert session.post.call_args.kwargs["headers"]["Authorization"] == "Token 123"

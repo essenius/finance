@@ -17,14 +17,14 @@ def test_unwrap_success_no_warning(caplog):
     r = Result.ok_payload(123)
     assert unwrap(r, throw=False) == 123
     # no warnings logged
-    assert "warning=" not in caplog.text
+    assert "warnings=" not in caplog.text
 
 
 def test_unwrap_success_with_warning(caplog):
     caplog.set_level("WARNING")
-    r = Result(ok=True, payload=42, warning="careful")
+    r = Result(ok=True, payload=42, warnings=["careful"])
     assert unwrap(r, throw=False) == 42
-    assert "warning=careful" in caplog.text
+    assert "warnings=careful" in caplog.text
 
 
 def test_unwrap_failure_no_throw(caplog):
@@ -54,6 +54,9 @@ class FakeState:
     def ingest(self, write: TimeseriesWrite):
         self.calls.append(write)
         return Result.ok_payload(write)  # success
+
+    def update_range(self, measurement: str, first: int, last: int) -> None:
+        pass
 
 
 class SkipState(FakeState):

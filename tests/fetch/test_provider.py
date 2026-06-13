@@ -3,34 +3,29 @@
 # File: tests/fetch/test_provider.py
 
 from datetime import UTC, datetime
+from zoneinfo import ZoneInfo
 
 import pytest
+import requests
 
-from finance.common.model import FetchPoint, FetchResult, MeasurementResult
-from finance.fetch.provider import MarketDataProvider
-
-
-class DummyProvider(MarketDataProvider):
-    def fetch(self, asset: str, last_timestamp: int) -> FetchResult:
-        return FetchResult.ok_payload(
-            measurement=asset, payload=[FetchPoint(timestamp=last_timestamp, fields={"price": 10})]
-        )
+from finance.common.model import MeasurementResult
 
 
-def test_init_defaults():
-    p = DummyProvider()
+def test_init_defaults(dummy_provider):
+    p = dummy_provider()
 
-    # config defaults to empty dict
-    assert p.config == {}
+    assert p.api_key is None
+    assert p.provider_config.get("timezone") is not None
+    assert p.timezone == ZoneInfo("UTC")
+    assert isinstance(p.session, requests.Session)
 
-    # now_provider defaults to a callable returning UTC datetime
     now = p.now()
     assert isinstance(now, datetime)
     assert now.tzinfo == UTC
 
 
-def test_safe_call_success():
-    p = DummyProvider()
+def test_safe_call_success(dummy_provider):
+    p = dummy_provider()
 
     def good():
         return MeasurementResult.ok_payload("x", [1, 2, 3])
@@ -40,8 +35,8 @@ def test_safe_call_success():
     assert result.payload == [1, 2, 3]
 
 
-def test_safe_call_exception():
-    p = DummyProvider()
+def test_safe_call_exception(dummy_provider):
+    p = dummy_provider()
 
     def bad():
         raise ValueError("kaboom")
@@ -58,8 +53,8 @@ def test_safe_call_exception():
 # -------------------------
 
 
-def test_safe_get_ok():
-    p = DummyProvider()
+def test_safe_get_ok(dummy_provider):
+    p = dummy_provider()
     data = {"a": [{"b": 123}]}
 
     result = p._safe_get(data, ["a", 0, "b"])
@@ -77,16 +72,21 @@ def test_safe_get_ok():
         ({"a": 42}, ["a", 0], "cannot index with [0] at ['a']"),
     ],
 )
-def test_safe_get_errors(data: any, path, expected):
-    p = DummyProvider()
+def test_safe_get_errors(dummy_provider, data: any, path, expected):
+    p = dummy_provider()
     result = p._safe_get(data, path)
     assert not result.ok
     assert result.payload is None
     assert result.reason == expected
 
 
-def test_fetch_not_implemented():
+# -----------
+# Fetch test
+# -----------
 
-    result = MarketDataProvider().fetch("ABC", {"symbol": "ABC", "fields": ["price"]}, last_timestamp=None)
+
+def test_fetch_not_implemented(dummy_provider):
+
+    result = dummy_provider().fetch("ABC", {"symbol": "ABC", "fields": ["price"]}, start_timestamp=0, end_timestamp=0)
     assert not result.ok
     assert result.reason == "fetch not implemented"

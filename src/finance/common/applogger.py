@@ -43,12 +43,17 @@ class AppLogger:
 
         # flatten nested dicts one level deep
         flat = {}
+        multi = []
         for key, value in context.items():
             if value is None:
                 continue
             if isinstance(value, dict):
                 for subkey, subval in value.items():
                     flat[f"{key}.{subkey}"] = subval
+            # this assumes there is no more than one of those
+            elif isinstance(value, list):
+                for entry in value:
+                    multi.append(f"{key}={entry}")
             else:
                 flat[key] = value
 
@@ -57,11 +62,25 @@ class AppLogger:
         if msg:
             parts.append(msg)
         parts += [f"{k}={v}" for k, v in flat.items()]
+
         line = " | ".join(parts)
 
-        # Send to Python logging
-        self.logger.log(py_level, line, stacklevel=stacklevel)
+        log_lines = self._get_lines(line, multi)
+
+        for log_line in log_lines:
+            self.logger.log(py_level, log_line, stacklevel=stacklevel)
+
         return {"level": level, "logline": line, **context}
+
+    def _get_lines(self, line_part, multi):
+        lines = []
+        if multi:
+            for entry in multi:
+                line = f"{line_part} | {entry}"
+                lines.append(line)
+        else:
+            lines.append(line_part)
+        return lines
 
     def error(self, msg=None, **context):
         return self.log("error", msg, **context)

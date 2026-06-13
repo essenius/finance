@@ -2,11 +2,17 @@
 # Licensed under the Apache License, Version 2.0. See the LICENSE file for details.
 # File: tests/fetch/test_controller.py
 
-import time
+from collections.abc import Callable
+from datetime import datetime
 from unittest.mock import Mock
 
 from finance.common.model import MeasurementResult
-from finance.fetch.controller import FetchController
+from finance.common.time_utils import parse_duration
+from finance.fetch.controller import PROVIDER_REGISTRY, FetchController, create_providers
+from finance.fetch.ecb import EcbProvider
+from finance.fetch.fred import FredProvider
+from finance.fetch.yahoo import YahooProvider
+from finance.state.state import State
 
 
 def make_asset(
@@ -14,6 +20,7 @@ def make_asset(
     provider="yahoo",
     symbol="EURUSD=X",
     interval="10m",
+    history_limit="5d",
     fields=None,
     timeseries="intraday",
 ):
@@ -25,16 +32,47 @@ def make_asset(
             "provider": provider,
             "symbol": symbol,
             "interval": interval,
+            "interval_seconds": parse_duration(interval),
+            "history_limit": history_limit,
+            "history_limit_seconds": parse_duration(history_limit),
             "fields": fields,
             "timeseries": timeseries,
         }
     }
 
 
-def single_result(fc, state):
+def single_result(fc: FetchController, state: State):
     results = list(fc.fetch_incrementally(state))
     assert len(results) == 1
     return results[0]
+
+
+def make_fetch_controller(assets: dict, now_provider: Callable[[], datetime]):
+    # Default fake provider
+    fake_provider = Mock()
+    fake_provider.fetch.return_value = MeasurementResult.ok_payload("eur_usd_intraday", [])
+
+    # Build provider registry based on assets
+    providers = {name: fake_provider for name in PROVIDER_REGISTRY}
+
+    return FetchController(assets, providers, now_provider=now_provider)
+
+
+# ----------------------------------------------------------------------
+# create_providers
+# ----------------------------------------------------------------------
+
+
+def test_create_providers():
+    providers_config = {
+        "yahoo": {"timezone": "UTC"},
+        "ecb": {"timezone": "Europe/Berlin"},
+        "fred": {"timezone": "America/Chicago"},
+    }
+    p = create_providers(providers_config, {})
+    assert isinstance(p["yahoo"], YahooProvider)
+    assert isinstance(p["ecb"], EcbProvider)
+    assert isinstance(p["fred"], FredProvider)
 
 
 # ----------------------------------------------------------------------
@@ -42,28 +80,22 @@ def single_result(fc, state):
 # ----------------------------------------------------------------------
 
 
-def test_controller_skips_fresh(state_env, monkeypatch):
-    state, ts, wal, path = state_env
-
-    fake_provider = Mock()
-    fake_provider.fetch.return_value = MeasurementResult.ok_payload("eur_usd_intraday", [])
-
-    now = 1_000_000_000
-    monkeypatch.setattr(time, "time", lambda: now)
+def test_controller_skips_fresh(state, fixed_now):
 
     assets = make_asset(interval="1h")
-    fc = FetchController(assets, api_keys={}, now_provider=lambda: now)
-    fc.providers["yahoo"] = fake_provider
+    fc = make_fetch_controller(assets, fixed_now)
 
+    now = fixed_now().timestamp()
     state.data.clear()
     state.data["eur_usd_intraday"] = {
-        "last_try": now - 100,  # fresh vs 1h interval
-        "last_timestamp": 123456,
+        "last_try": now - 100,
+        "first_timestamp": now - 10000,
+        "last_timestamp": now - 1000,
     }
 
     results = list(fc.fetch_incrementally(state))
     assert results == []
-    fake_provider.fetch.assert_not_called()
+    fc.providers["yahoo"].fetch.assert_not_called()
 
 
 # ----------------------------------------------------------------------
@@ -71,30 +103,24 @@ def test_controller_skips_fresh(state_env, monkeypatch):
 # ----------------------------------------------------------------------
 
 
-def test_controller_fetches_when_stale(state_env, monkeypatch):
-    state, ts, wal, path = state_env
-
-    fake_provider = Mock()
-    fake_provider.fetch.return_value = MeasurementResult.ok_payload("eur_usd_intraday", [])
-
-    now = 1_000_000_000
-    monkeypatch.setattr(time, "time", lambda: now)
+def test_controller_fetches_when_stale(state, fixed_now):
 
     assets = make_asset(interval="1h")
-    fc = FetchController(assets, api_keys={}, now_provider=lambda: now)
-    fc.providers["yahoo"] = fake_provider
 
+    fc = make_fetch_controller(assets, fixed_now)
+    now = fixed_now().timestamp()
     state.data.clear()
     state.data["eur_usd_intraday"] = {
-        "last_try": now - 7200,  # stale vs 1h
-        "last_timestamp": 123456,
+        "last_try": now - 7200,
+        "first_timestamp": now - 36000,
+        "last_timestamp": now - 7200,  # stale vs 1h
     }
 
     result = single_result(fc, state)
     assert result.ok
     assert result.measurement == "eur_usd_intraday"
 
-    fake_provider.fetch.assert_called_once()
+    fc.providers["yahoo"].fetch.assert_called_once()
     assert state.data["eur_usd_intraday"]["last_try"] == now
 
 
@@ -103,13 +129,10 @@ def test_controller_fetches_when_stale(state_env, monkeypatch):
 # ----------------------------------------------------------------------
 
 
-def test_controller_unknown_provider(state_env, monkeypatch, frozen_time):
-    state, ts, wal, path = state_env
-
-    now = frozen_time
+def test_controller_unknown_provider(state, fixed_now):
 
     assets = make_asset(provider="mystery")
-    fc = FetchController(assets, api_keys={}, now_provider=lambda: now)
+    fc = FetchController(assets, providers={}, now_provider=fixed_now)
 
     result = single_result(fc, state)
     assert not result.ok
@@ -117,7 +140,7 @@ def test_controller_unknown_provider(state_env, monkeypatch, frozen_time):
     assert result.measurement == "eur_usd_intraday"
 
     assert "eur_usd_intraday" in state.data
-    assert state.data["eur_usd_intraday"]["last_try"] == now
+    assert state.data["eur_usd_intraday"]["last_try"] == fixed_now().timestamp()
 
 
 # ----------------------------------------------------------------------
@@ -125,23 +148,19 @@ def test_controller_unknown_provider(state_env, monkeypatch, frozen_time):
 # ----------------------------------------------------------------------
 
 
-def test_controller_malformed_result(state_env, monkeypatch, frozen_time):
-    state, ts, wal, path = state_env
-
+def test_controller_malformed_result(state_env, fixed_now):
+    state, influx, _, _ = state_env
     fake_provider = Mock()
     fake_provider.fetch.return_value = MeasurementResult.fail("eur_usd_intraday", "bad data")
 
-    now = frozen_time
-
     assets = make_asset()
-    fc = FetchController(assets, api_keys={}, now_provider=lambda: now)
-    fc.providers["yahoo"] = fake_provider
-
+    fc = FetchController(assets, providers={"yahoo": fake_provider}, now_provider=fixed_now)
     result = single_result(fc, state)
     assert not result.ok
     assert "bad data" in result.reason
 
-    assert state.data["eur_usd_intraday"]["last_try"] == now
+    # always updates state, even when failed
+    assert state.data["eur_usd_intraday"]["last_try"] == fixed_now().timestamp()
 
 
 # ----------------------------------------------------------------------
@@ -149,20 +168,20 @@ def test_controller_malformed_result(state_env, monkeypatch, frozen_time):
 # ----------------------------------------------------------------------
 
 
-def test_controller_multiple_assets(state_env, monkeypatch, frozen_time):
-    state, ts, wal, path = state_env
+def test_controller_multiple_assets(state, fixed_now):
 
     fake_provider = Mock()
-    fake_provider.fetch.return_value = MeasurementResult.ok_payload("dummy", [])
-
-    now = frozen_time
+    fake_provider.fetch.side_effect = [
+        MeasurementResult.ok_payload("eur_usd_yahoo_intraday", []),
+        MeasurementResult.ok_payload("spx_yahoo_intraday", []),
+    ]
 
     assets = {
         **make_asset(instrument="eur_usd_yahoo"),
         **make_asset(instrument="spx_yahoo", symbol="^GSPC"),
     }
 
-    fc = FetchController(assets, api_keys={}, now_provider=lambda: now)
+    fc = FetchController(assets, providers={}, now_provider=fixed_now)
     fc.providers["yahoo"] = fake_provider
 
     results = list(fc.fetch_incrementally(state))
@@ -173,61 +192,16 @@ def test_controller_multiple_assets(state_env, monkeypatch, frozen_time):
     assert "spx_yahoo_intraday" in state.data
 
 
-# ----------------------------------------------------------------------
-# Interval respect
-# ----------------------------------------------------------------------
+def test_get_window_user_waited_too_long(fixed_now):
+    fc = FetchController(assets={}, providers={}, now_provider=fixed_now)
+    now = fixed_now().timestamp()
+    start, end = fc.get_window(first_saved=now - 1000, last_saved=now - 1000, limit=500)
+    assert (start, end) == (now - 500, now)
 
 
-def test_controller_respects_interval(state_env, monkeypatch, frozen_time):
-    state, ts, wal, path = state_env
-
-    fake_provider = Mock()
-    fake_provider.fetch.return_value = MeasurementResult.ok_payload("eur_usd_intraday", [])
-
-    now = frozen_time
-
-    assets = make_asset(interval="10s")
-    fc = FetchController(assets, api_keys={}, now_provider=lambda: now)
-    fc.providers["yahoo"] = fake_provider
-
-    state.data.clear()
-    state.data["eur_usd_intraday"] = {"last_try": now - 5}
-
-    results = list(fc.fetch_incrementally(state))
-    assert results == []
-    fake_provider.fetch.assert_not_called()
-
-
-# ----------------------------------------------------------------------
-# Interval parse failure
-# ----------------------------------------------------------------------
-
-
-def test_controller_interval_parse_failure(state_env, monkeypatch, frozen_time):
-    state, ts, wal, path = state_env
-
-    now = frozen_time
-
-    assets = make_asset(interval="nonsense")
-    fc = FetchController(assets, api_keys={}, now_provider=lambda: now)
-
-    result = single_result(fc, state)
-    assert not result.ok
-    assert "could not parse interval" in result.reason
-    assert result.measurement == "eur_usd_intraday"
-
-    assert "eur_usd_intraday" in state.data
-    assert state.data["eur_usd_intraday"]["last_try"] == now
-
-
-def test_controller_always_updates_state(state_env, frozen_time):
-    state, ts, wal, path = state_env
-    now = frozen_time
-
-    assets = make_asset(interval="nonsense")  # guaranteed fail
-    fc = FetchController(assets, api_keys={}, now_provider=lambda: now)
-
-    _ = single_result(fc, state)
-
-    assert "eur_usd_intraday" in state.data
-    assert state.data["eur_usd_intraday"]["last_try"] == now
+def test_get_window_normal_incremental(fixed_now):
+    fc = FetchController(assets={}, providers={}, now_provider=fixed_now)
+    now = fixed_now().timestamp()
+    # limit = 500 → window_start = 1500
+    start, end = fc.get_window(first_saved=now - 500, last_saved=now - 400, limit=500)
+    assert (start, end) == (now - 400, now)

@@ -7,7 +7,7 @@ from typing import TypeVar
 
 from finance.common.applogger import AppLogger
 from finance.common.model import FetchResult, Result, TimeseriesWrite
-from finance.state.manager import State
+from finance.state.state import State
 
 logger = AppLogger()
 
@@ -28,7 +28,7 @@ def unwrap(result: Result[T], throw: bool | None = True) -> T | None:
             raise (ValueError(f"{result.reason}: {result.error}")) if result.error else ValueError(result.reason)
 
     # we can have warnings with ok, they still have results
-    if result.warning:
+    if result.warnings:
         logger.warning(**result_dict)
     else:
         logger.debug(**result_dict)
@@ -42,7 +42,9 @@ def process_result(result: FetchResult, state: State, tags: dict, bucket: str) -
     - iterate over all FetchPoints
     - build a TimeseriesWrite for each
     - ingest each one
+    - only update state timestamps if all ingests succeeded
     - return True only if all ingests succeed (skip counts as success)
+
     """
     payload = unwrap(result, throw=False)
 
@@ -54,6 +56,9 @@ def process_result(result: FetchResult, state: State, tags: dict, bucket: str) -
         return True  # nothing to do
 
     all_ok = True
+
+    batch_first = payload[0].timestamp
+    batch_last = payload[-1].timestamp
 
     for point in payload:
         write = TimeseriesWrite(
@@ -70,4 +75,6 @@ def process_result(result: FetchResult, state: State, tags: dict, bucket: str) -
         if not ingest_result.ok:
             all_ok = False
 
+    if all_ok:
+        state.update_range(result.measurement, batch_first, batch_last)
     return all_ok

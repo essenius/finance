@@ -7,7 +7,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from finance.timeseries.influx import configure_verify
+from finance.timeseries.config import configure_verify
 from finance.timeseries.ssl_context_adapter import SSLContextAdapter, make_legacy_ssl_context
 
 # --- configure_verify tests ---------------------------------------------------
@@ -58,7 +58,7 @@ def test_pinned_with_cert():
 # --- Legacy mode -------------------------------------------------------------
 
 
-@patch("finance.timeseries.influx.make_legacy_ssl_context")
+@patch("finance.timeseries.config.make_legacy_ssl_context")
 def test_legacy_with_cert(mock_ctx):
     session = MagicMock()
     ctx = MagicMock()
@@ -74,7 +74,7 @@ def test_legacy_with_cert(mock_ctx):
     assert isinstance(args[1], SSLContextAdapter)
 
 
-@patch("finance.timeseries.influx.make_legacy_ssl_context")
+@patch("finance.timeseries.config.make_legacy_ssl_context")
 def test_legacy_without_cert(mock_ctx):
     session = MagicMock()
     ctx = MagicMock()

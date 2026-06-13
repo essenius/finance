@@ -11,13 +11,25 @@ environment:
   buckets:
     intraday: investing_intraday
     daily: investing_daily
+  influx:
+    url: https://localhost:8086
+    org: rik
+    ssl_verify: true
+    max_batch_size: 20
+    max_batch_age_seconds: 2.0
 
 business:
   providers:
     yahoo:
-      default_interval: 10m
+      timezone: UTC
       intraday_history_limit: 5d
       daily_history_limit: 10y
+    
+    ecb:
+      timezone: Europe/Berlin
+    
+    fred:
+      timezone: America/Chicago
 
   field_sets:
     candle: [open, high, low, close, volume]

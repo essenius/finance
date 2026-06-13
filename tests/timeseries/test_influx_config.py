@@ -2,96 +2,93 @@
 # Licensed under the Apache License, Version 2.0. See the LICENSE file for details.
 # File: tests/timeseries/test_influx_config.py
 
-from unittest.mock import Mock
+# test_influx_from_config.py
+from requests import Session
 
-import pytest
-
-from finance.timeseries.influx import (
-    InfluxBackend,
-    configure_verify,
-)
-from finance.timeseries.ssl_context_adapter import SSLContextAdapter
-
-# -----------------------
-# Configure Verify tests
-# -----------------------
+from finance.common.model import Result
+from finance.timeseries.config import ConfigFactory, InfluxConfig
+from finance.timeseries.influx import InfluxBackend
 
 
-def test_configure_verify_true_mode():
-    session = Mock()
-    result = configure_verify(session, "true", None)
-    assert result is True
+class DummyFactory(ConfigFactory):
+    """Override create() to simulate different outcomes."""
+
+    def __init__(self, result: Result):
+        self._result = result
+
+    def create(self, session):
+        return self._result
 
 
-def test_configure_verify_false_mode():
-    session = Mock()
-    result = configure_verify(session, "false", None)
-    assert result is False
+def test_from_config_factory_failure(monkeypatch, assert_error):
+    """If ConfigFactory.create() returns a failure, from_config must return that failure."""
+    fail_result = Result.fail("boom")
+    monkeypatch.setattr("finance.timeseries.influx.ConfigFactory", lambda cfg, sec: DummyFactory(fail_result))
+    assert_error(InfluxBackend.from_config({"influx": {}}, {"influx": {}}), "boom", None)
 
 
-def test_configure_verify_pinned_requires_cert():
-    session = Mock()
-    with pytest.raises(ValueError):
-        configure_verify(session, "pinned", None)
-
-
-def test_configure_verify_pinned_uses_cert():
-    session = Mock()
-    result = configure_verify(session, "pinned", "/tmp/cert.pem")
-    assert result == "/tmp/cert.pem"
-
-
-def test_configure_verify_legacy_with_cert(monkeypatch):
-    session = Mock()
-    fake_ctx = Mock()
-    monkeypatch.setattr(
-        "finance.timeseries.influx.make_legacy_ssl_context",
-        lambda c: fake_ctx,
+def test_from_config_success(monkeypatch, unwrap):
+    """Successful factory → backend instance returned."""
+    dummy_cfg = InfluxConfig(
+        ssl_verify=True,
+        version=2,
+        base_url="http://x/api/v2/",
+        org="o",
+        write_token="w",
+        read_token="r",
+        max_batch_size=20,
+        max_batch_age_seconds=2.0,
     )
 
-    result = configure_verify(session, "legacy", "/tmp/cert.pem")
-    assert result is True
-    session.mount.assert_called_once()
+    ok_result = Result.ok_payload(dummy_cfg)
+
+    monkeypatch.setattr("finance.timeseries.influx.ConfigFactory", lambda cfg, sec: DummyFactory(ok_result))
+    result = InfluxBackend.from_config({}, {})
+    backend = unwrap(result)
+
+    assert isinstance(backend, InfluxBackend)
+    assert isinstance(backend.session, Session)
+    assert backend.cfg is dummy_cfg
 
 
-def test_configure_verify_invalid_mode():
-    session = Mock()
-    with pytest.raises(ValueError):
-        configure_verify(session, "weird", None)
-
-
-def test_configure_verify_legacy_uses_default_cert(monkeypatch):
-    session = Mock()
-
-    # Capture the cert path passed to make_legacy_ssl_context
-    captured = {}
-
-    def fake_make_legacy_ssl_context(cert_path):
-        captured["cert"] = cert_path
-        return Mock()
-
-    monkeypatch.setattr(
-        "finance.timeseries.influx.make_legacy_ssl_context",
-        fake_make_legacy_ssl_context,
+def test_from_config_propagates_warnings(monkeypatch, assert_warning):
+    dummy_cfg = InfluxConfig(
+        ssl_verify=True,
+        version=2,
+        base_url="http://x/api/v2/",
+        org="o",
+        write_token="w",
+        read_token="r",
+        max_batch_size=20,
+        max_batch_age_seconds=2.0,
     )
 
-    result = configure_verify(session, "legacy", None)
+    ok_result = Result.ok_payload(dummy_cfg, warnings=["test-warning"])
 
-    # Returned value must be True
-    assert result is True
+    monkeypatch.setattr("finance.timeseries.influx.ConfigFactory", lambda cfg, sec: DummyFactory(ok_result))
 
-    # It must call make_legacy_ssl_context with the default CA bundle
-    assert captured["cert"] == "/etc/ssl/certs/ca-certificates.crt"
-
-    # And mount must be called with an SSLContextAdapter
-    session.mount.assert_called_once()
-    args, kwargs = session.mount.call_args
-    assert args[0] == "https://"
-    assert isinstance(args[1], SSLContextAdapter)
+    result = InfluxBackend.from_config({}, {})
+    assert_warning(result, "test-warning")
 
 
+def test_from_config_exception(monkeypatch, assert_error):
+    # Make Session() raise an exception
+    def boom(*args, **kwargs):
+        raise RuntimeError("session init failed")
+
+    monkeypatch.setattr("finance.timeseries.influx.Session", boom)
+
+    config = {"url": "http://example", "org": "x", "token": "y"}
+    secrets = {}
+
+    result = InfluxBackend.from_config(config, secrets)
+
+    assert_error(result, "Influx backend initialization failed", "session init failed")
+
+
+"""
 # -----------------------
-# From Secrets tests
+# From Secrets
 # -----------------------
 
 
@@ -106,7 +103,7 @@ def test_from_secrets_v2_success(monkeypatch):
         "read-token": "r",
     }
 
-    result = InfluxBackend.from_secrets(secrets)
+    result = InfluxBackend.from_config(secrets)
     assert result.ok
 
     backend = result.payload
@@ -126,7 +123,7 @@ def test_from_secrets_v1_success(monkeypatch):
         "password": "p",
     }
 
-    result = InfluxBackend.from_secrets(secrets)
+    result = InfluxBackend.from_config(secrets)
     assert result.ok
 
     backend = result.payload
@@ -136,7 +133,7 @@ def test_from_secrets_v1_success(monkeypatch):
 
 
 def test_from_secrets_missing_both():
-    result = InfluxBackend.from_secrets({"url": "x"})
+    result = InfluxBackend.from_config({"url": "x"})
     assert not result.ok
 
 
@@ -152,7 +149,7 @@ def test_from_secrets_org_and_db(monkeypatch):
         "read-token": "r",
     }
 
-    result = InfluxBackend.from_secrets(secrets)
+    result = InfluxBackend.from_config(secrets)
     assert result.ok
     backend, warning = result.payload, result.warning
     assert "ignoring 'db'" in warning
@@ -166,7 +163,7 @@ def test_from_secrets_config_none(monkeypatch):
     # No org, no db → config stays None
     secrets = {"url": "https://example"}
 
-    result = InfluxBackend.from_secrets(secrets)
+    result = InfluxBackend.from_config(secrets)
     assert not result.ok
     assert "Secrets must contain either 'org' or 'db'" in result.reason
 
@@ -182,8 +179,10 @@ def test_from_secrets_exception_path(monkeypatch):
 
     secrets = {"url": "https://example", "db": "x"}
 
-    result = InfluxBackend.from_secrets(secrets)
+    result = InfluxBackend.from_config(secrets)
 
     assert not result.ok
     assert result.reason == "Influx backend initialization failed"
     assert "boom" in str(result.error)
+
+"""

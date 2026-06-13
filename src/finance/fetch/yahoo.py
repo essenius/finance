@@ -2,14 +2,9 @@
 # Licensed under the Apache License, Version 2.0. See the LICENSE file for details.
 # File: src/finance/fetch/yahoo.py
 
-import math
-from datetime import UTC, datetime
 from urllib.parse import quote, urlencode
 
-import requests
-
-from ..common.model import FetchPoint, FetchResult, MeasurementResult
-from .parser import parse_duration
+from ..common.model import FetchPoint, FetchResult, MeasurementResult, Result
 from .provider import MarketDataProvider
 
 SUPPORTED_FIELDS = ["open", "high", "low", "close", "volume"]
@@ -20,152 +15,49 @@ class YahooProvider(MarketDataProvider):
 
     BASE_URL = "https://query1.finance.yahoo.com/v8/finance/chart/{symbol}"
 
-    def fetch(self, name: str, asset: dict, last_timestamp: int | None = None) -> FetchResult:
-        symbol = asset["symbol"]
-        timeseries = asset["timeseries"]
-        fields = asset["fields"]
+    # ----
+    # API
+    # ----
 
-        if timeseries == "intraday":
-            return self._fetch_intraday(name, symbol, last_timestamp)
-        else:
-            # we don't have other options than "daily" now - enforced in config
-            return self._fetch_daily(name, symbol, fields, last_timestamp)
+    def fetch(self, name: str, asset: dict, start_timestamp: int, end_timestamp: int) -> FetchResult:
+        symbol: str = asset["symbol"]
+        fields: list[str] = asset["fields"]
+        interval: str = asset["interval"]
 
-    # ----------------------------------------------------------------------
-    # Helper methods
-    # ----------------------------------------------------------------------
-
-    def _get_intraday_range(self, last_timestamp: int | None, history_limit_text: str) -> str:
-
-        # Case 1: no history yet
-        if last_timestamp is None:
-            return history_limit_text
-
-        # Case 2: gap larger than history limit
-        history_limit_seconds = parse_duration(history_limit_text)
-        now = int(self.now().timestamp())
-        gap = now - last_timestamp
-        if gap > history_limit_seconds:
-            return history_limit_text
-
-        # Case 3: request just the gap
-        gap_minutes = math.ceil(gap / 60)
-        return f"{gap_minutes}m"
-
-    def _fetch_intraday(self, name: str, symbol: str, last_timestamp: int) -> FetchResult:
-        """
-        Fetch intraday prices for a symbol.
-        Payload can contain multiple results in case last_timestamp is old (initial load).
-        It can also contain an empty list if nothing was found or the call failed
-        """
-
-        fields = ["price"]
-        mapped_field = "close"
-        history_limit_text = self.config.get("intraday_history_limit", "5d")
-        range_str = self._get_intraday_range(last_timestamp, history_limit_text)
-        result = self._fetch(name=name, symbol=symbol, interval_str="1m", range_str=range_str)
+        url = self._build_url(symbol, interval, start_timestamp, end_timestamp)
+        result = self._safe_call(measurement=name, fn=lambda: self._fetch_impl(url, name), context="Yahoo fetch")
 
         if not result.ok:
-            # A failing MeasurementResult is semantically identical to a failing FetchResult
             return result
 
-        candles = self._extract_candles(result, mapped_field)
-        # if we don't have candles, fall back to meta data
-        if not candles.ok or candles.payload == []:
+        candles = self._extract_candles(result, fields)
+
+        # Fallback to metadata if no candles
+        if not candles.payload:
             meta = result.payload.get("meta", {})
-            return self._get_from_meta(name, fields, meta)
-        else:
-            # we do have candles. Pass back the close values.
-            return FetchResult.ok_payload(
-                name,
-                [
-                    FetchPoint(
-                        timestamp=candle.timestamp,
-                        fields={fields[0]: candle.fields[mapped_field]},
-                    )
-                    for candle in candles.payload
-                ],
-            )
+            return self._get_from_meta(name, fields, meta, start_timestamp, end_timestamp)
 
-    def _get_from_meta(self, name: str, fields: list[str], meta: dict) -> FetchResult:
-        timestamp = meta.get("regularMarketTime")
-        reason = "Cannot synthesize from metadata"
-        # Only use fallback if timestamp exists
-        if timestamp is None:
-            return FetchResult.fail(name, reason, "timestamp missing")
+        return candles
 
-        # Build synthetic fields
-        synthetic = {}
-        base_error = "Fallback failed: "
-        warnings = []
-        error = None
-        # Candle subset mode
-        for f in fields:
-            if f in ("price", "close"):
-                v = meta.get("regularMarketPrice")
-            elif f == "high":
-                v = meta.get("regularMarketDayHigh")
-            elif f == "low":
-                v = meta.get("regularMarketDayLow")
-            elif f == "volume":
-                v = meta.get("regularMarketVolume")
-            elif f == "open":
-                error = f"{base_error}cannot synthesize 'open' from metadata"
-                continue
-            else:
-                error = f"{base_error}unknown field '{f}'"
-                continue
-            if v is None:
-                warnings.append(f"{base_error}missing value for '{f}'")
-                continue
+    # -----------
+    # Fetch data
+    # -----------
 
-            synthetic[f] = float(v)
-
-        if error or not synthetic:
-            return FetchResult.fail(name, reason, error, warnings)
-
-        return FetchResult.ok_payload(name, [FetchPoint(fields=synthetic, timestamp=timestamp)], warnings)
-
-    def _get_daily_range(self, missing_days: int | None, history_limit_text: str) -> str:
-
-        #  we already know that missing days is positive here, so we can ignore the case of 0 or negative missing days
-
-        # Case 1: initial load
-        if missing_days is None:
-            return history_limit_text
-
-        history_limit_days = int(round(parse_duration(history_limit_text) / (24 * 3600) + 1e-12))
-        if missing_days > history_limit_days:
-            return history_limit_text
-
-        return f"{missing_days}d"
-
-    def _fetch_daily(self, name, symbol, fields, last_timestamp) -> FetchResult:
-        """
-        Fetch daily candles from Yahoo Finance.
-        """
-        now = self.now()
-        today = now.date()
-        missing_days = self._compute_missing_days(today, last_timestamp)
-        if missing_days is not None and missing_days <= 0:
-            return FetchResult.ok_payload(name, [])
-
-        history_limit = self.config.get("daily_history_limit", "10y")
-        range_str = self._get_daily_range(missing_days, history_limit)
-
-        results = self._fetch(name, symbol, "1d", range_str)
-        if not results.ok:
-            return results
-        return self._extract_candles(results, fields, today)
-
-    def _fetch(self, name, symbol, interval_str, range_str) -> MeasurementResult[dict]:
-        url = self._build_url(symbol, interval_str, range_str)
-        return self._safe_call(measurement=name, fn=lambda: self._fetch_impl(url, name), context="fetch")
+    def _build_url(self, symbol, interval_str, start_ts, end_ts):
+        encoded = quote(symbol, safe="")
+        params = {
+            "interval": interval_str,
+            "period1": int(start_ts),
+            "period2": int(end_ts),
+            "includePrePost": "false",
+            "events": "div,splits",
+        }
+        return f"{self.BASE_URL.format(symbol=encoded)}?{urlencode(params)}"
 
     def _fetch_impl(self, url, name) -> MeasurementResult[dict]:
         """fetch the response from the provider. Is called from a _safe_call wrapper so can throw"""
         headers = {"User-Agent": "Mozilla/5.0"}
-        response = requests.get(url, headers=headers, timeout=10)
+        response = self.session.get(url, headers=headers, timeout=10)
         response.raise_for_status()
         data = response.json()
 
@@ -188,94 +80,132 @@ class YahooProvider(MarketDataProvider):
             return "result empty"
         return None
 
-    def _compute_missing_days(self, today, last_timestamp) -> int | None:
-        if last_timestamp is None:
-            return None
+    # -----------------------------
+    # Extract candles with helpers
+    # -----------------------------
 
-        last_date = datetime.fromtimestamp(last_timestamp, tz=UTC).date()
-        return (today - last_date).days
+    def _resolve_field_mapping(self, requested_fields: list[str]) -> Result[tuple[list[str], list[str]]]:
+        if requested_fields is None:
+            requested_fields = SUPPORTED_FIELDS
 
-    def _build_url(self, symbol: str, interval_str, range_str: str) -> str:
-        encoded_symbol = quote(symbol, safe="")
+        if all(f in SUPPORTED_FIELDS for f in requested_fields):
+            return Result.ok_payload((requested_fields[:], requested_fields[:]))
 
-        params = {
-            "interval": interval_str,
-            "range": range_str,
-            "includePrePost": "false",
-            "events": "div,splits",
-        }
+        if len(requested_fields) != 1:
+            return Result.fail(f"Unsupported field combination: {requested_fields}")
 
-        base = f"https://query1.finance.yahoo.com/v8/finance/chart/{encoded_symbol}"
-        return f"{base}?{urlencode(params)}"
+        return Result.ok_payload((["close"], [requested_fields[0]]))
 
-    def _extract_candles(
-        self, results: MeasurementResult[dict], fields: list[str] | None = None, today=None
-    ) -> FetchResult:
-
-        name = results.measurement
-        payload = results.payload
-
-        if fields is None:
-            selected_fields = SUPPORTED_FIELDS
-        else:
-            unknown = [f for f in fields if f not in SUPPORTED_FIELDS]
-            if unknown:
-                return FetchResult.fail(name, f"Unknown fields requested: {unknown}. Supported: {SUPPORTED_FIELDS}")
-            selected_fields = fields
-
+    def _extract_arrays(self, payload: dict, selected_fields: list[str]) -> Result[tuple[list[int], dict[str, list]]]:
+        """
+        returns (result, error) where
+        """
         timestamps = payload.get("timestamp")
         if not timestamps:
-            return FetchResult.fail(name, "no timestamp in result")
+            return Result.fail("no timestamp in result")
 
         quote_result = self._safe_get(payload, ["indicators", "quote", 0])
-        # empty quote list can happen, use meta instead then
         if not quote_result.ok:
-            return FetchResult.fail(name, "unexpected quote structure", quote_result.reason)
+            return Result.fail("unexpected quote structure", quote_result.reason)
 
         quote = quote_result.payload
-        # create arrays for all the fields we need
         arrays = {f: quote.get(f) or [] for f in selected_fields}
+        return Result.ok_payload((timestamps, arrays))
 
-        # for daily we might need to skip entries for days that haven't finished yet
-        today_midnight_timestamp = (
-            int(datetime(today.year, today.month, today.day, tzinfo=UTC).timestamp()) if today is not None else None
-        )
-
+    def _build_candles(self, timestamps, arrays, selected_fields, mapped_fields):
         candles = []
         invalid_count = 0
 
         for i, ts in enumerate(timestamps):
             values = {}
 
-            # Make a dict of the fields we need
-            for field in selected_fields:
-                arr = arrays[field]
-                values[field] = arr[i] if i < len(arr) else None
+            for src, dst in zip(selected_fields, mapped_fields, strict=True):
+                arr = arrays[src]
+                v = arr[i] if i < len(arr) else None
+                if v is None:
+                    invalid_count += 1
+                    break
+                values[dst] = v
 
-            # Skip incomplete candles
-            if any(value is None for value in values.values()):
-                invalid_count += 1
-                continue
+            else:
+                candles.append(FetchPoint(fields=values, timestamp=ts))
 
-            # Skip today's incomplete candles (only for daily, when today is set)
-            if today_midnight_timestamp is not None and ts >= today_midnight_timestamp:
-                continue
+        return candles, invalid_count
 
-            candles.append(FetchPoint(fields=values, timestamp=ts))
+    def _extract_candles(
+        self, results: MeasurementResult[dict], requested_fields: list[str] | None = None
+    ) -> FetchResult:
+        name = results.measurement
+        payload = results.payload
+
+        mapping = self._resolve_field_mapping(requested_fields)
+        if not mapping.ok:
+            return FetchResult.from_result(mapping, name)
+        selected_fields, mapped_fields = mapping.payload
+
+        arrays_result = self._extract_arrays(payload, selected_fields)
+        if not arrays_result.ok:
+            return FetchResult.from_result(arrays_result, name)
+
+        timestamps, arrays = arrays_result.payload
+        candles, invalid_count = self._build_candles(timestamps, arrays, selected_fields, mapped_fields)
 
         warnings = []
-
         if invalid_count:
             warnings.append(f"Skipped {invalid_count} invalid candles")
 
         return FetchResult.ok_payload(name, candles, warnings)
 
+    # --------------
+    # Get from meta
+    # --------------
 
-"""    def _map_fields(self, candle, fields):
-        if set(fields).issubset(self.VALID_CANDLE_FIELDS):
-            return {f: float(candle["fields"][f]) for f in fields}
+    META_FIELD_MAP = {
+        "close": "regularMarketPrice",
+        "high": "regularMarketDayHigh",
+        "low": "regularMarketDayLow",
+        "volume": "regularMarketVolume",
+        # "open" is intentionally excluded — cannot synthesize
+    }
 
-        raise ValueError(
-            "Yahoo provider only supports fields=['price'] or fields=['open','high','low','close','volume']"
-        )
-"""
+    def _get_from_meta(
+        self, name: str, fields: list[str], meta: dict, start_timestamp: int, end_timestamp: int
+    ) -> FetchResult:
+
+        timestamp = meta.get("regularMarketTime")
+        reason = "Cannot synthesize from metadata"
+        # Only use fallback if timestamp exists
+        if timestamp is None:
+            return FetchResult.fail(name, reason, "timestamp missing")
+
+        # Reject metadata outside requested window
+        if not (start_timestamp <= timestamp <= end_timestamp):
+            return FetchResult.fail(name, reason, "metadata timestamp outside requested range")
+        # Build synthetic fields
+        synthetic = {}
+        warnings = []
+        error = None
+        # Candle subset mode
+        for field in fields:
+            if field in SUPPORTED_FIELDS:
+                if field == "open":
+                    error = "Cannot synthesize 'open'"
+                    continue
+
+                meta_key = self.META_FIELD_MAP[field]
+                v = meta.get(meta_key)
+
+            else:
+                # mapped field → use regularMarketPrice
+                v = meta.get("regularMarketPrice")
+
+            if v is None:
+                warnings.append(f"Missing value for '{field}'")
+                continue
+
+            synthetic[field] = float(v)
+
+        if error or not synthetic:
+            return FetchResult.fail(name, reason, error or "No fields synthesized", warnings)
+
+        return FetchResult.ok_payload(name, [FetchPoint(fields=synthetic, timestamp=timestamp)], warnings)

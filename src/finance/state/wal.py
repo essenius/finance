@@ -29,6 +29,39 @@ class JsonlWAL:
                     # ignore corrupt lines
                     continue
 
+    def read_batch(self, n: int) -> list[TimeseriesWrite]:
+        batch = []
+        for entry in self._iter_valid_entries():
+            batch.append(entry)
+            if len(batch) == n:
+                break
+        return batch
+
+    def remove_indices(self, succeeded: list[int]) -> None:
+        succeeded_set = set(succeeded)
+        temporary_path = self.path.with_suffix(".tmp")
+
+        with self.path.open() as source, temporary_path.open("w") as dest:
+            idx = 0
+            for line in source:
+                stripped = line.strip()
+                if not stripped:
+                    continue
+
+                try:
+                    _ = TimeseriesWrite(**json.loads(stripped))
+                except json.JSONDecodeError:
+                    # keep corrupt lines after first valid entry
+                    dest.write(line)
+                    continue
+
+                if idx not in succeeded_set:
+                    dest.write(line)
+
+                idx += 1
+
+        temporary_path.replace(self.path)
+
     def enqueue(self, entry: TimeseriesWrite) -> None:
         """Append a new entry to the WAL."""
         with self.path.open("a") as wal_file:

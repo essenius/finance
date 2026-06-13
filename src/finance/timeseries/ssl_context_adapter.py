@@ -6,8 +6,6 @@ import ssl
 
 from requests.adapters import HTTPAdapter
 
-# from urllib3.poolmanager import PoolManager
-
 
 class SSLContextAdapter(HTTPAdapter):
     def __init__(self, ssl_context, **kwargs):

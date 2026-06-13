@@ -160,3 +160,190 @@ def test_wal_creates_file_if_missing(tmp_path):
 
     assert wal_path.exists()
     assert list(wal.read_all()) == [make(field={"x": 1})]
+
+
+# ------------------
+# read_batch
+# ------------------
+
+
+def test_wal_read_batch_empty(tmp_path):
+    wal_path = tmp_path / "wal.jsonl"
+    wal = JsonlWAL(wal_path)
+
+    assert wal.read_batch(5) == []
+
+
+def test_wal_read_batch_fewer_than_n(tmp_path):
+    wal_path = tmp_path / "wal.jsonl"
+    wal = JsonlWAL(wal_path)
+
+    first = make(field={"a": 1})
+    second = make(field={"b": 2})
+
+    wal.enqueue(first)
+    wal.enqueue(second)
+
+    assert wal.read_batch(5) == [first, second]
+
+
+def test_wal_read_batch_exact_n(tmp_path):
+    wal_path = tmp_path / "wal.jsonl"
+    wal = JsonlWAL(wal_path)
+
+    entries = [make(field={"v": i}) for i in range(3)]
+    for e in entries:
+        wal.enqueue(e)
+
+    assert wal.read_batch(3) == entries
+
+
+def test_wal_read_batch_more_than_n(tmp_path):
+    wal_path = tmp_path / "wal.jsonl"
+    wal = JsonlWAL(wal_path)
+
+    entries = [make(field={"v": i}) for i in range(5)]
+    for e in entries:
+        wal.enqueue(e)
+
+    assert wal.read_batch(3) == entries[:3]
+
+
+def test_wal_read_batch_skips_corrupt_lines(tmp_path):
+    wal_path = tmp_path / "wal.jsonl"
+
+    good1 = make(field={"a": 1})
+    good2 = make(field={"b": 2})
+
+    with wal_path.open("w") as f:
+        f.write('{"bad": \n')
+        write_series(f, good1)
+        f.write('{"also_bad": \n')
+        write_series(f, good2)
+
+    wal = JsonlWAL(wal_path)
+
+    assert wal.read_batch(5) == [good1, good2]
+
+
+# ---------------------
+# remove_indices()
+# ---------------------
+
+
+def test_wal_remove_indices_remove_none(tmp_path):
+    wal_path = tmp_path / "wal.jsonl"
+    wal = JsonlWAL(wal_path)
+
+    entries = [make(field={"v": i}) for i in range(3)]
+    for e in entries:
+        wal.enqueue(e)
+
+    wal.remove_indices([])
+
+    assert list(wal.read_all()) == entries
+
+
+def test_wal_remove_indices_remove_all(tmp_path):
+    wal_path = tmp_path / "wal.jsonl"
+    wal = JsonlWAL(wal_path)
+
+    entries = [make(field={"v": i}) for i in range(3)]
+    for e in entries:
+        wal.enqueue(e)
+
+    wal.remove_indices([0, 1, 2])
+
+    assert list(wal.read_all()) == []
+
+
+def test_wal_remove_indices_remove_some(tmp_path):
+    wal_path = tmp_path / "wal.jsonl"
+    wal = JsonlWAL(wal_path)
+
+    e0 = make(field={"v": 0})
+    e1 = make(field={"v": 1})
+    e2 = make(field={"v": 2})
+    e3 = make(field={"v": 3})
+
+    for e in [e0, e1, e2, e3]:
+        wal.enqueue(e)
+
+    wal.remove_indices([1, 3])  # remove e1 and e3
+
+    assert list(wal.read_all()) == [e0, e2]
+
+
+def test_wal_remove_indices_preserves_order(tmp_path):
+    wal_path = tmp_path / "wal.jsonl"
+    wal = JsonlWAL(wal_path)
+
+    entries = [make(field={"v": i}) for i in range(5)]
+    for e in entries:
+        wal.enqueue(e)
+
+    wal.remove_indices([0, 2])
+
+    assert list(wal.read_all()) == [entries[1], entries[3], entries[4]]
+
+
+def test_wal_remove_indices_skips_corrupt_lines(tmp_path):
+    wal_path = tmp_path / "wal.jsonl"
+
+    good1 = make(field={"a": 1})
+    good2 = make(field={"b": 2})
+    good3 = make(field={"c": 3})
+
+    with wal_path.open("w") as f:
+        f.write('{"bad": \n')  # corrupt
+        write_series(f, good1)  # index 0
+        f.write('{"also_bad": \n')  # corrupt
+        write_series(f, good2)  # index 1
+        write_series(f, good3)  # index 2
+
+    wal = JsonlWAL(wal_path)
+
+    wal.remove_indices([1])  # remove good2
+
+    assert list(wal.read_all()) == [good1, good3]
+
+
+def test_wal_remove_indices_drops_empty_and_corrupt_lines(tmp_path):
+    wal_path = tmp_path / "wal.jsonl"
+
+    e0 = make(field={"v": 0})
+    e1 = make(field={"v": 1})
+
+    with wal_path.open("w") as f:
+        f.write("\n")  # empty
+        f.write('{"bad": \n')  # corrupt
+        write_series(f, e0)  # index 0
+        f.write("\n")  # empty
+        write_series(f, e1)  # index 1
+
+    wal = JsonlWAL(wal_path)
+
+    wal.remove_indices([0])  # remove e0
+
+    assert list(wal.read_all()) == [e1]
+
+
+# roundtrip
+
+
+def test_wal_roundtrip_preserves_all_fields(tmp_path):
+    wal_path = tmp_path / "wal.jsonl"
+    wal = JsonlWAL(wal_path)
+
+    entry = make(
+        measurement="m",
+        field={"a": 1, "b": 2},
+        timestamp=123456,
+        bucket="bucket",
+        tags={"host": "pi", "sensor": "temp"},
+    )
+
+    wal.enqueue(entry)
+    read_back = list(wal.read_all())[0]
+
+    assert read_back == entry

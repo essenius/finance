@@ -3,57 +3,42 @@
 # File: tests/fetch/test_ecb.py
 
 import json
-from unittest.mock import Mock
 
 import pytest
-import requests
 
-from finance.fetch.ecb import EcbProvider
+# Helper
 
 
 def make_asset(symbol="EUR_USD", field="price"):
     return {"symbol": symbol, "fields": [field]}
 
 
-def mock_ecb_response(monkeypatch, status, json_data, text=None):
-    mock_resp = Mock()
-    mock_resp.status_code = status
-    mock_resp.json.return_value = json_data
-
-    if status == 200:
-        mock_resp.raise_for_status.return_value = None
-    else:
-        mock_resp.raise_for_status.side_effect = requests.exceptions.HTTPError(text or "boom")
-    if text:
-        mock_resp.text = text  # if text else json.dumps(json_data)
-
-    monkeypatch.setattr("finance.fetch.ecb.requests.get", lambda *a, **k: mock_resp)
+# Tests
 
 
-def test_ecb_fetch_real_fixture(monkeypatch, assert_ok):
+def test_ecb_fetch_real_fixture(ecb_provider, assert_ok):
     with open("tests/data/ecb_eurusd.json") as f:
         fake_json = json.load(f)
 
-    mock_ecb_response(monkeypatch, 200, fake_json)
-    # mock_resp.text = json.dumps(fake_json)
+    provider = ecb_provider()
+    provider.session.queue(200, fake_json)
 
-    provider = EcbProvider()
-    result = provider.fetch("eurusd_1", make_asset(), last_timestamp=None)
+    # timestamps are for May 8, 2026 in CEST
+    result = provider.fetch("eurusd_1", make_asset(), start_timestamp=1778191200, end_timestamp=1778277599)
+    # time stamp must be May 8, 2026 00:00 UTC
+    assert_ok(result, timestamp=1778198400, value=1.1761)
 
-    assert_ok(result, timestamp=1778191200, value=1.1761)
 
-
-def test_ecb_fetch_ok(monkeypatch, assert_ok):
+def test_ecb_fetch_ok(ecb_provider, assert_ok):
     fake_json = {
         "dataSets": [{"series": {"0:0:0:0:0": {"observations": {"0": [1.1761]}}}}],
-        "structure": {"dimensions": {"observation": [{"values": [{"start": "2026-05-08T00:00:00.000+02:00"}]}]}},
+        "structure": {"dimensions": {"observation": [{"values": [{"id": "2026-05-08"}]}]}},
     }
-    mock_ecb_response(monkeypatch, 200, fake_json)
 
-    provider = EcbProvider()
-    result = provider.fetch("eurusd_2", make_asset(), last_timestamp=None)
-
-    assert_ok(result, timestamp=1778191200, value=1.1761)
+    provider = ecb_provider()
+    provider.session.queue(200, fake_json)
+    result = provider.fetch("eurusd_2", make_asset(), start_timestamp=1778191200, end_timestamp=1778277599)
+    assert_ok(result, timestamp=1778198400, value=1.1761)
 
 
 @pytest.mark.parametrize(
@@ -64,54 +49,86 @@ def test_ecb_fetch_ok(monkeypatch, assert_ok):
         "_",
     ],
 )
-def test_ecb_fetch_wrong_symbol(symbol):
-    provider = EcbProvider()
-    result = provider.fetch("eurusd_3", make_asset(symbol=symbol), last_timestamp=None)
+def test_ecb_fetch_wrong_symbol(ecb_provider, symbol):
+    provider = ecb_provider()
+    provider.session.queue(200, {})
+    result = provider.fetch("eurusd_3", make_asset(symbol=symbol), start_timestamp=1778191200, end_timestamp=1778277599)
     assert not result.ok
     assert f"Could not split symbol '{symbol}' into base_quote" in result.reason
     assert result.payload is None
 
 
-def test_ecb_fetch_non_200(monkeypatch):
-    mock_ecb_response(monkeypatch, 500, "", "Internal Server Error")
-
-    provider = EcbProvider()
-
-    result = provider.fetch("eurusd_3", make_asset(), last_timestamp=None)
-
-    assert not result.ok
-    assert "Internal Server Error" in result.error
-    assert "Exception during fetch" in result.reason
-    assert result.payload is None
+def test_ecb_fetch_non_200(ecb_provider, assert_error):
+    provider = ecb_provider()
+    provider.session.queue(500, "", "Internal Server Error")
+    result = provider.fetch("eurusd_http", make_asset(), 0, 0)
+    assert_error(result, "Exception during ECB fetch of EUR_USD", "Internal Server Error")
 
 
 MALFORMED_CASES = [
-    ({}, "missing key 'dataSets'", "price"),
-    ({"dataSets": []}, "missing index [0]", "price"),
-    ({"dataSets": [{"series": {}}]}, "missing key '0:0:0:0:0'", "price"),
-    ({"dataSets": [{"series": {"0:0:0:0:0": {"observations": {}}}}]}, "missing key '0'", "price"),
-    (
-        {"dataSets": [{"series": {"0:0:0:0:0": {"observations": {"0": 1.234}}}}]},
-        "cannot index with [0] at ['dataSets', 0, 'series', '0:0:0:0:0', 'observations', '0']",
-        "price",
-    ),
+    ({}, "missing key 'dataSets'", "series"),
+    ({"dataSets": []}, "missing index [0]", "series"),
+    ({"dataSets": [{"series": {}}]}, "missing key '0:0:0:0:0'", "series entry"),
+    ({"dataSets": [{"series": {"0:0:0:0:0": {}}}]}, "missing key 'observations'", "observations"),
     (
         {
             "dataSets": [{"series": {"0:0:0:0:0": {"observations": {"0": [1.234]}}}}],
             "structure": {"dimensions": {"observation": []}},
         },
         "missing index [0]",
-        "timestamp",
+        "date metadata",
     ),
 ]
 
 
 @pytest.mark.parametrize("json_data, expected, context", MALFORMED_CASES)
-def test_ecb_malformed_json(monkeypatch, json_data, expected, context, assert_error):
-    mock_ecb_response(monkeypatch, 200, json_data)
+def test_ecb_malformed_json(ecb_provider, json_data, expected, context, assert_error):
+    provider = ecb_provider()
+    provider.session.queue(200, json_data)
+    result = provider.fetch("eurusd_4", make_asset(), 0, 0)
+    assert_error(result, f"Could not find ECB {context}", expected)
 
-    provider = EcbProvider()
 
-    result = provider.fetch("eurusd_4", make_asset(), None)
+def test_ecb_fetch_multiple_points_skip_invalid(unwrap, ecb_provider):
+    fake_json = {
+        "dataSets": [
+            {
+                "series": {
+                    "0:0:0:0": {
+                        "observations": {
+                            "0": [1.10],
+                            "1": [],
+                            "2": 1.11,  # not a list
+                            "3": [None],
+                            "4": [0],
+                            "5": [1.12],
+                        }
+                    }
+                }
+            }
+        ],
+        "structure": {
+            "dimensions": {
+                "observation": [
+                    {
+                        "values": [
+                            {"id": "2024-01-01"},
+                            {"id": "2024-01-02"},
+                            {"id": "2024-01-03"},
+                            {"id": "2024-01-04"},
+                            {"id": "bogus"},
+                            {"id": "2024-01-05"},
+                        ]
+                    }
+                ]
+            }
+        },
+    }
 
-    assert_error(result, f"Could not interpret path for {context}", expected)
+    provider = ecb_provider()
+    provider.session.queue(200, fake_json)
+    points = unwrap(provider.fetch("eurusd_multi", make_asset(), 0, 0))
+
+    assert len(points) == 2
+    assert points[0].fields["price"] == 1.10
+    assert points[1].fields["price"] == 1.12

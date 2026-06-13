@@ -18,6 +18,10 @@ ENV_FILE = .env.$(ENV)
 include $(ENV_FILE)
 export $(shell sed 's/=.*//' $(ENV_FILE))
 
+SRC_DIR := src/finance
+TEST_DIR := tests
+TOOL_DIR := tools
+
 # Python interpreter (evaluate on use)
 PYTHON = python3
 
@@ -51,16 +55,22 @@ ENV_VENV = $(ENV_ROOT)/venv
 help:
 	@echo "Available targets:"
 	@echo "  make lint            - Run ruff linting and formatting"
+	@echo "  make test            - Run unit tests"
 	@echo "  make bump            - Bump version"
 	@echo "  make build           - Build wheel"
 	@echo "  make deploy          - Deploy to environment ($(ENV))"
 	@echo "  make acceptance      - Deploy to acceptance environment"
-	@echo "  make prod            - Deploy to production environment (with systemd)"
+	@echo "  make production      - Deploy to production environment (with systemd)"
 	@echo "  make init-env        - Create environment root + venv"
 	@echo "  make systemd         - Install systemd units"
-
-	@echo "System python: '$(SYSTEM_PYTHON)'"
-	@echo "Env root:      '$(ENV_ROOT)'"
+	@echo "Configuration:"
+	@echo "  Env file:            '$(ENV_FILE)'"
+	@echo "  System python:       '$(SYSTEM_PYTHON)'"
+	@echo "  Python:              '$$(which $(PYTHON))'"
+	@echo "  Deploy target:       '$(ENV_ROOT)'"
+	@echo "  Source folder:       '$(SRC_DIR)'"
+	@echo "  Test folder:         '$(TEST_DIR)'"
+	@echo "  Tools folder:        '$(TOOL_DIR)'"
 
 # ------------------------------------------------------------
 # Environment selection
@@ -70,8 +80,8 @@ help:
 acceptance:
 	@$(MAKE) deploy ENV=acc
 
-.PHONY: prod
-prod:
+.PHONY: production
+production:
 	@$(MAKE) deploy ENV=prod
 	@$(MAKE) systemd ENV=prod
 
@@ -81,8 +91,8 @@ prod:
 
 # cache dir is required but should not cause a trigger if changed
 $(LINT_STAMP): | $(CACHE_DIR)
-$(LINT_STAMP): $(shell find finance tools -name '*.py')
-	$(PYTHON) -m tools.add_license
+$(LINT_STAMP): $(shell find $(SRC_DIR) $(TOOL_DIR) -name '*.py')
+	$(PYTHON) -m $(TOOL_DIR).add_license
 	ruff check . --fix
 	ruff format .
 	touch $(LINT_STAMP)
@@ -94,7 +104,7 @@ lint: $(LINT_STAMP)
 # ------------------------------------------------------------
 
 $(TEST_STAMP): | $(CACHE_DIR)
-$(TEST_STAMP): $(shell find finance tools tests -name '*.py')
+$(TEST_STAMP): $(shell find $(SRC_DIR) $(TOOL_DIR) $(TEST_DIR) -name '*.py')
 	$(PYTHON) -m pytest -c pytest.ini -q
 	touch $(TEST_STAMP)
 
@@ -114,7 +124,7 @@ bump:
 # ------------------------------------------------------------
 
 $(BUILD_STAMP): | $(CACHE_DIR)
-$(BUILD_STAMP): $(shell find finance tools -name '*.py') pyproject.toml
+$(BUILD_STAMP): $(shell find $(SRC_DIR) $(TOOL_DIR) -name '*.py') pyproject.toml
 	rm -rf dist
 	python -m build
 	touch $(BUILD_STAMP)

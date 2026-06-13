@@ -4,11 +4,7 @@
 
 import pytest
 
-from finance.composites.deps import (
-    CycleError,
-    extract_dependencies,
-    topo_sort,
-)
+from finance.composites.deps import CycleError, extract_dependencies, topo_sort
 
 # -------------------------
 #  Topo Sort Valid DAGs

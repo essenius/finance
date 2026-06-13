@@ -2,9 +2,8 @@
 # Licensed under the Apache License, Version 2.0. See the LICENSE file for details.
 # File: tests/config/test_loader_errors.py
 
-import os
 
-from finance.config.loader import load_config, load_yaml_config
+from finance.config.loader import ConfigLoader, load_yaml_config
 
 # ---------------------------------------------------------------------------
 # load_yaml_config
@@ -41,7 +40,28 @@ environment:
     env_file = tmp_path / ".env"
     env_file.write_text("INFLUX_URL=x\nINFLUX_DB=y\n")
 
-    assert_error(load_config(yaml_file, env_file), "Missing required field 'provider' in asset 'spx'", None)
+    loader = ConfigLoader(tmp_path)
+    assert_error(loader.load(), "Missing required field 'provider' in asset 'spx'", None)
+
+
+def test_normalize_assets_field_sets_wrong(tmp_path, assert_error):
+    yaml_file = tmp_path / "config.yaml"
+    yaml_file.write_text("""
+business:
+  providers: {}
+  field_sets:
+    candle: ["bogus"]
+environment:
+  buckets:
+    daily: d
+    intraday: i
+""")
+
+    env_file = tmp_path / ".env"
+    env_file.write_text("INFLUX_URL=x\nINFLUX_DB=y\n")
+    loader = ConfigLoader(tmp_path)
+
+    assert_error(loader.load(), "Cannot redefine field set 'candle'", None)
 
 
 # ---------------------------------------------------------------------------
@@ -65,7 +85,8 @@ environment:
     env_file = tmp_path / ".env"
     env_file.write_text("INFLUX_URL=x\nINFLUX_DB=y\n")
 
-    result = load_config(yaml_file, env_file)
+    loader = ConfigLoader(tmp_path)
+    result = loader.load()
     assert_error(result, "Missing bucket definitions for: ['daily', 'intraday']", None)
 
 
@@ -88,7 +109,8 @@ environment:
     env_file = tmp_path / ".env"
     env_file.write_text("INFLUX_URL=x\nINFLUX_DB=y\n")
 
-    result = load_config(yaml_file, env_file)
+    loader = ConfigLoader(tmp_path)
+    result = loader.load()
     assert_error(result, "Invalid bucket keys: ['bogus']. Allowed keys: ['daily', 'intraday']", None)
 
 
@@ -115,7 +137,8 @@ environment:
     env_file = tmp_path / ".env"
     env_file.write_text("INFLUX_URL=x\nINFLUX_DB=y\n")
 
-    result = load_config(yaml_file, env_file)
+    loader = ConfigLoader(tmp_path)
+    result = loader.load()
     assert_error(result, "Missing required field 'provider' in asset 'spx'", None)
 
 
@@ -156,7 +179,8 @@ environment:
 
     env_file = tmp_path / ".env"
     env_file.write_text("INFLUX_URL=x\nINFLUX_DB=y\n")
-    result = load_config(yaml_file, env_file)
+    loader = ConfigLoader(tmp_path)
+    result = loader.load()
     assert_error(result, "Unknown timeseries name 'bogus' in asset 'spx'", None)
 
 
@@ -178,38 +202,9 @@ environment:
     env_file = tmp_path / ".env"
     env_file.write_text("INFLUX_URL=x\nINFLUX_DB=y\n")
 
-    result = load_config(yaml_file, env_file)
+    loader = ConfigLoader(tmp_path)
+    result = loader.load()
     assert_error(result, "Missing required field 'expression' in composite 'spread'", None)
-
-
-# ---------------------------------------------------------------------------
-# load_config
-# ---------------------------------------------------------------------------
-
-
-def test_load_config_missing_env_secrets(monkeypatch, tmp_path, assert_error):
-
-    # Clear the entire environment
-    for key in list(os.environ.keys()):
-        monkeypatch.delenv(key, raising=False)
-
-    yaml_file = tmp_path / "config.yaml"
-    yaml_file.write_text("""
-business:
-  providers: {}
-  assets: {}
-  composites: {}
-environment:
-  buckets:
-    daily: d
-    intraday: i
-""")
-
-    env_file = tmp_path / ".env"
-    env_file.write_text("")  # missing INFLUX_URL and INFLUX_DB
-
-    result = load_config(yaml_file, env_file)
-    assert_error(result, "InfluxDB requires URL in INFLUX_URL", None)
 
 
 def test_load_config_business_failure(tmp_path, assert_error):
@@ -229,5 +224,27 @@ environment:
     env_file = tmp_path / ".env"
     env_file.write_text("INFLUX_URL=x\nINFLUX_DB=y\n")
 
-    result = load_config(yaml_file, env_file)
+    loader = ConfigLoader(tmp_path)
+    result = loader.load()
     assert_error(result, "Missing required field 'provider' in asset 'spx'", None)
+
+
+def test_load_config_provider_failure(tmp_path, assert_error):
+    yaml_file = tmp_path / "config.yaml"
+    yaml_file.write_text("""
+business:
+  providers:
+    ecb:
+      timezone: bogus
+environment:
+  buckets:
+    daily: d,
+    intraday: i
+""")
+
+    env_file = tmp_path / ".env"
+    env_file.write_text("INFLUX_URL=x\nINFLUX_DB=y\n")
+
+    loader = ConfigLoader(tmp_path)
+    result = loader.load()
+    assert_error(result, "Invalid timezone 'bogus' for provider 'ecb'", None)

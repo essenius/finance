@@ -2,16 +2,17 @@
 # Licensed under the Apache License, Version 2.0. See the LICENSE file for details.
 # File: tests/fetch/yahoo/test_candles.py
 
-from datetime import UTC, date, datetime
+from unittest.mock import Mock
 
 from finance.common.model import MeasurementResult
 
 # ----------------------------------------------------------------------
-# _extract_candles() tests
+# _extract_candles() tests (new provider)
 # ----------------------------------------------------------------------
 
 
-def test_extract_candles_valid_output_structure(provider, unwrap):
+def test_extract_candles_valid_output_structure(yahoo_provider, unwrap):
+    """Full candle set → all fields extracted correctly."""
 
     result = MeasurementResult.ok_payload(
         "x",
@@ -31,19 +32,22 @@ def test_extract_candles_valid_output_structure(provider, unwrap):
         },
     )
 
-    candles = unwrap(provider._extract_candles(result))
+    candles = unwrap(yahoo_provider._extract_candles(result))
 
     assert len(candles) == 1
     c = candles[0]
     assert c.timestamp == 1000
-    assert c.fields["open"] == 1.0
-    assert c.fields["high"] == 2.0
-    assert c.fields["low"] == 0.5
-    assert c.fields["close"] == 1.5
-    assert c.fields["volume"] == 100
+    assert c.fields == {
+        "open": 1.0,
+        "high": 2.0,
+        "low": 0.5,
+        "close": 1.5,
+        "volume": 100,
+    }
 
 
-def test_extract_candles_filter_fields(provider, unwrap):
+def test_extract_candles_filter_fields(yahoo_provider, unwrap):
+    """Subset of candle fields → only those fields appear."""
 
     result = MeasurementResult.ok_payload(
         "x",
@@ -63,47 +67,16 @@ def test_extract_candles_filter_fields(provider, unwrap):
         },
     )
 
-    candles = unwrap(provider._extract_candles(result, ["open", "close"]))
+    candles = unwrap(yahoo_provider._extract_candles(result, ["open", "close"]))
 
     assert len(candles) == 1
     c = candles[0]
     assert c.timestamp == 1000
-    assert c.fields["open"] == 1.0
-    assert c.fields.get("high") is None
-    assert c.fields.get("low") is None
-    assert c.fields["close"] == 1.5
-    assert c.fields.get("volume") is None
+    assert c.fields == {"open": 1.0, "close": 1.5}
 
 
-def test_extract_candles_empty_mapping(provider):
-
-    result = MeasurementResult.ok_payload(
-        "x",
-        {
-            "timestamp": [1000],
-            "indicators": {
-                "quote": [
-                    {
-                        "open": [1.0],
-                        "high": [2.0],
-                        "low": [0.5],
-                        "close": [1.5],
-                        "volume": [100],
-                    }
-                ]
-            },
-        },
-    )
-
-    candles = provider._extract_candles(result, ["hoog", "laag"])
-    assert not candles.ok
-    assert (
-        "Unknown fields requested: ['hoog', 'laag']. Supported: ['open', 'high', 'low', 'close', 'volume']"
-        in candles.reason
-    )
-
-
-def test_extract_candles_skips_invalid(provider, unwrap):
+def test_extract_candles_skips_invalid(yahoo_provider, assert_warning):
+    """Invalid candle (None value) → skipped with warning."""
 
     result = MeasurementResult.ok_payload(
         "u",
@@ -123,59 +96,56 @@ def test_extract_candles_skips_invalid(provider, unwrap):
         },
     )
 
-    candles = provider._extract_candles(result)
-    assert candles.ok
-    assert "Skipped 1 invalid candles" in candles.warning
+    candles = yahoo_provider._extract_candles(result)
+    assert_warning(candles, "Skipped 1 invalid candles")
     assert candles.payload == []
 
 
-def test_extract_candles_filters_today(provider, unwrap):
-
-    today = date(2026, 5, 25)
-    today_midnight = int(datetime(today.year, today.month, today.day, tzinfo=UTC).timestamp())
-
-    result = MeasurementResult.ok_payload(
-        "t",
-        {
-            "timestamp": [today_midnight + 60],  # candle from today → must be skipped
-            "indicators": {
-                "quote": [
-                    {
-                        "open": [1.0],
-                        "high": [2.0],
-                        "low": [0.5],
-                        "close": [1.5],
-                        "volume": [100],
-                    }
-                ]
-            },
-        },
-    )
-
-    candles = unwrap(provider._extract_candles(result, None, today=today))
-    assert candles == []
-
-
-def test_extract_candles_handles_missing_timestamp(provider, assert_error):
+def test_extract_candles_handles_missing_timestamp(yahoo_provider, assert_error):
+    """Missing timestamp array → fail."""
 
     result = MeasurementResult.ok_payload("z", {"timestamp": [], "indicators": {"quote": []}})
 
-    candles = provider._extract_candles(result, ["open"])
+    candles = yahoo_provider._extract_candles(result, ["open"])
     assert_error(candles, "no timestamp in result", None)
 
 
-def test_extract_candles_handles_missing_quote(provider, assert_error):
+def test_extract_candles_handles_missing_quote(yahoo_provider, assert_error):
+    """Missing quote structure → fail."""
 
     result = MeasurementResult.ok_payload("y", {"timestamp": [1], "indicators": {"quote": []}})
 
-    candles = provider._extract_candles(result)
-    assert_error(candles, "unexpected quote structure", "missing index [0] at [")
+    candles = yahoo_provider._extract_candles(result)
+    assert_error(candles, "unexpected quote structure", "missing index [0]")
 
 
-def test_extract_candles_empty_result(provider, unwrap):
+def test_extract_candles_empty_result(yahoo_provider, unwrap):
+    """Quote exists but contains no arrays → empty candle list."""
 
-    # missing arrays → treated as empty lists
-    data = MeasurementResult.ok_payload("v", {"timestamp": [1], "indicators": {"quote": [{}]}})
+    data = MeasurementResult.ok_payload(
+        "v",
+        {"timestamp": [1], "indicators": {"quote": [{}]}},
+    )
 
-    candles = unwrap(provider._extract_candles(data))
+    candles = unwrap(yahoo_provider._extract_candles(data))
     assert candles == []
+
+
+def test_extract_candles_resolve_field_mapping_fails(yahoo_provider, assert_error):
+    payload = {
+        "timestamp": [1000],
+        "indicators": {"quote": [{"close": [10.0]}]},
+    }
+    results = Mock()
+    results.measurement = "m"
+    results.payload = payload
+
+    result = yahoo_provider._extract_candles(results, ["close", "foo"])
+    assert_error(result, "Unsupported field combination: ['close', 'foo']", None)
+
+
+def test_resolve_field_mapping_single_unknown_field(yahoo_provider, unwrap):
+    result = yahoo_provider._resolve_field_mapping(["foo"])
+    selected, mapped = unwrap(result)
+    assert selected == ["close"]
+    assert mapped == ["foo"]

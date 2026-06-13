@@ -2,7 +2,7 @@
 # Licensed under the Apache License, Version 2.0. See the LICENSE file for details.
 # File: tests/config/test_load_config.py
 
-from finance.config.loader import load_config, load_yaml_config
+from finance.config.loader import ConfigLoader, load_yaml_config
 
 
 def test_load_yaml_config(tmp_path, unwrap):
@@ -12,7 +12,7 @@ def test_load_yaml_config(tmp_path, unwrap):
     assert cfg["providers"]["yahoo"]["default_interval"] == "10m"
 
 
-def test_load_config_end_to_end(tmp_path, monkeypatch, unwrap):
+def test_load_config_end_to_end(tmp_path, unwrap):
     yaml_file = tmp_path / "config.yaml"
     env_file = tmp_path / ".env"
 
@@ -28,7 +28,7 @@ environment:
 business:
   providers:
     yahoo:
-      default_interval: 10m
+      timezone: UTC
 
   assets:
     spx:
@@ -49,15 +49,17 @@ business:
         series: SPREAD
 """)
 
-    env_file.write_text("INFLUX_URL=http://x\nINFLUX_DB=db\n")
+    env_file.write_text("INFLUX_URL=http://y\nINFLUX_DB=db1\n")
 
-    monkeypatch.setenv("INFLUX_URL", "http://x")
-    monkeypatch.setenv("INFLUX_DB", "db")
+    environ = {"INFLUX_URL": "http://x", "INFLUX_DB": "db2"}
 
-    cfg = unwrap(load_config(yaml_file, env_file))
+    loader = ConfigLoader(tmp_path, environ)
+    result = loader.load()
+
+    cfg = unwrap(result)
 
     # providers
-    assert cfg["providers"]["yahoo"]["default_interval"] == "10m"
+    assert cfg["providers"]["yahoo"]["timezone"] == "UTC"
 
     # assets expanded
     assert "spx_daily" in cfg["assets"]
@@ -68,8 +70,9 @@ business:
     # composites
     assert cfg["composites"]["spread"]["expression"] == "fred_10y_daily - fred_2y_daily"
 
-    # secrets
-    assert cfg["secrets"]["influx"]["url"] == "http://x"
+    # secrets -- .env overrides environment
+    assert cfg["secrets"]["influx"]["url"] == "http://y"
+    assert cfg["secrets"]["influx"]["db"] == "db1"
 
     assert cfg["paths"]["wal"].is_absolute()
     assert cfg["paths"]["state"].is_absolute()
@@ -79,10 +82,11 @@ business:
 
 
 def test_load_config_missing_file(tmp_path, assert_error):
-    missing_yaml = tmp_path / "missing.yaml"
-    missing_env = tmp_path / "missing.env"
 
-    assert_error(load_config(missing_yaml, missing_env), "Config file not found", None)
+    loader = ConfigLoader(tmp_path)
+    result = loader.load()
+
+    assert_error(result, "Config file not found", None)
 
 
 def test_load_config_dev_mode(monkeypatch, tmp_path, unwrap):
@@ -93,14 +97,17 @@ def test_load_config_dev_mode(monkeypatch, tmp_path, unwrap):
     )
     (tmp_path / ".env").write_text("INFLUX_URL=http://x\nINFLUX_DB=db\n")
 
-    result = load_config()
+    loader = ConfigLoader(tmp_path)
+    result = loader.load()
     cfg = unwrap(result)
-    assert cfg["providers"] == {}
+    assert cfg["providers"] == {
+        "yahoo": {"timezone": "UTC", "intraday_history_limit": "5d", "daily_history_limit": "10y"},
+        "ecb": {"timezone": "UTC", "intraday_history_limit": "5d", "daily_history_limit": "10y"},
+        "fred": {"timezone": "UTC", "intraday_history_limit": "5d", "daily_history_limit": "10y"},
+    }
 
 
-def test_load_config_resolves_paths(tmp_path, monkeypatch, unwrap):
-    # Pretend project root is tmp_path
-    monkeypatch.setattr("finance.common.paths.get_project_root", lambda: tmp_path)
+def test_load_config_resolves_paths(tmp_path, unwrap):
 
     yaml_file = tmp_path / "config.yaml"
     env_file = tmp_path / ".env"
@@ -118,7 +125,8 @@ environment:
 
     env_file.write_text("INFLUX_URL=http://x\nINFLUX_DB=db\n")
 
-    result = load_config(yaml_file, env_file)
+    loader = ConfigLoader(tmp_path)
+    result = loader.load()
     cfg = unwrap(result)
 
     assert cfg["paths"]["wal"] == tmp_path / "data" / "mywal.jsonl"

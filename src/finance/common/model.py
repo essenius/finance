@@ -71,18 +71,18 @@ class Result(Generic[T]):
     payload: T | None = None
     reason: str | None = None
     error: str | None = None
-    warning: str | None = None
+    warnings: list[str] | None = None
     meta: dict | None = None
 
     @staticmethod
     def parse_warnings(warnings: list[str]) -> str | None:
         if warnings is None or warnings == []:
             return None
-        return "\n".join(warnings)
+        return warnings
 
     @staticmethod
     def ok_payload(payload: T, warnings: list[str] | None = None, meta: dict | None = None) -> Result[T]:
-        return Result(ok=True, payload=payload, warning=Result.parse_warnings(warnings), meta=meta)
+        return Result(ok=True, payload=payload, warnings=Result.parse_warnings(warnings), meta=meta)
 
     @staticmethod
     def fail(
@@ -93,7 +93,7 @@ class Result(Generic[T]):
             reason=reason,
             error=None if error is None else str(error),
             meta=meta,
-            warning=Result.parse_warnings(warnings),
+            warnings=Result.parse_warnings(warnings),
         )
 
     def with_measurement(self, measurement: str) -> MeasurementResult[T]:
@@ -113,7 +113,7 @@ class MeasurementResult(Result[T]):
             payload=result.payload,
             reason=result.reason,
             error=result.error,
-            warning=result.warning,
+            warnings=result.warnings,
             meta=result.meta,
         )
 
@@ -147,3 +147,12 @@ class TimeseriesWrite:
 
 
 TimeseriesResult = MeasurementResult[TimeseriesWrite | None]
+
+
+@dataclass(frozen=True)
+class BatchWriteResult:
+    ok: bool
+    succeeded: list[int]
+    failed: list[int]
+    warnings: list[str] | None = None
+    meta: dict | None = None

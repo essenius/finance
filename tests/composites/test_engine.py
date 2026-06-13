@@ -5,14 +5,14 @@
 import pytest
 
 from finance.composites.engine import CompositeEngine
-from finance.state.manager import State
+from finance.state.state import State
 
 # ---------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------
 
 
-def make_state(state: State, **metrics):
+def set_state(state: State, **metrics):
     """
     Convenience helper:
     make_state(
@@ -41,7 +41,7 @@ def make_state(state: State, **metrics):
         ("gold.high - gold.low", "gold_daily.high - gold_daily.low"),
     ],
 )
-def test_identifier_rewriting(expr, expected, unwrap, state_obj):
+def test_identifier_rewriting(expr, expected, unwrap, state):
     composites = {
         "C": {
             "expression": expr,
@@ -51,8 +51,8 @@ def test_identifier_rewriting(expr, expected, unwrap, state_obj):
         }
     }
 
-    state = make_state(
-        state_obj,
+    set_state(
+        state,
         A_daily=({"value": 2}, 100),
         B_daily=({"value": 3}, 200),
         gold_daily=({"high": 2050, "low": 2000}, 500),
@@ -68,7 +68,7 @@ def test_identifier_rewriting(expr, expected, unwrap, state_obj):
 # ---------------------------------------------------------
 
 
-def test_field_access(unwrap, state_obj):
+def test_field_access(unwrap, state):
     composites = {
         "RANGE": {
             "expression": "gold.high - gold.low",
@@ -78,7 +78,7 @@ def test_field_access(unwrap, state_obj):
         }
     }
 
-    state = make_state(state_obj, gold_daily=({"high": 2050, "low": 2000}, 500))
+    set_state(state, gold_daily=({"high": 2050, "low": 2000}, 500))
 
     engine = unwrap(CompositeEngine.build(composites, state))
     result_list = list(engine.evaluate_incrementally())
@@ -167,9 +167,9 @@ def test_field_access(unwrap, state_obj):
         ),
     ],
 )
-def test_composite_evaluation(unwrap, state_obj, composites, initial_metrics, expected):
+def test_composite_evaluation(unwrap, state, composites, initial_metrics, expected):
 
-    state = make_state(state_obj, **initial_metrics)
+    set_state(state, **initial_metrics)
     engine = unwrap(CompositeEngine.build(composites, state))
     list(engine.evaluate_incrementally())
     for key, (fields, ts) in expected.items():
@@ -184,7 +184,7 @@ def test_composite_evaluation(unwrap, state_obj, composites, initial_metrics, ex
 # ---------------------------------------------------------
 
 
-def test_missing_dependency(unwrap, assert_error, state_obj):
+def test_missing_dependency(unwrap, assert_error, state):
     composites = {
         "C": {
             "expression": "A + B",
@@ -194,8 +194,8 @@ def test_missing_dependency(unwrap, assert_error, state_obj):
         }
     }
 
-    state = make_state(
-        state_obj,
+    set_state(
+        state,
         A_daily=({"value": 1}, 900),
         # B_daily missing
     )
@@ -216,7 +216,7 @@ def test_missing_dependency(unwrap, assert_error, state_obj):
     assert state.data.get("C_daily") is None
 
 
-def test_syntax_error_in_raw_expression(state_obj):
+def test_syntax_error_in_raw_expression(state):
     composites = {
         "C": {
             "expression": "A +",  # invalid raw expression
@@ -226,7 +226,7 @@ def test_syntax_error_in_raw_expression(state_obj):
         }
     }
 
-    state = make_state(state_obj, A_daily=({"value": 1}, 100))
+    set_state(state, A_daily=({"value": 1}, 100))
 
     engine = CompositeEngine.build(composites, state)
     assert not engine.ok
@@ -237,7 +237,7 @@ def test_syntax_error_in_raw_expression(state_obj):
     assert state.data.get("C_daily") is None
 
 
-def test_no_dependencies(unwrap, state_obj):
+def test_no_dependencies(unwrap, state):
     composites = {
         "X": {
             "expression": "42",
@@ -247,7 +247,7 @@ def test_no_dependencies(unwrap, state_obj):
         }
     }
 
-    state = make_state(state_obj, dummy=({"value": 0}, 1234))
+    set_state(state, dummy=({"value": 0}, 1234))
 
     engine = unwrap(CompositeEngine.build(composites, state))
     list(engine.evaluate_incrementally())
@@ -257,7 +257,7 @@ def test_no_dependencies(unwrap, state_obj):
     assert entry["last_timestamp"] == 1234
 
 
-def test_cycle_error_in_build(state_obj, assert_error):
+def test_cycle_error_in_build(state, assert_error):
     composites = {
         "A": {
             "expression": "A",  # self-reference
@@ -267,5 +267,5 @@ def test_cycle_error_in_build(state_obj, assert_error):
         }
     }
 
-    result = CompositeEngine.build(composites, state_obj)
+    result = CompositeEngine.build(composites, state)
     assert_error(result, "Error in topo_sort", "Cycle detected at A")

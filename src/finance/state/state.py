@@ -1,100 +1,105 @@
 # Copyright 2026 Rik Essenius
 # Licensed under the Apache License, Version 2.0. See the LICENSE file for details.
-# File: src/finance/state/manager.py
+# File: src/finance/state/state.py
 
-import json
-import shutil
-import tempfile
-import time
 from collections.abc import Callable, Iterable
-from pathlib import Path
 
 from ..common.model import FetchResult, TimeseriesResult, TimeseriesWrite
+from ..state.storage import StateStorage
 from ..state.wal import JsonlWAL
 from ..timeseries import InfluxBackend
 
 
 class State:
-    def __init__(self, timeseries_client: InfluxBackend, wal: JsonlWAL, path: Path, bucket_for: Callable[[str], str]):
-        self._timeseries_client = timeseries_client
+    def __init__(
+        self, series_store: InfluxBackend, wal: JsonlWAL, storage: StateStorage, bucket_for: Callable[[str], str]
+    ):
+        self._timeseries_client = series_store
         self._wal = wal
-        self._path = path
-        self._state: dict[str, dict] = load_state(self._path)
+        self._storage = storage
         self._bucket_for = bucket_for
+        self._state: dict[str, dict] = storage.load()
 
     def save(self) -> None:
-        save_state(self._state, self._path)
+        self._storage.save(self._state)
 
     def get(self, measurement: str, default: dict | None = None) -> dict | None:
         entry = self._state.get(measurement)
         if entry is not None:
             return entry
 
-        rebuilt = rebuild_measurement_state(
-            self._bucket_for(measurement), measurement, self._wal, self._timeseries_client
-        )
+        rebuilt = self._rebuild_measurement_state(measurement)
         if rebuilt:
             self._state[measurement] = rebuilt
             return rebuilt
 
         return default
 
-    def update_after_fetch(self, result: FetchResult) -> bool:
+    def update_after_fetch(self, result: FetchResult, now: int) -> bool:
         """
-        Record that a fetch attempt was made, and report whether the provider
-        appears to have newer data than what we have already persisted.
-
-        Returns:
-            True  - provider returned data newer than our last persisted timestamp
-            False - no new data, fetch failed, or provider returned nothing
+        Record that a fetch attempt was made
         """
 
-        now = int(time.time())
-
-        # Always update last_try
         entry = self.data.setdefault(result.measurement, {})
         entry["last_try"] = now
-
-        if not result.ok or not result.payload:
-            return False
-
-        # Determine if provider has newer data than what we have persisted
-        newest_provider_ts = max(p.timestamp for p in result.payload)
-        last_persisted_ts = entry.get("last_timestamp")
-
-        return last_persisted_ts is None or newest_provider_ts > last_persisted_ts
 
     @property
     def data(self) -> dict:
         return self._state
 
     def _compute_policy(self, measurement: str, timestamp: int) -> dict:
-        entry = self._state.get(measurement)
+        entry = self.get(measurement)
+
+        # No state or no timestamp → first ever point, must write
         if entry is None:
-            return {"skipped": False, "reason": "first-time"}
+            return {"skipped": False, "reason": "first"}
 
-        last_timestamp = entry["last_timestamp"]
+        first_ts = entry.get("first_timestamp")
+        if first_ts is None:
+            return {"skipped": False, "reason": "first"}
 
-        if timestamp > last_timestamp:
+        last_ts = entry.get("last_timestamp")
+        if last_ts is None:
+            return {"skipped": False, "reason": "first"}
+
+        # Before known window → must write
+        if timestamp < first_ts:
+            return {"skipped": False, "reason": "before-window"}
+
+        # After known window → must write
+        if timestamp > last_ts:
             return {"skipped": False, "reason": "new"}
 
-        if timestamp == last_timestamp:
+        # Inside window → skip
+        if timestamp == last_ts:
             return {"skipped": True, "reason": "unchanged"}
 
-        return {"skipped": True, "reason": "older"}
+        return {"skipped": True, "reason": "inside-window"}
+
+    def update_range(self, measurement: str, first: int, last: int) -> None:
+        """
+        Update the saved range after a batch has been ingested
+        """
+        # when this is called, the entry is always there
+        entry = self._state[measurement]
+        last_saved = entry.get("last_timestamp")
+        if last_saved is None or last > last_saved:
+            entry["last_timestamp"] = last
+        first_saved = entry.get("first_timestamp")
+        if first_saved is None or first < first_saved:
+            entry["first_timestamp"] = first
 
     def ingest(self, write: TimeseriesWrite) -> TimeseriesResult:
         """
         Ingest a new metric:
         - check if write is needed, if not bail out
         - append to WAL (ingestion succeeds here)
-        - update in memory state immediately
         - flush WAL oldest → newest to timeseries_client
         - dequeue flushed entries
         - on first write failure, stop and return that result
-        """
 
-        # State reflects ingested value immediately
+        Note: first and last timestamps are not updated, that needs to happen after the batch was done
+        """
 
         policy = self._compute_policy(write.measurement, write.timestamp)
         if policy["skipped"]:
@@ -102,11 +107,8 @@ class State:
         # Durable accept: enqueue
         self._wal.enqueue(write)
 
-        # State reflects ingested value immediately
-
         entry = self._state.setdefault(write.measurement, {})
         entry["fields"] = write.fields
-        entry["last_timestamp"] = write.timestamp
 
         # Flush WAL FIFO
         while True:
@@ -157,71 +159,40 @@ class State:
             "last_timestamp": timestamp,
         }
 
+    def _rebuild_measurement_state(self, measurement: str) -> dict | None:
 
-def load_state(path: Path) -> dict:
-    """
-    Load state.json from the project root unless an explicit path is provided.
-    """
+        bucket = self._bucket_for(measurement)
+        wal_entries = [e for e in self._wal.read_all() if e["measurement"] == measurement]
 
-    if not path.exists():
-        return {}
+        # no need to check property existence as read_all already removes invalid entries
+        wal_first = min((e["timestamp"] for e in wal_entries), default=None)
+        wal_last = max((e["timestamp"] for e in wal_entries), default=None)
+        wal_fields = next((e["fields"] for e in wal_entries if e["timestamp"] == wal_last), None)
 
-    try:
-        with path.open("r", encoding="utf-8") as f:
-            data = json.load(f)
-            if isinstance(data, dict):
-                return data
-    except Exception:
-        pass  # corrupted or unreadable
+        # Collect Influx timestamps
+        influx_first_point = self._timeseries_client.read_first(bucket, measurement)
+        influx_last_point = self._timeseries_client.read_last(bucket, measurement)
 
-    return {}
+        influx_first = influx_first_point.payload.timestamp if influx_first_point.payload else None
+        influx_last = influx_last_point.payload.timestamp if influx_last_point.payload else None
+        influx_fields = influx_last_point.payload.fields if influx_last_point.payload else None
 
+        # If nothing exists anywhere, bail out
+        if wal_first is None and influx_first is None:
+            return None
 
-def save_state(state: dict, path: Path) -> None:
-    """
-    Save state atomically to avoid corruption.
-    """
+        # Combine earliest and latest
+        first_timestamp = min(timestamp for timestamp in (wal_first, influx_first) if timestamp is not None)
+        last_timestamp = max(timestamp for timestamp in (wal_last, influx_last) if timestamp is not None)
 
-    tmp = tempfile.NamedTemporaryFile("w", delete=False, encoding="utf-8")
-    try:
-        json.dump(state, tmp, indent=2)
-        tmp.flush()
-        tmp.close()
-        shutil.move(tmp.name, path)
-    except Exception:
-        try:
-            Path(tmp.name).unlink(missing_ok=True)
-        except Exception:
-            pass
-        raise
+        # Pick fields from the newest point
+        if wal_last is not None and (influx_last is None or wal_last >= influx_last):
+            fields = wal_fields
+        else:
+            fields = influx_fields
 
-
-def rebuild_measurement_state(
-    bucket: str, measurement: str, wal: JsonlWAL, influx_client: InfluxBackend
-) -> dict | None:
-    """
-    Rebuild state for a single measurement using:
-    1. WAL (most recent entry wins)
-    2. Influx (latest point)
-    """
-
-    # Check WAL
-    wal_entries = [e for e in wal.read_all() if e.measurement == measurement]
-
-    if wal_entries:
-        newest = max(wal_entries, key=lambda e: e.timestamp)
         return {
-            "fields": newest.fields,
-            "last_timestamp": newest.timestamp,
+            "fields": fields,
+            "first_timestamp": first_timestamp,
+            "last_timestamp": last_timestamp,
         }
-
-    # Not in WAL, query Influx
-    latest = influx_client.read(bucket, measurement)
-    if latest.ok:
-        return {
-            "fields": latest.payload.fields,
-            "last_timestamp": latest.payload.timestamp,
-        }
-
-    # No history
-    return None

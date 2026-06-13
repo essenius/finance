@@ -19,7 +19,7 @@ def get_project_root() -> Path:
     raise RuntimeError(f"Current working directory {cwd} is not a valid project root (config.yaml not found).")
 
 
-def resolve_config_path(value: str | None, default_filename: str) -> Path:
+def resolve_config_path(value: str | None, default_filename: str, project_root: Path) -> Path:
     """
     Resolve a path from config:
     - If value is None or empty: return project_root / default_filename
@@ -27,26 +27,16 @@ def resolve_config_path(value: str | None, default_filename: str) -> Path:
     - If value is relative: return project_root / value
     """
     if not value:
-        return get_project_root() / default_filename
+        return project_root / default_filename
 
     p = Path(value)
 
     if p.is_absolute():
         return p
 
-    resolved = get_project_root() / p
+    resolved = project_root / p
     if resolved.is_dir():
         return resolved / default_filename
 
     return resolved
 
-
-'''
-TODO: delete
-def get_path(path: Path | None, default_file) -> Path:
-    """return path if it is defined, otherwise a default in the project root"""
-    if path is not None:
-        return path
-    root = get_project_root()
-    return root / default_file
-'''

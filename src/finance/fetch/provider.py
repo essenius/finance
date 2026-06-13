@@ -4,6 +4,9 @@
 
 from collections.abc import Callable
 from datetime import UTC, datetime
+from zoneinfo import ZoneInfo
+
+import requests
 
 from ..common.model import FetchResult, MeasurementResult, Result, T
 
@@ -11,36 +14,12 @@ from ..common.model import FetchResult, MeasurementResult, Result, T
 class MarketDataProvider:
     """Base interface for all market data providers."""
 
-    def __init__(self, config: dict = None, now_provider: Callable[[], datetime] = None):
-
-        self.config = config or {}
-        self.now = now_provider or (lambda: datetime.now(UTC))
-
-    """
-    TODO: delete
-    def _check_status(self, symbol, response) -> tuple[bool, str | None]:
-        if response.status_code == 200:
-            return True, None
-        message = f"status {response.status_code}"
-        if response.text:
-            message += f" ({response.text})"
-        return False, message
-
-    TODO: delete
-    def error(self, message, symbol=None):
-        provider = self.__class__.__name__.replace("Provider", "")
-        msg = f"Error fetching {symbol} from {provider}: {message}"
-        super().error(msg)
-
-
-    TODO: delete
-    def _require_api_key(self, symbol) -> str | None:
-        key = self.config.get("api_key")
-        if not key:
-            self.error("API key missing", symbol)
-            return None
-        return key
-    """
+    def __init__(self, provider_config: dict, api_key: str | None = None, **kwargs):
+        self.provider_config = provider_config
+        self.api_key = api_key
+        self.session = kwargs.pop("session", None) or requests.Session()
+        self.now = kwargs.pop("now_provider", None) or (lambda: datetime.now(UTC))
+        self.timezone = ZoneInfo(provider_config["timezone"])
 
     def _safe_call(
         self, measurement: str, fn: Callable[[], MeasurementResult[T]], context: str
@@ -68,8 +47,8 @@ class MarketDataProvider:
                 return Result.fail(f"cannot index with [{key}] at {path[:i]}")
         return Result.ok_payload(current)
 
-    def fetch(self, name: str, asset: dict, last_timestamp: int) -> FetchResult:
+    def fetch(self, name: str, asset: dict, start_timestamp: int, end_timestamp: int) -> FetchResult:
         """
-        Fetch data points for the given asset definition since the last timestamp.
+        Fetch data points for the given asset definition between start_timestamp and end_timestamp.
         """
         return FetchResult.fail(name, "fetch not implemented")

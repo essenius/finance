@@ -4,7 +4,7 @@
 
 from datetime import UTC, datetime
 
-import requests
+from finance.common.time_utils import to_utc_midnight
 
 from ..common.model import FetchPoint, FetchResult
 from .provider import MarketDataProvider
@@ -15,26 +15,30 @@ BASE_URL = "https://api.stlouisfed.org/fred/series/observations"
 class FredProvider(MarketDataProvider):
     """FRED daily economic data provider."""
 
-    def fetch(self, name, asset, last_timestamp) -> FetchResult:
+    def fetch(self, name: str, asset: dict, start_timestamp: int, end_timestamp: int) -> FetchResult:
         symbol = asset["symbol"]
         field = asset["fields"][0]
 
-        api_key = self.config.get("api_key")
-        if not api_key:
+        if not self.api_key:
             return FetchResult.fail(name, "FRED requires an API key")
 
-        return self._safe_call(measurement=name, fn=lambda: self._fetch(name, symbol, field, api_key), context="fetch")
+        start_date = datetime.fromtimestamp(start_timestamp, tz=UTC).date().strftime("%Y-%m-%d")
+        end_date = datetime.fromtimestamp(end_timestamp, tz=UTC).date().strftime("%Y-%m-%d")
 
-    def _fetch(self, name, symbol, field, api_key) -> FetchResult:
         params = {
             "series_id": symbol,
-            "api_key": api_key,
+            "api_key": self.api_key,
             "file_type": "json",
             "sort_order": "desc",
-            "limit": 1,
+            "observation_start": start_date,
+            "observation_end": end_date,
         }
 
-        response = requests.get(BASE_URL, params=params, timeout=10)
+        return self._safe_call(measurement=name, fn=lambda: self._fetch(name, field, params), context="FRED fetch")
+
+    def _fetch(self, name: str, field: str, params: dict) -> FetchResult:
+
+        response = self.session.get(BASE_URL, params=params, timeout=10)
         response.raise_for_status()
 
         data = response.json()
@@ -42,14 +46,24 @@ class FredProvider(MarketDataProvider):
         if not observations:
             return FetchResult.fail(name, "no 'observations' in response")
 
-        obs = observations[0]
-        value_str = obs.get("value")
-        date_str = obs.get("date")
+        points: list[FetchPoint] = []
 
-        if value_str in (None, ".", ""):
-            return FetchResult.fail(name, f"invalid value '{value_str}' in first observation")
+        for observation in observations:
+            value_str = observation.get("value")
+            date_str = observation.get("date")
 
-        value = float(value_str)
-        timestamp = int(datetime.fromisoformat(date_str).replace(tzinfo=UTC).timestamp())
+            # Skip missing/invalid values
+            if value_str in (None, ".", ""):
+                continue
 
-        return FetchResult.ok_payload(name, [FetchPoint(timestamp=timestamp, fields={field: value})])
+            # FRED date is YYYY-MM-DD
+            try:
+                local_datetime = datetime.fromisoformat(date_str).replace(tzinfo=self.timezone)
+            except Exception:
+                continue
+
+            ts = to_utc_midnight(local_datetime)
+            value = float(value_str)
+            points.append(FetchPoint(timestamp=ts, fields={field: value}))
+
+        return FetchResult.ok_payload(name, points)

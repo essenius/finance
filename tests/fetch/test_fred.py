@@ -4,32 +4,30 @@
 
 import pytest
 
-from finance.fetch.fred import FredProvider
-
-
-def make_provider(api_key="TESTKEY"):
-    return FredProvider({"api_key": api_key})
-
 
 def make_asset(symbol="T10YIE", field="price"):
     return {"symbol": symbol, "fields": [field]}
 
 
-"""
-def mock_fred_response(monkeypatch, status, json_data):
-    mock_resp = Mock()
-    mock_resp.status_code = status
-    mock_resp.json.return_value = json_data
-    monkeypatch.setattr("finance.fetch.fred.requests.get", lambda *a, **k: mock_resp)
-"""
+def test_fred_fetch_normal_with_skipped(fred_provider, assert_ok):
 
-
-def test_fred_fetch_normal(monkeypatch, assert_ok, mock_get_response):
-
-    mock_get_response(monkeypatch, "fred", 200, {"observations": [{"value": "2.34", "date": "2024-05-09"}]})
-    provider = make_provider()
-    result = provider.fetch("f1", make_asset(), None)
-    assert_ok(result, 1715212800, 2.34)
+    provider = fred_provider()
+    provider.session.queue(
+        200,
+        {
+            "observations": [
+                {"value": "2.34", "date": "2024-05-09"},
+                {"value": "", "date": "2024-05-10"},
+                {"value": ".", "date": "2024-05-11"},
+                {"value": None, "date": "2024-05-12"},
+                {"value": "2.55", "date": "bogus"},
+            ]
+        },
+    )
+    result = provider.fetch("f1", make_asset(), 0, 1000)
+    # timestamp should be 2026-05-10 00:00 UTC since that is the UTC midnight timsetamp where the value is valid
+    assert_ok(result, 1715299200, 2.34)
+    assert len(result.payload) == 1, "Ignored invalid values"
 
 
 # -------------------------------
@@ -55,54 +53,33 @@ MALFORMED_CASES = [
         {"observations": []},
         "no 'observations' in response",
     ),
-    # Invalid values
-    (
-        "TESTKEY",
-        {"observations": [{"value": "", "date": "2024-05-09"}]},
-        "invalid value '' in first observation",
-    ),
-    (
-        "TESTKEY",
-        {"observations": [{"value": ".", "date": "2024-05-09"}]},
-        "invalid value '.' in first observation",
-    ),
-    (
-        "TESTKEY",
-        {"observations": [{"value": None, "date": "2024-05-09"}]},
-        "invalid value 'None' in first observation",
-    ),
 ]
 
 
 @pytest.mark.parametrize("api_key, json_data, expected_error", MALFORMED_CASES)
-def test_fred_malformed_cases(monkeypatch, assert_error, api_key, json_data, expected_error, mock_get_response):
-
+def test_fred_malformed_cases(assert_error, fred_provider, api_key, json_data, expected_error):
+    provider = fred_provider(api_key)
     # Missing API key → no HTTP call
     if api_key is not None:
-        mock_get_response(monkeypatch, "fred", 200, json_data)
+        provider.session.queue(200, json_data)
 
-    provider = make_provider(api_key) if api_key is not None else FredProvider()
-
-    result = provider.fetch("f2", make_asset(), None)
-
+    result = provider.fetch("f2", make_asset(), 0, 1000)
     assert_error(result, expected_error, None)
 
 
-def test_fred_fetch_network_error(monkeypatch, assert_error):
+def test_fred_fetch_network_error(assert_error, fred_provider):
+    provider = fred_provider()
+    provider.session.queue_error(Exception("Boom!"))
+    # monkeypatch.setattr("finance.fetch.fred.requests.get", lambda *a, **k: (_ for _ in ()).throw(Exception("boom")))
 
-    monkeypatch.setattr("finance.fetch.fred.requests.get", lambda *a, **k: (_ for _ in ()).throw(Exception("boom")))
+    result = provider.fetch("f3", make_asset(), 0, 1000)
 
-    provider = make_provider()
-    result = provider.fetch("f3", make_asset(), None)
-
-    assert_error(result, "Exception during fetch", "boom")
+    assert_error(result, "Exception during FRED fetch", "Boom!")
 
 
-def test_fred_status_code_not_200(monkeypatch, assert_error, mock_get_response):
+def test_fred_status_code_not_200(assert_error, fred_provider):
+    provider = fred_provider()
+    provider.session.queue(500, {}, "status 500")
 
-    mock_get_response(monkeypatch, "fred", 500, {}, "status 500")
-
-    provider = make_provider()
-
-    result = provider.fetch("f4", make_asset(), None)
-    assert_error(result, "Exception during fetch", "status 500")
+    result = provider.fetch("f4", make_asset(), 0, 1000)
+    assert_error(result, "Exception during FRED fetch", "status 500")

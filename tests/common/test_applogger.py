@@ -88,3 +88,16 @@ def test_warning_level(caplog):
         log.warning("careful", y=5)
 
     assert "WARNING | careful | y=5" in caplog.text
+
+
+def test_warning_flattening(caplog):
+    log = AppLogger()
+
+    with caplog.at_level(logging.WARNING):
+        log.warning(warnings=["warning 1", "warning 2"])
+
+    assert "WARNING | warnings=warning 1" in caplog.text
+    assert "WARNING | warnings=warning 2" in caplog.text
+
+
+"WARNING  AppLogger:test_applogger.py:97 WARNING | warnings=warning 1\nWARNING  AppLogger:test_applogger.py:97 WARNING | warnings=warning 2\n"

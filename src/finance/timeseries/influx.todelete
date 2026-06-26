@@ -2,6 +2,7 @@
 # Licensed under the Apache License, Version 2.0. See the LICENSE file for details.
 # File: src/finance/timeseries/influx.py
 
+# TODO delete
 from __future__ import annotations
 
 import re
@@ -10,24 +11,26 @@ import time
 from dateutil.parser import isoparse
 from requests import Response, Session
 
-from finance.timeseries.ssl_context_adapter import SSLContextAdapter, make_legacy_ssl_context
-
-from ..common.model import BatchWriteResult, Result, TimeseriesResult, TimeseriesWrite
-from .config import ConfigFactory, InfluxConfig
+from ..common.model import BatchWriteResult, Result, SeriesResult, TimeseriesWrite
+from .config import ConfigBuilder, InfluxConfig
+from .session_provider import SessionProvider
 
 
 class InfluxBackend:
     @classmethod
-    def from_config(cls, config: dict, secrets: dict, now=None) -> Result[InfluxBackend]:
+    def from_config(
+        cls, config: dict, secrets: dict, *, session_provider=SessionProvider, config_builder=ConfigBuilder, now=None
+    ) -> Result[InfluxBackend]:
         try:
-            factory = ConfigFactory(config, secrets)
-            session = Session()
-            influx_config = factory.create(session)
+            cfg_builder = config_builder(config, secrets)
+            influx_config = cfg_builder.create()
             if not influx_config.ok:
                 return influx_config
             warnings = influx_config.warnings
+            cfg = influx_config.payload
 
-            return Result.ok_payload(cls(session, influx_config.payload, now), warnings)
+            session = session_provider().get(cfg)
+            return Result.ok_payload(cls(session, cfg, now), warnings)
 
         except Exception as e:
             return Result.fail("Influx backend initialization failed", e)
@@ -37,11 +40,6 @@ class InfluxBackend:
         self.cfg = config
         self.session.verify = config.ssl_verify
         self.session.timeout = 5
-
-        if config.ssl_use_legacy:
-            ctx = make_legacy_ssl_context(config.ssl_verify if isinstance(config.ssl_verify, str) else None)
-            self.session.mount("https://", SSLContextAdapter(ctx))
-
         self.now = now or time.time
 
         # batching state
@@ -53,7 +51,7 @@ class InfluxBackend:
     # Reading
     # -------------------------
 
-    def read_one(self, bucket: str, measurement: str, asc: bool) -> TimeseriesResult:
+    def read_one(self, bucket: str, measurement: str, asc: bool) -> SeriesResult:
         """
         Unified read API for InfluxDB 1.x and 2.x.
 
@@ -64,42 +62,47 @@ class InfluxBackend:
         try:
             if self.cfg.version == 2:
                 raw = self._read_one_v2(bucket, measurement, asc)
-                return TimeseriesResult.ok_payload(measurement, self._parse_v2(bucket, measurement, raw))
+                return SeriesResult.ok_payload(measurement, self._parse_v2(bucket, measurement, raw))
             else:
                 raw = self._read_one_v1(bucket, measurement, asc)
-                return TimeseriesResult.ok_payload(measurement, self._parse_v1(bucket, measurement, raw))
+                return SeriesResult.ok_payload(measurement, self._parse_v1(bucket, measurement, raw))
 
         except Exception as e:
-            return TimeseriesResult.fail(measurement, "Influx read failed", e)
+            return SeriesResult.fail(measurement, "Influx read failed", e)
 
-    def read_first(self, bucket: str, measurement: str) -> TimeseriesResult:
+    def read_first(self, bucket: str, measurement: str) -> SeriesResult:
         return self.read_one(bucket, measurement, asc=True)
 
-    def read_last(self, bucket: str, measurement: str) -> TimeseriesResult:
+    def read_last(self, bucket: str, measurement: str) -> SeriesResult:
         return self.read_one(bucket, measurement, asc=False)
 
     def _read_one_v2(self, bucket: str, measurement: str, asc: bool) -> dict:
-        url = f"{self.cfg.base_url}/query"
-        query = f'''
-from(bucket: "{bucket}")
+        url = f"{self.cfg.base_url}query"
+        query = f'''from(bucket: "{bucket}")
   |> range(start:0)
   |> filter(fn: (r) => r._measurement == "{measurement}")
   |> sort(columns: ["_time"], desc: {str(not asc).lower()})
   |> limit(n: 1)
+  |> yield(name: "result")
 '''
 
         params = {"org": self.cfg.org}
         headers = {
             "Authorization": f"Token {self.cfg.read_token}",
-            "Content-Type": "application/vnd.flux",
+            "Accept": "application/json",
+            "Content-Type": "application/json",
         }
 
-        r = self.session.post(url, params=params, data=query, headers=headers)
+        body = {"query": query.strip(),
+                "type": "flux"}
+
+        r = self.session.post(url, params=params, json=body, headers=headers)
+        print(self.session.headers)
         r.raise_for_status()
         return r.json()
 
     def _read_one_v1(self, bucket: str, measurement: str, asc: bool) -> dict:
-        url = f"{self.cfg.base_url}/query"
+        url = f"{self.cfg.base_url}query"
         order = "ASC" if asc else "DESC"
         q = f'SELECT * FROM "{bucket}"."{measurement}" ORDER BY time {order} LIMIT 1'
         params = {"db": self.cfg.db, "q": q}
@@ -150,7 +153,7 @@ from(bucket: "{bucket}")
         if not fields:
             return None
 
-        return TimeseriesWrite(measurement=measurement, fields=fields, tags=tags, timestamp=timestamp, bucket=bucket)
+        return TimeseriesWrite(series_name=measurement, fields=fields, tags=tags, timestamp=timestamp, bucket=bucket)
 
     def _parse_v1(self, bucket: str, measurement: str, data: dict) -> TimeseriesWrite | None:
         results = data.get("results", [])
@@ -189,13 +192,13 @@ from(bucket: "{bucket}")
             else:
                 fields[key] = value
 
-        return TimeseriesWrite(measurement=measurement, fields=fields, tags=tags, timestamp=timestamp, bucket=bucket)
+        return TimeseriesWrite(series_name=measurement, fields=fields, tags=tags, timestamp=timestamp, bucket=bucket)
 
     # -------------------------
     # Writing
     # -------------------------
 
-    def write(self, entry: TimeseriesWrite) -> TimeseriesResult:
+    def write(self, entry: TimeseriesWrite) -> SeriesResult:
         """
         write a time series entry to InfluxDB
         """
@@ -203,7 +206,7 @@ from(bucket: "{bucket}")
         if entry.tags:
             tag_str = "," + ",".join(f"{k}={v}" for k, v in entry.tags.items())
         field_str = ",".join(f"{k}={v}" for k, v in entry.fields.items())
-        line = f"{entry.measurement}{tag_str} {field_str} {entry.timestamp}"
+        line = f"{entry.series_name}{tag_str} {field_str} {entry.timestamp}"
 
         base_params = {
             "data": line,
@@ -215,21 +218,21 @@ from(bucket: "{bucket}")
         try:
             if self.cfg.version == 2:
                 base_params["headers"]["Authorization"] = f"Token {self.cfg.write_token}"
-                url = f"{self.cfg.base_url}/write?org={self.cfg.org}&bucket={entry.bucket}&precision=s"
+                url = f"{self.cfg.base_url}write?org={self.cfg.org}&bucket={entry.bucket}&precision=s"
                 r = self.session.post(url, **base_params)
             else:
-                url = f"{self.cfg.base_url}/write?db={self.cfg.db}&rp={entry.bucket}&precision=s"
+                url = f"{self.cfg.base_url}write?db={self.cfg.db}&rp={entry.bucket}&precision=s"
                 r = self.session.post(url, auth=self.cfg.auth, **base_params)
 
             r.raise_for_status()
-            return TimeseriesResult.ok_payload(entry.measurement, None)
+            return SeriesResult.ok_payload(entry.series_name, None)
 
         except Exception as e:
-            return TimeseriesResult.fail(
-                entry.measurement, "Influx write failed", e, meta={"attempted_timestamp": entry.timestamp}
+            return SeriesResult.fail(
+                entry.series_name, "Influx write failed", e, meta={"attempted_timestamp": entry.timestamp}
             )
 
-    def write_entry(self, entry: TimeseriesWrite) -> TimeseriesResult:
+    def write_entry(self, entry: TimeseriesWrite) -> SeriesResult:
         if self.cfg.version == 1 or self.cfg.max_batch_size <= 1:
             # v1 never batches, and if the user doesn't want it, we don't do it either
             return self.write(entry)
@@ -248,15 +251,15 @@ from(bucket: "{bucket}")
                 }
                 if result.meta:
                     meta["exception"] = result.meta.get("exception")
-                return TimeseriesResult.fail(
-                    measurement=entry.measurement,
+                return SeriesResult.fail(
+                    series_name=entry.series_name,
                     reason="Batch write failed",
                     error="InfluxDB rejected one or more entries",
                     warnings=result.warnings,
                     meta=meta,
                 )
 
-        return TimeseriesResult.ok_payload(entry.measurement, entry)
+        return SeriesResult.ok_payload(entry.series_name, entry)
 
     def _flush_pending(self) -> BatchWriteResult:
         """
@@ -322,11 +325,11 @@ from(bucket: "{bucket}")
             if e.tags:
                 tag_str = "," + ",".join(f"{k}={v}" for k, v in e.tags.items())
             field_str = ",".join(f"{k}={v}" for k, v in e.fields.items())
-            lines.append(f"{e.measurement}{tag_str} {field_str} {e.timestamp}")
+            lines.append(f"{e.series_name}{tag_str} {field_str} {e.timestamp}")
 
         payload = "\n".join(lines)
 
-        url = f"{self.cfg.base_url}/write?org={self.cfg.org}&bucket={entries[0].bucket}&precision=s"
+        url = f"{self.cfg.base_url}write?org={self.cfg.org}&bucket={entries[0].bucket}&precision=s"
         headers = {
             "Content-Type": "text/plain; charset=utf-8",
             "Authorization": f"Token {self.cfg.write_token}",
@@ -404,3 +407,4 @@ from(bucket: "{bucket}")
             pass  # ignore JSON errors
 
         return all_indices
+

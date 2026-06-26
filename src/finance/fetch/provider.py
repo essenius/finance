@@ -8,7 +8,7 @@ from zoneinfo import ZoneInfo
 
 import requests
 
-from ..common.model import FetchResult, MeasurementResult, Result, T
+from ..common.model import Asset, FetchResult, MeasurementResult, Result, Series, T
 
 
 class MarketDataProvider:
@@ -47,8 +47,8 @@ class MarketDataProvider:
                 return Result.fail(f"cannot index with [{key}] at {path[:i]}")
         return Result.ok_payload(current)
 
-    def fetch(self, name: str, asset: dict, start_timestamp: int, end_timestamp: int) -> FetchResult:
+    def fetch(self, series: Series, asset: Asset, start_timestamp: int, end_timestamp: int) -> FetchResult:
         """
         Fetch data points for the given asset definition between start_timestamp and end_timestamp.
         """
-        return FetchResult.fail(name, "fetch not implemented")
+        return FetchResult.fail(series.name, "fetch not implemented")

@@ -6,30 +6,23 @@ import json
 
 import pytest
 
-# Helper
 
-
-def make_asset(symbol="EUR_USD", field="price"):
-    return {"symbol": symbol, "fields": [field]}
-
-
-# Tests
-
-
-def test_ecb_fetch_real_fixture(ecb_provider, assert_ok):
+def test_ecb_fetch_real_fixture(ecb_provider, assert_ok, make_asset, make_series):
     with open("tests/data/ecb_eurusd.json") as f:
         fake_json = json.load(f)
 
     provider = ecb_provider()
     provider.session.queue(200, fake_json)
 
+    asset = make_asset(provider_code="EUR_USD")
+    series = make_series(asset)
     # timestamps are for May 8, 2026 in CEST
-    result = provider.fetch("eurusd_1", make_asset(), start_timestamp=1778191200, end_timestamp=1778277599)
+    result = provider.fetch(series, asset, start_timestamp=1778191200, end_timestamp=1778277599)
     # time stamp must be May 8, 2026 00:00 UTC
     assert_ok(result, timestamp=1778198400, value=1.1761)
 
 
-def test_ecb_fetch_ok(ecb_provider, assert_ok):
+def test_ecb_fetch_ok(ecb_provider, assert_ok, make_asset, make_series):
     fake_json = {
         "dataSets": [{"series": {"0:0:0:0:0": {"observations": {"0": [1.1761]}}}}],
         "structure": {"dimensions": {"observation": [{"values": [{"id": "2026-05-08"}]}]}},
@@ -37,32 +30,42 @@ def test_ecb_fetch_ok(ecb_provider, assert_ok):
 
     provider = ecb_provider()
     provider.session.queue(200, fake_json)
-    result = provider.fetch("eurusd_2", make_asset(), start_timestamp=1778191200, end_timestamp=1778277599)
+    asset = make_asset(provider_code="EUR_USD")
+    series = make_series(asset)
+
+    result = provider.fetch(series, asset, start_timestamp=1778191200, end_timestamp=1778277599)
     assert_ok(result, timestamp=1778198400, value=1.1761)
 
 
 @pytest.mark.parametrize(
-    "symbol",
+    "provider_code",
     [
         "EUR",
         "EUR_USD_GBP",
         "_",
     ],
 )
-def test_ecb_fetch_wrong_symbol(ecb_provider, symbol):
+def test_ecb_fetch_wrong_symbol(ecb_provider, make_series, make_asset, provider_code):
     provider = ecb_provider()
     provider.session.queue(200, {})
-    result = provider.fetch("eurusd_3", make_asset(symbol=symbol), start_timestamp=1778191200, end_timestamp=1778277599)
+
+    asset = make_asset(provider_code=provider_code)
+    series = make_series(asset)
+
+    result = provider.fetch(series, asset, start_timestamp=1778191200, end_timestamp=1778277599)
     assert not result.ok
-    assert f"Could not split symbol '{symbol}' into base_quote" in result.reason
+    assert f"Could not split provider code '{provider_code}' into base_quote" in result.reason
     assert result.payload is None
 
 
-def test_ecb_fetch_non_200(ecb_provider, assert_error):
+def test_ecb_fetch_non_200(ecb_provider, assert_error, make_asset, make_series):
     provider = ecb_provider()
     provider.session.queue(500, "", "Internal Server Error")
-    result = provider.fetch("eurusd_http", make_asset(), 0, 0)
-    assert_error(result, "Exception during ECB fetch of EUR_USD", "Internal Server Error")
+
+    asset = make_asset(provider_code="EUR_USD")
+    series = make_series(asset)
+    result = provider.fetch(series, asset, 0, 0)
+    assert_error(result, "Exception during ECB fetch of eur_usd_intraday", "Internal Server Error")
 
 
 MALFORMED_CASES = [
@@ -82,14 +85,17 @@ MALFORMED_CASES = [
 
 
 @pytest.mark.parametrize("json_data, expected, context", MALFORMED_CASES)
-def test_ecb_malformed_json(ecb_provider, json_data, expected, context, assert_error):
+def test_ecb_malformed_json(ecb_provider, make_asset, make_series, json_data, expected, context, assert_error):
     provider = ecb_provider()
     provider.session.queue(200, json_data)
-    result = provider.fetch("eurusd_4", make_asset(), 0, 0)
+
+    asset = make_asset(provider_code="EUR_USD")
+    series = make_series(asset)
+    result = provider.fetch(series, asset, 0, 0)
     assert_error(result, f"Could not find ECB {context}", expected)
 
 
-def test_ecb_fetch_multiple_points_skip_invalid(unwrap, ecb_provider):
+def test_ecb_fetch_multiple_points_skip_invalid(unwrap, ecb_provider, make_series, make_asset):
     fake_json = {
         "dataSets": [
             {
@@ -126,9 +132,15 @@ def test_ecb_fetch_multiple_points_skip_invalid(unwrap, ecb_provider):
     }
 
     provider = ecb_provider()
-    provider.session.queue(200, fake_json)
-    points = unwrap(provider.fetch("eurusd_multi", make_asset(), 0, 0))
+    provider.session.queue(
+        200,
+        fake_json,
+        make_series,
+    )
+    asset = make_asset(provider_code="EUR_USD")
+    series = make_series(asset)
+    points = unwrap(provider.fetch(series, asset, 0, 0))
 
     assert len(points) == 2
-    assert points[0].fields["price"] == 1.10
-    assert points[1].fields["price"] == 1.12
+    assert points[0].value == 1.10
+    assert points[1].value == 1.12

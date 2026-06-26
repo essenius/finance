@@ -4,6 +4,8 @@
 
 from unittest.mock import Mock, patch
 
+from finance.common.model import DAILY, CandlePoint, DailyValuePoint, SeriesType
+
 # ----------------------------------------------------------------------
 # _fetch_impl()
 # ----------------------------------------------------------------------
@@ -66,7 +68,7 @@ def test_fetch_impl_yahoo_error_object(yahoo_provider, assert_error):
 # ----------------------------------------------------------------------
 
 
-def test_fetch_success(yahoo_provider, unwrap):
+def test_fetch_success(yahoo_provider, unwrap, make_asset, make_series):
     response = Mock()
     response.json.return_value = {
         "chart": {
@@ -81,27 +83,29 @@ def test_fetch_success(yahoo_provider, unwrap):
         }
     }
     response.raise_for_status.return_value = None
-
+    asset = make_asset(provider_code="AAPL")
+    series = make_series(asset, interval="1d", resolution=DAILY, series_type=SeriesType.VALUE)
     with patch.object(yahoo_provider.session, "get", return_value=response):
-        asset = {"symbol": "AAPL", "fields": ["close"], "interval": "1d"}
-        result = yahoo_provider.fetch("m", asset, 900, 1100)
+        result = yahoo_provider.fetch(series, asset, 900, 1100)
 
     payload = unwrap(result)
-    assert len(payload) == 1
-    assert payload[0].fields == {"close": 10.0}
+    assert isinstance(payload[0], DailyValuePoint), "result is DailyValuePoint"
+    assert len(payload) == 1, "one result"
+    assert payload[0].value == 10.0, "Value is 10"
 
 
-def test_impl_http_error(yahoo_provider, assert_error):
+def test_impl_http_error(yahoo_provider, assert_error, make_asset, make_series):
     response = Mock()
     response.raise_for_status.side_effect = Exception("boom")
-
+    asset = make_asset()
+    series = make_series(asset)
     with patch.object(yahoo_provider.session, "get", return_value=response):
-        result = yahoo_provider.fetch("x", {"symbol": "y", "fields": [], "interval": "1d"}, 10, 100)
+        result = yahoo_provider.fetch(series, asset, 10, 100)
 
     assert_error(result, "Exception during Yahoo fetch", "boom")
 
 
-def test_fetch_fallback_to_meta(yahoo_provider, unwrap):
+def test_fetch_fallback_to_meta(yahoo_provider, unwrap, make_asset, make_series):
     response = Mock()
     response.json.return_value = {
         "chart": {
@@ -118,15 +122,18 @@ def test_fetch_fallback_to_meta(yahoo_provider, unwrap):
     response.raise_for_status.return_value = None
 
     with patch.object(yahoo_provider.session, "get", return_value=response):
-        asset = {"symbol": "AAPL", "fields": ["close"], "interval": "1d"}
-        result = yahoo_provider.fetch("m", asset, 900, 1100)
+        asset = make_asset(provider_code="AAPL")
+        series = make_series(asset, interval="1d", resolution=DAILY, series_type=SeriesType.CANDLE)
+        result = yahoo_provider.fetch(series, asset, 900, 1100)
 
     payload = unwrap(result)
     assert len(payload) == 1
-    assert payload[0].fields == {"close": 42.0}
+    assert isinstance(payload[0], CandlePoint)
+    assert payload[0].close == 42.0
+    assert result.warnings == ["Missing value for 'high'", "Missing value for 'low'", "Missing value for 'volume'"]
 
 
-def test_fetch_propagates_extract_candles_error(yahoo_provider, assert_error):
+def test_fetch_propagates_extract_candles_error(yahoo_provider, assert_error, make_asset, make_series):
     response = Mock()
     response.json.return_value = {
         "chart": {
@@ -143,7 +150,8 @@ def test_fetch_propagates_extract_candles_error(yahoo_provider, assert_error):
     response.raise_for_status.return_value = None
 
     with patch.object(yahoo_provider.session, "get", return_value=response):
-        asset = {"symbol": "AAPL", "fields": ["close"], "interval": "1d"}
-        result = yahoo_provider.fetch("m", asset, 900, 1100)
+        asset = make_asset(provider_code="AAPL")
+        series = make_series(asset, interval="1d", resolution=DAILY, series_type=SeriesType.VALUE)
+        result = yahoo_provider.fetch(series, asset, 900, 1100)
 
     assert_error(result, "Cannot synthesize from metadata", "timestamp missing")

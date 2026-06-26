@@ -2,6 +2,7 @@
 # Licensed under the Apache License, Version 2.0. See the LICENSE file for details.
 # File: tests/config/test_normalize_composites.py
 
+from finance.common.model import DAILY, RESOLUTION, Asset
 from finance.config.loader import normalize_composites
 
 
@@ -9,7 +10,8 @@ def test_normalize_composites_basic(unwrap):
     raw = {
         "REAL10Y": {
             "expression": "fred_10y_nominal_daily - fred_10y_breakeven_daily",
-            "tags": {"Series": "REAL10Y"},
+            "symbol": "REAL10Y",
+            "tags": {"region": "USA"},
         }
     }
 
@@ -17,41 +19,30 @@ def test_normalize_composites_basic(unwrap):
 
     assert "REAL10Y" in composites
     c = composites["REAL10Y"]
-
+    assert c.get(RESOLUTION) is None
     assert c["expression"] == "fred_10y_nominal_daily - fred_10y_breakeven_daily"
-    assert c["tags"]["series"] == "REAL10Y"
-    assert "timeseries" not in c
-    assert "bucket" not in c
+    asset: Asset = c["asset"]
+    assert asset.symbol == "REAL10Y"
+    assert asset.provider == "composite"
+    assert asset.region == "USA"
+    assert asset.exchange is None
 
 
-def test_normalize_composites_with_timeseries_and_buckets(unwrap):
+def test_normalize_composites_with_resolution(unwrap):
     raw = {
         "SPREAD": {
             "expression": "t10y_daily - t2y_daily",
-            "timeseries": "daily",
-            "tags": {"Series": "SPREAD"},
-        }
-    }
-
-    buckets = {"intraday": "b_intraday", "daily": "b_daily"}
-
-    composites = unwrap(normalize_composites(raw, buckets=buckets))
-    c = composites["SPREAD"]
-
-    assert c["timeseries"] == "daily"
-    assert c["bucket"] == "b_daily"
-
-
-def test_normalize_composites_bucket_branch(unwrap):
-    raw = {
-        "SPREAD": {
-            "expression": "t10y_daily - t2y_daily",
-            "timeseries": "daily",
-            "tags": {"Series": "SPREAD"},
+            "symbol": "SPREAD",
+            RESOLUTION: DAILY,
+            "tags": {"unit": "Percent"},
         }
     }
 
     composites = unwrap(normalize_composites(raw))
     c = composites["SPREAD"]
-
-    assert c.get("bucket") is None
+    assert c[RESOLUTION] == DAILY
+    asset: Asset = c["asset"]
+    assert asset.symbol == "SPREAD"
+    assert asset.provider == "composite"
+    assert asset.region is None
+    assert asset.unit == "Percent"

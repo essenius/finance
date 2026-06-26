@@ -2,6 +2,8 @@
 # Licensed under the Apache License, Version 2.0. See the LICENSE file for details.
 # File: src/finance/composites/engine.py
 
+'''
+TODO re-introduce in scope vor V2
 from __future__ import annotations
 
 import ast
@@ -9,7 +11,7 @@ import re
 from collections.abc import Iterable
 
 from ..common.introspection import here
-from ..common.model import FetchPoint, FetchResult, MeasurementResult, Result
+from ..common.model import DAILY, RESOLUTION, FetchPoint, FetchResult, MeasurementResult, Result
 from ..state.state import State
 from .deps import CycleError, extract_dependencies, topo_sort
 
@@ -47,7 +49,7 @@ class CompositeEngine:
         composites: dict[name] -> {
             "expression": str,
             "measurement": str,
-            "timeseries": str,
+            RESOLUTION: str,
             "tags": dict,
         }
         """
@@ -57,8 +59,8 @@ class CompositeEngine:
         # Map composite name -> metric name (with timeseries suffix)
         self.composite_to_metric = {}
         for name, cfg in self.composites.items():
-            timeseries = cfg.get("timeseries", "daily")
-            cfg["timeseries"] = timeseries  # normalize in-place so rest of engine can rely on it
+            timeseries = cfg.get(RESOLUTION, DAILY)
+            cfg[RESOLUTION] = timeseries  # normalize in-place so rest of engine can rely on it
             self.composite_to_metric[name] = f"{name}_{timeseries}"
 
         # These are filled in by build()
@@ -119,7 +121,7 @@ class CompositeEngine:
             return identifier
 
         candidate = f"{identifier}{suffix}"
-        if candidate in self.state.data:
+        if candidate in self.state.series:
             return candidate
 
         return identifier
@@ -143,7 +145,7 @@ class CompositeEngine:
         """
 
         tree = ast.parse(expression, mode="eval")
-        metric_names = set(self.state.data.keys()) | set(self.composite_to_metric.values())
+        metric_names = set(self.state.series.keys()) | set(self.composite_to_metric.values())
         transformer = DefaultFieldTransformer(metric_names)
         new_tree = transformer.visit(tree)
         ast.fix_missing_locations(new_tree)
@@ -158,7 +160,7 @@ class CompositeEngine:
         Example: gold_daily.high → state["gold_daily"]["fields"]["high"]
         """
         namespace = {}
-        for metric_name, entry in self.state.iter_metrics():
+        for metric_name, entry in self.state.iter_series_state():
             fields = entry.get("fields", {})
             namespace[metric_name] = MetricProxy(fields)
         return namespace
@@ -171,7 +173,7 @@ class CompositeEngine:
         context = {"location": here()}
         cfg = self.composites[name]
         raw_expression = cfg["expression"]
-        timeseries = cfg["timeseries"]
+        timeseries = cfg[RESOLUTION]
 
         # 1) Rewrite identifiers
         rewritten = self._rewrite_expression(raw_expression, timeseries)
@@ -187,7 +189,7 @@ class CompositeEngine:
 
         # 4) Determine timestamp
 
-        deps_result = extract_dependencies(rewritten, self.state.data.keys())
+        deps_result = extract_dependencies(rewritten, self.state.series.keys())
         # cannot fail if the eval succeeded
 
         metric_dependencies = deps_result.payload
@@ -200,7 +202,7 @@ class CompositeEngine:
             # No metric deps → use freshest real metric timestamp
             all_timestamps = [
                 entry["last_timestamp"]
-                for _, entry in self.state.iter_metrics()
+                for _, entry in self.state.iter_series_state()
                 if entry.get("last_timestamp") is not None
             ]
             timestamp = max(all_timestamps) if all_timestamps else 0
@@ -237,3 +239,4 @@ class CompositeEngine:
             namespace[metric_name] = MetricProxy(point.fields)
 
             yield FetchResult.ok_payload(name, [point])
+'''

@@ -27,11 +27,13 @@ def test_info_logs(caplog):
     log = AppLogger()
 
     with caplog.at_level(logging.INFO):
-        result = log.info("hello", a=2)
+        result = log.info("hello", a=2, bogus=None)
 
     assert "INFO | hello | a=2" in caplog.text
+    assert "bogus" not in caplog.text
     assert result["level"] == "info"
     assert result["a"] == 2
+    assert result.get("bogus") is None
 
 
 def test_debug_filtered_out(caplog):

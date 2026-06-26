@@ -4,6 +4,7 @@
 
 import logging
 import os
+from dataclasses import asdict, dataclass
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
@@ -14,8 +15,13 @@ from finance.common.time_utils import parse_duration
 
 from ..common.applogger import LOG_LEVELS
 from ..common.introspection import here
-from ..common.model import Result
+from ..common.model import BACKEND, RESOLUTION, Asset, Provider, Result, Series, SeriesType, SupportedProviders
 from ..common.paths import resolve_config_path
+
+
+@dataclass
+class EmptyConfig:
+    pass
 
 
 class ConfigLoader:
@@ -33,14 +39,14 @@ class ConfigLoader:
         raw_cfg = load_yaml_config(self.yaml_path)
         if not raw_cfg.ok:
             return raw_cfg
-        env_result = load_environment_config(raw_cfg.payload.get("environment", {}), self.project_root)
-        if not env_result.ok:
-            return env_result
-        biz_result = load_business_config(raw_cfg.payload.get("business", {}), env_result.payload["buckets"])
+
+        # cannot fail, so not wrapped in result
+        env = load_environment_config(raw_cfg.payload.get("environment", {}), self.project_root)
+        biz_result = load_business_config(raw_cfg.payload.get("business", {}))
         if not biz_result.ok:
             return biz_result
 
-        return Result.ok_payload(env_result.payload | biz_result.payload | secrets.payload)
+        return Result.ok_payload(env | biz_result.payload | secrets.payload)
 
     # -----------------------------
     # Load secrets from .env
@@ -51,21 +57,20 @@ class ConfigLoader:
         merged = {**self.environ, **env_file_values}
 
         api_keys = {}
-        influx = {}
+        # influx = {}
+        timescaledb = {}
 
         for key, value in merged.items():
             if key.endswith("_API_KEY"):
                 provider = key[:-8].lower()  # strip "_API_KEY"
                 api_keys[provider] = value
 
-            elif key.startswith("INFLUX_"):
-                influx[key[7:].lower()] = value
+            #            elif key.startswith("INFLUX_"):
+            #                influx[key[7:].lower()] = value
+            elif key.startswith(f"{BACKEND.upper()}_"):
+                timescaledb[key[len(BACKEND) + 1 :].lower()] = value
 
-        return Result.ok_payload(
-            {
-                "secrets": {"influx": influx, "api_keys": api_keys},
-            },
-        )
+        return Result.ok_payload({"secrets": {BACKEND: timescaledb, "api_keys": api_keys}})
 
 
 # -----------------------------
@@ -84,7 +89,7 @@ def load_yaml_config(yaml_path: Path) -> Result[dict]:
         return Result.fail("Invalid YAML", str(exc), meta=context)
 
 
-def require(cfg: dict, key: str, context: str) -> str:
+def require(cfg: dict, key: str, context: str) -> str | dict:
     """
     Return cfg[key] if present, otherwise raise a ValueError.
     This has to be caught in the function it is used in.
@@ -100,10 +105,7 @@ def apply_logging_config(config: dict) -> None:
 
     py_level = LOG_LEVELS.get(level_name, logging.INFO)
 
-    logging.basicConfig(
-        level=py_level,
-        format="%(message)s",
-    )
+    logging.basicConfig(level=py_level, format="%(message)s")
 
 
 # ---------------------------------
@@ -111,24 +113,39 @@ def apply_logging_config(config: dict) -> None:
 # ---------------------------------
 
 
-PROVIDERS = ["ecb", "fred", "yahoo"]
+def check_duration(content, name, default):
+    raw_duration = content.get(name, default)
+    # validate that the duration is correct
+    parse_duration(raw_duration, name)
+    return raw_duration
 
 
-def normalize_providers(raw_providers: dict) -> Result[dict]:
+def normalize_providers(raw_providers: dict) -> Result[dict[str, Provider]]:
 
     providers = {}
-    for provider in PROVIDERS:
+    for provider in SupportedProviders.values():
         content = raw_providers.get(provider, {})
-        output = {}
         tz_name = content.get("timezone", "UTC")
         try:
             ZoneInfo(tz_name)
         except Exception:
-            return Result.fail(f"Invalid timezone '{tz_name}' for provider '{provider}'")
-        output["timezone"] = tz_name
-        output["daily_history_limit"] = content.get("daily_history_limit", "10y")
-        output["intraday_history_limit"] = content.get("intraday_history_limit", "5d")
+            return Result.fail(f"Could not parse provider '{provider}'", f"Invalid timezone '{tz_name}'")
+
+        try:
+            output = Provider(
+                name=provider,
+                timezone=tz_name,
+                daily_interval=check_duration(content, "daily_interval", "1d"),
+                intraday_interval=check_duration(content, "intraday_interval", "10m"),
+                daily_history_limit=check_duration(content, "daily_history_limit", "10y"),
+                intraday_history_limit=check_duration(content, "intraday_history_limit", "5d"),
+                daily_series_type=SeriesType.validate(content.get("daily_series_type", "candle")),
+            )
+        except ValueError as ve:
+            return Result.fail(f"Could not parse provider '{provider}'", ve)
+
         providers[provider] = output
+
     return Result.ok_payload(providers)
 
 
@@ -136,10 +153,7 @@ def normalize_providers(raw_providers: dict) -> Result[dict]:
 # Normalize field sets definitions
 # ---------------------------------
 
-CANDLE = ["open", "high", "low", "close", "volume"]
-PRICE = ["price"]
-
-
+"""
 def normalize_field_sets(raw_field_sets: dict | None) -> Result[dict]:
     try:
         field_sets = dict(raw_field_sets or {})
@@ -158,92 +172,56 @@ def normalize_field_sets(raw_field_sets: dict | None) -> Result[dict]:
 
 def check_field_set(field_set: list[str], name: str):
     for field in field_set:
-        if field not in PRICE and field not in CANDLE:
+        if field not in PRICE and not Candle.contains(field):
             raise ValueError(f"Unknown field '{field}' in field set '{name}'")
+"""
 
 
 # -----------------------------
 # Normalize asset definitions
 # -----------------------------
-def normalize_assets(raw_assets: dict, field_sets: dict, buckets: dict, providers: dict) -> Result[dict]:
+def normalize_assets_and_series(
+    raw_assets: dict, providers: dict[str, Provider]
+) -> Result[tuple[dict[str, Asset], dict[str, Series]]]:
     """
-    Expand YAML asset blocks with 'timeseries' into flat metric definitions.
+    Expand YAML asset blocks with 'resolution' into asset and series definitions.
 
     Example:
       gold:
         provider: yahoo
-        symbol: "GC=F"
+        provider_code: GC=F
+        symbol: GOLD
         tags: {...}
-        timeseries:
+        resolution:
           intraday:
             interval: 10m
             history_limit: 5d
 
-    Produces:
-      gold_intraday: { ... }
     """
-
-    metrics = {}
+    asset_dict = {}
+    series_dict = {}
     try:
         for asset_name, cfg in raw_assets.items():
             provider = require(cfg, "provider", f"asset '{asset_name}'")
 
-            provider_config = providers.get(provider, {})
+            provider_config: dict = asdict(providers.get(provider, EmptyConfig()))
             symbol = require(cfg, "symbol", f"asset '{asset_name}'")
             tags = {k.lower(): v for k, v in cfg.get("tags", {}).items()}
 
-            timeseries_config = require(cfg, "timeseries", f"asset '{asset_name}'")
+            asset = Asset.create(name=asset_name, symbol=symbol, config=cfg, tags=tags)
+            asset_dict[asset_name] = asset
 
-            for series_name, series_def in timeseries_config.items():
-                if series_name not in ["intraday", "daily"]:
-                    raise ValueError(f"Unknown timeseries name '{series_name}' in asset '{asset_name}'")
-                metric_name = f"{asset_name}_{series_name}"
-                fields = get_fields(series_def.get("fields"), series_name, field_sets, asset_name)
+            resolution_config = require(cfg, RESOLUTION, f"asset '{asset_name}'")
 
-                history_limit = series_def.get("history_limit")
-                if not history_limit:
-                    history_limit = provider_config.get(f"{series_name}_history_limit")
+            for resolution, resolution_def in resolution_config.items():
+                # merge provider config with resolution definition to provide defaults
+                series = Series.create(asset, resolution, (provider_config | resolution_def))
+                series_dict[series.name] = series
 
-                interval = require(series_def, "interval", f"timeseries '{series_name}' in asset '{asset_name}'")
-                metrics[metric_name] = {
-                    "name": metric_name,
-                    "asset": asset_name,
-                    "timeseries": series_name,
-                    "fields": fields,
-                    "interval": interval,
-                    "interval_seconds": parse_duration(interval, f"interval for {metric_name}"),
-                    "history_limit": history_limit,
-                    "history_limit_seconds": parse_duration(history_limit, f"history_limit for {metric_name}"),
-                    "provider": provider,
-                    "symbol": symbol,
-                    "tags": tags.copy(),
-                }
+        return Result.ok_payload((asset_dict, series_dict))
 
-                if buckets:
-                    bucket_name = require(buckets, series_name, "buckets")
-                    metrics[metric_name]["bucket"] = bucket_name
-
-        return Result.ok_payload(metrics)
-
-    except ValueError as exc:  # by require()
-        return Result.fail(str(exc))
-
-
-def get_fields(fields: list[str] | str | None, timeseries: str, field_sets: dict | None, asset_name: str) -> list[str]:
-    if timeseries == "intraday":
-        if fields is not None:
-            raise ValueError(
-                f"Cannot redefine field set for intraday timeseries (is always 'price') in asset '{asset_name}'"
-            )
-        return PRICE
-    if isinstance(fields, list):
-        check_field_set(fields, f"in {asset_name}")
-        return fields
-
-    key = fields or "candle"
-    if field_sets is None or key not in field_sets:
-        raise ValueError(f"Unknown field set '{key}' in asset '{asset_name}'")
-    return field_sets[key]
+    except Exception as exc:  # by require()
+        return Result.fail("Error parsing assets", exc)
 
 
 # --------------------------------
@@ -251,14 +229,15 @@ def get_fields(fields: list[str] | str | None, timeseries: str, field_sets: dict
 # --------------------------------
 
 
-def normalize_composites(raw_composites: dict, buckets: dict = None) -> Result[dict]:
+def normalize_composites(raw_composites: dict) -> Result[dict]:
     """
     Composite format is now:
 
       composites:
         SPREAD:
           expression: "spx_daily - ndx_daily"
-          timeseries: intraday  # optional, calculated if not specified
+          resolution: intraday  # optional, calculated if not specified
+          symbol: SPREAD
           tags: {...}
     """
 
@@ -267,25 +246,29 @@ def normalize_composites(raw_composites: dict, buckets: dict = None) -> Result[d
 
     try:
         for name, cfg in raw_composites.items():
+            tags = {k.lower(): v for k, v in cfg.get("tags", {}).items()}
+            symbol = require(cfg, "symbol", f"composite '{name}'")
+            asset = Asset.create(name=name, symbol=symbol, config={"provider": "composite"}, tags=tags)
+            if RESOLUTION in cfg:
+                # validate the resolution by creating a series instance
+                series = Series.create(asset, cfg[RESOLUTION], None)
+                resolution = series.resolution
+            else:
+                resolution = None
             composites[name] = {
                 "expression": require(cfg, "expression", f"composite '{name}'"),
-                "tags": {k.lower(): v for k, v in cfg.get("tags", {}).items()},
+                "asset": asset,
+                "resolution": resolution,
             }
-
-            if "timeseries" in cfg:
-                composites[name]["timeseries"] = cfg["timeseries"]
-                if buckets:
-                    bucket_name = require(buckets, cfg["timeseries"], "buckets")
-                    composites[name]["bucket"] = bucket_name
 
         return Result.ok_payload(composites)
 
     except ValueError as exc:
-        return Result.fail(str(exc), meta=context)
+        return Result.fail("Error parsing composites", exc, meta=context)
 
 
-def load_environment_config(env_cfg: dict, project_root: Path) -> Result[dict]:
-    context = {"location": here()}
+def load_environment_config(env_cfg: dict, project_root: Path) -> dict:
+    #    context = {"location": here()}
 
     apply_logging_config(env_cfg)
 
@@ -296,32 +279,31 @@ def load_environment_config(env_cfg: dict, project_root: Path) -> Result[dict]:
         "state": resolve_config_path(paths_cfg.get("state"), "state.json", project_root),
     }
 
-    influx_cfg = env_cfg.get("influx", {})
-    flush_cfg = influx_cfg.get("flush", {})
-    influx_dict = {
-        "max_batch_size": flush_cfg.get("max_batch_size"),
-        "max_batch_age": flush_cfg.get("max_batch_age_seconds"),
+    timescaledb_cfg = env_cfg.get(BACKEND, {})
+    timescaledb_dict = {
+        "max_batch_size": timescaledb_cfg.get("max_batch_size"),
+        "max_batch_age": timescaledb_cfg.get("max_batch_age_seconds"),
     }
 
-    buckets = env_cfg.get("buckets", {})
+    # buckets = env_cfg.get("buckets", {})
 
-    allowed = {"daily", "intraday"}
-    invalid = set(buckets.keys()) - allowed
-    if invalid:
-        return Result.fail(f"Invalid bucket keys: {sorted(invalid)}. Allowed keys: {sorted(allowed)}", meta=context)
-    missing = allowed - set(buckets.keys())
-    if missing:
-        return Result.fail(f"Missing bucket definitions for: {sorted(missing)}", meta=context)
+    # allowed = {"daily", "intraday"}
+    # invalid = set(buckets.keys()) - allowed
+    # if invalid:
+    #    return Result.fail(f"Invalid bucket keys: {sorted(invalid)}. Allowed keys: {sorted(allowed)}", meta=context)
+    # missing = allowed - set(buckets.keys())
+    # if missing:
+    #    return Result.fail(f"Missing bucket definitions for: {sorted(missing)}", meta=context)
 
-    return Result.ok_payload({"paths": paths, "buckets": buckets, "influx": influx_dict})
+    return {"paths": paths, BACKEND: timescaledb_dict}
 
 
-def load_business_config(biz_cfg: dict, buckets: dict) -> Result[dict]:
-    raw_field_sets = biz_cfg.get("field_sets", {})
+def load_business_config(biz_cfg: dict) -> Result[dict]:
+    # raw_field_sets = biz_cfg.get("field_sets", {})
 
-    field_sets = normalize_field_sets(raw_field_sets)
-    if not field_sets.ok:
-        return field_sets
+    # field_sets = normalize_field_sets(raw_field_sets)
+    # if not field_sets.ok:
+    #    return field_sets
 
     raw_providers = biz_cfg.get("providers", {})
     providers = normalize_providers(raw_providers)
@@ -330,18 +312,19 @@ def load_business_config(biz_cfg: dict, buckets: dict) -> Result[dict]:
 
     raw_assets = biz_cfg.get("assets", {})
 
-    # Normalize and validate assets/composites.
-    assets = normalize_assets(raw_assets, field_sets.payload, buckets, providers.payload)
-    if not assets.ok:
-        return assets
+    # Normalize assets section into assets and series.
+    result = normalize_assets_and_series(raw_assets, providers.payload)
+    if not result.ok:
+        return result
+    assets, series = result.payload
 
+    # validate composites
     raw_composites = biz_cfg.get("composites", {})
 
-    # we cannot always flatten buckets in composites since we don't always know the timeseries upfront.
-    composites = normalize_composites(raw_composites, buckets)
+    composites = normalize_composites(raw_composites)
     if not composites.ok:
         return composites
 
     return Result.ok_payload(
-        {"providers": providers.payload, "assets": assets.payload, "composites": composites.payload}
+        {"providers": providers.payload, "assets": assets, "series": series, "composites": composites.payload}
     )

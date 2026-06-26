@@ -4,6 +4,7 @@
 
 import json
 
+from finance.common.model import SeriesState
 from finance.state.storage import StateStorage
 
 
@@ -16,14 +17,14 @@ def test_storage_load_missing_file(tmp_path):
 
 def test_storage_load_valid_dict(tmp_path):
     path = tmp_path / "state.json"
-    data = {"spx": {"last_value": 123}}
+    data = {1: {"last_try": 123}}
     path.write_text(json.dumps(data))
 
     storage = StateStorage(path)
-    assert storage.load() == data
+    assert storage.load()[1] == SeriesState(first_timestamp=None, last_timestamp=None, last_try=123)
 
 
-def test_storage_load_valid_non_dict(tmp_path):
+def test_storage_load_ignore_non_dict(tmp_path):
     path = tmp_path / "state.json"
     path.write_text(json.dumps([1, 2, 3]))  # list, not dict
 
@@ -31,7 +32,23 @@ def test_storage_load_valid_non_dict(tmp_path):
     assert storage.load() == {}
 
 
-def test_storage_load_invalid_json(tmp_path):
+def test_storage_load_ignore_non_dict_state(tmp_path):
+    path = tmp_path / "state.json"
+    path.write_text(json.dumps({1: 1}))  # int, not dict
+
+    storage = StateStorage(path)
+    assert storage.load() == {}
+
+
+def test_storage_load_ignore_non_int_key(tmp_path):
+    path = tmp_path / "state.json"
+    path.write_text(json.dumps({"a": {}}))  # str, not int
+
+    storage = StateStorage(path)
+    assert storage.load() == {}
+
+
+def test_storage_load_ignore_invalid_json(tmp_path):
     path = tmp_path / "state.json"
     path.write_text("{not valid json}")
 
@@ -43,11 +60,12 @@ def test_storage_save_atomic_success(tmp_path):
     path = tmp_path / "state.json"
     storage = StateStorage(path)
 
-    state = {"spx": {"last_value": 123}}
+    state = {1: SeriesState(last_try=123)}
     storage.save(state)
 
     assert path.exists()
-    assert json.loads(path.read_text()) == state
+    result = json.loads(path.read_text())
+    assert result["1"] == {"first_timestamp": None, "last_timestamp": None, "last_try": 123}
 
 
 def test_storage_save_overwrites_existing(tmp_path):
@@ -55,11 +73,11 @@ def test_storage_save_overwrites_existing(tmp_path):
     path.write_text("OLD DATA")
 
     storage = StateStorage(path)
-    new_state = {"gold": {"last_value": 2000}}
+    new_state = {2: SeriesState(last_try=2000)}
 
     storage.save(new_state)
 
-    assert json.loads(path.read_text()) == new_state
+    assert json.loads(path.read_text())["2"] == {"first_timestamp": None, "last_timestamp": None, "last_try": 2000}
 
 
 def test_storage_save_creates_tmp_file_then_replaces(tmp_path):
@@ -69,7 +87,7 @@ def test_storage_save_creates_tmp_file_then_replaces(tmp_path):
     path = tmp_path / "state.json"
     storage = StateStorage(path)
 
-    state = {"foo": 123}
+    state = {3: SeriesState()}
     storage.save(state)
 
     # state.json must exist
@@ -84,7 +102,7 @@ def test_storage_load_after_save(tmp_path):
     path = tmp_path / "state.json"
     storage = StateStorage(path)
 
-    state = {"spx": {"last_value": 123}}
+    state = {3: SeriesState(last_try=123)}
     storage.save(state)
 
     loaded = storage.load()

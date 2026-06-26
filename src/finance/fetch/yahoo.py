@@ -2,12 +2,11 @@
 # Licensed under the Apache License, Version 2.0. See the LICENSE file for details.
 # File: src/finance/fetch/yahoo.py
 
+from collections.abc import Callable
 from urllib.parse import quote, urlencode
 
-from ..common.model import FetchPoint, FetchResult, MeasurementResult, Result
+from ..common.model import Asset, FetchResult, MeasurementResult, Result, Series, SeriesPoint
 from .provider import MarketDataProvider
-
-SUPPORTED_FIELDS = ["open", "high", "low", "close", "volume"]
 
 
 class YahooProvider(MarketDataProvider):
@@ -19,23 +18,20 @@ class YahooProvider(MarketDataProvider):
     # API
     # ----
 
-    def fetch(self, name: str, asset: dict, start_timestamp: int, end_timestamp: int) -> FetchResult:
-        symbol: str = asset["symbol"]
-        fields: list[str] = asset["fields"]
-        interval: str = asset["interval"]
-
-        url = self._build_url(symbol, interval, start_timestamp, end_timestamp)
+    def fetch(self, series: Series, asset: Asset, start_timestamp: int, end_timestamp: int) -> FetchResult:
+        name = series.name
+        url = self._build_url(asset.provider_code, series.interval, start_timestamp, end_timestamp)
         result = self._safe_call(measurement=name, fn=lambda: self._fetch_impl(url, name), context="Yahoo fetch")
 
         if not result.ok:
             return result
 
-        candles = self._extract_candles(result, fields)
+        candles = self._extract_candles(series, result.payload)
 
         # Fallback to metadata if no candles
         if not candles.payload:
             meta = result.payload.get("meta", {})
-            return self._get_from_meta(name, fields, meta, start_timestamp, end_timestamp)
+            return self._get_from_meta(series, meta, start_timestamp, end_timestamp)
 
         return candles
 
@@ -43,8 +39,8 @@ class YahooProvider(MarketDataProvider):
     # Fetch data
     # -----------
 
-    def _build_url(self, symbol, interval_str, start_ts, end_ts):
-        encoded = quote(symbol, safe="")
+    def _build_url(self, provider_code, interval_str, start_ts, end_ts):
+        encoded = quote(provider_code, safe="")
         params = {
             "interval": interval_str,
             "period1": int(start_ts),
@@ -84,22 +80,8 @@ class YahooProvider(MarketDataProvider):
     # Extract candles with helpers
     # -----------------------------
 
-    def _resolve_field_mapping(self, requested_fields: list[str]) -> Result[tuple[list[str], list[str]]]:
-        if requested_fields is None:
-            requested_fields = SUPPORTED_FIELDS
-
-        if all(f in SUPPORTED_FIELDS for f in requested_fields):
-            return Result.ok_payload((requested_fields[:], requested_fields[:]))
-
-        if len(requested_fields) != 1:
-            return Result.fail(f"Unsupported field combination: {requested_fields}")
-
-        return Result.ok_payload((["close"], [requested_fields[0]]))
-
     def _extract_arrays(self, payload: dict, selected_fields: list[str]) -> Result[tuple[list[int], dict[str, list]]]:
-        """
-        returns (result, error) where
-        """
+
         timestamps = payload.get("timestamp")
         if not timestamps:
             return Result.fail("no timestamp in result")
@@ -112,43 +94,47 @@ class YahooProvider(MarketDataProvider):
         arrays = {f: quote.get(f) or [] for f in selected_fields}
         return Result.ok_payload((timestamps, arrays))
 
-    def _build_candles(self, timestamps, arrays, selected_fields, mapped_fields):
+    def _build_candles(
+        self, timestamps, arrays, point_factory: Callable[..., SeriesPoint]
+    ) -> tuple[list[SeriesPoint], int]:
+        """
+        Grab the candle values from the input arrays, optimizing the number of fields read.
+        The callable is a partially resolved constructor for a SeriesPoint subclass, which also delivers the required candle fields,
+        and a mapping to its field name(s)
+        """
         candles = []
         invalid_count = 0
 
+        factory_class = point_factory.func
         for i, ts in enumerate(timestamps):
             values = {}
 
-            for src, dst in zip(selected_fields, mapped_fields, strict=True):
-                arr = arrays[src]
+            for field in factory_class.fields():
+                arr = arrays[field]
                 v = arr[i] if i < len(arr) else None
                 if v is None:
                     invalid_count += 1
                     break
-                values[dst] = v
+                values[field] = v
 
             else:
-                candles.append(FetchPoint(fields=values, timestamp=ts))
+                mapped = factory_class.map(values)
+                point = point_factory(timestamp=ts, **mapped)
+                candles.append(point)
 
         return candles, invalid_count
 
-    def _extract_candles(
-        self, results: MeasurementResult[dict], requested_fields: list[str] | None = None
-    ) -> FetchResult:
-        name = results.measurement
-        payload = results.payload
+    def _extract_candles(self, series: Series, payload: dict | None = None) -> FetchResult:
+        name = series.name
+        point_factory = SeriesPoint.factory(series)
+        fields = point_factory.func.fields()
 
-        mapping = self._resolve_field_mapping(requested_fields)
-        if not mapping.ok:
-            return FetchResult.from_result(mapping, name)
-        selected_fields, mapped_fields = mapping.payload
-
-        arrays_result = self._extract_arrays(payload, selected_fields)
+        arrays_result = self._extract_arrays(payload, fields)
         if not arrays_result.ok:
             return FetchResult.from_result(arrays_result, name)
 
         timestamps, arrays = arrays_result.payload
-        candles, invalid_count = self._build_candles(timestamps, arrays, selected_fields, mapped_fields)
+        candles, invalid_count = self._build_candles(timestamps, arrays, point_factory)
 
         warnings = []
         if invalid_count:
@@ -161,17 +147,16 @@ class YahooProvider(MarketDataProvider):
     # --------------
 
     META_FIELD_MAP = {
+        "open": None,  # cannot synthesize
         "close": "regularMarketPrice",
         "high": "regularMarketDayHigh",
         "low": "regularMarketDayLow",
         "volume": "regularMarketVolume",
-        # "open" is intentionally excluded — cannot synthesize
     }
 
-    def _get_from_meta(
-        self, name: str, fields: list[str], meta: dict, start_timestamp: int, end_timestamp: int
-    ) -> FetchResult:
+    def _get_from_meta(self, series: Series, meta: dict, start_timestamp: int, end_timestamp: int) -> FetchResult:
 
+        name = series.name
         timestamp = meta.get("regularMarketTime")
         reason = "Cannot synthesize from metadata"
         # Only use fallback if timestamp exists
@@ -181,31 +166,26 @@ class YahooProvider(MarketDataProvider):
         # Reject metadata outside requested window
         if not (start_timestamp <= timestamp <= end_timestamp):
             return FetchResult.fail(name, reason, "metadata timestamp outside requested range")
-        # Build synthetic fields
-        synthetic = {}
+
+        factory = SeriesPoint.factory(series)
+        fields = factory.func.fields()
+        synthetic = {field: None for field in fields}
         warnings = []
-        error = None
-        # Candle subset mode
+        found_value = False
         for field in fields:
-            if field in SUPPORTED_FIELDS:
-                if field == "open":
-                    error = "Cannot synthesize 'open'"
-                    continue
-
-                meta_key = self.META_FIELD_MAP[field]
-                v = meta.get(meta_key)
-
-            else:
-                # mapped field → use regularMarketPrice
-                v = meta.get("regularMarketPrice")
-
+            meta_key = self.META_FIELD_MAP.get(field)
+            if meta_key is None:
+                continue
+            v = meta.get(meta_key)
             if v is None:
                 warnings.append(f"Missing value for '{field}'")
                 continue
 
+            found_value = True
             synthetic[field] = float(v)
 
-        if error or not synthetic:
-            return FetchResult.fail(name, reason, error or "No fields synthesized", warnings)
+        if not found_value:
+            return FetchResult.fail(name, reason, "No fields synthesized", warnings)
 
-        return FetchResult.ok_payload(name, [FetchPoint(fields=synthetic, timestamp=timestamp)], warnings)
+        mapped = factory.func.map(synthetic)
+        return FetchResult.ok_payload(name, [factory(timestamp=timestamp, **mapped)], warnings)

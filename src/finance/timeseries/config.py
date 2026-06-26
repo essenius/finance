@@ -2,6 +2,8 @@
 # Licensed under the Apache License, Version 2.0. See the LICENSE file for details.
 # File: src/finance/timeseries/config.py
 
+"""
+TODO delete
 from dataclasses import dataclass
 
 from finance.common.model import Result
@@ -28,7 +30,7 @@ class VerifyConfig:
     ssl_use_legacy: bool = False
 
 
-class ConfigFactory:
+class ConfigBuilder:
     def __init__(self, config: dict, secrets: dict):
         self.config = config
         self.secrets = secrets
@@ -44,7 +46,7 @@ class ConfigFactory:
     def create(self) -> Result[InfluxConfig]:
         url = self.get_config("url")
         if not url:
-            return Result.fail("Missing INFLUX_URL or environment.influx.url")
+            return Result.fail("Missing TIMESCALEDB_URL or environment.timescaledb.url")
         url = url.rstrip("/")
 
         ssl_cert = self.get_config("ssl_cert")
@@ -119,3 +121,4 @@ class ConfigFactory:
             return Result.ok_payload(VerifyConfig(ssl_verify=cert if cert else True, ssl_use_legacy=True))
 
         return Result.fail(f"Unknown verify mode: {mode}")
+"""

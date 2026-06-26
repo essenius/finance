@@ -6,8 +6,10 @@ from dataclasses import asdict
 from typing import TypeVar
 
 from finance.common.applogger import AppLogger
-from finance.common.model import FetchResult, Result, TimeseriesWrite
+from finance.common.model import FetchResult, Result, Series
+from finance.registry.registry import Registry
 from finance.state.state import State
+from finance.timeseries.timescale_backend import TimescaleBackend
 
 logger = AppLogger()
 
@@ -35,12 +37,32 @@ def unwrap(result: Result[T], throw: bool | None = True) -> T | None:
     return result.payload
 
 
-def process_result(result: FetchResult, state: State, tags: dict, bucket: str) -> bool:
+def reconcile_registry(registry: Registry, backend: TimescaleBackend):
+    saved_assets = unwrap(backend.get_assets())
+    registry.load_db_assets(saved_assets)
+    saved_series = unwrap(backend.get_series())
+    registry.load_db_series(saved_series)
+
+    reconciliation_result = registry.reconcile()
+    reconciled_assets = reconciliation_result.assets
+    for asset in reconciled_assets.to_persist:
+        stored = unwrap(backend.store_asset(asset))
+        registry.register_final_asset(stored)
+
+    reconciled_series = reconciliation_result.series
+    for series in reconciled_series.to_persist:
+        stored = unwrap(backend.store_series(series))
+        registry.register_final_series(stored)
+
+    backend.refresh_intraday_series_ids()
+
+
+def process_result(result: FetchResult, state: State, series: Series) -> bool:
     """
     Process a FetchResult:
     - unwrap the MeasurementResult
     - iterate over all FetchPoints
-    - build a TimeseriesWrite for each
+    - build a ResultPoint for each
     - ingest each one
     - only update state timestamps if all ingests succeeded
     - return True only if all ingests succeed (skip counts as success)
@@ -61,20 +83,19 @@ def process_result(result: FetchResult, state: State, tags: dict, bucket: str) -
     batch_last = payload[-1].timestamp
 
     for point in payload:
-        write = TimeseriesWrite(
-            measurement=result.measurement,
-            fields=point.fields,
-            tags=tags or {},
-            timestamp=point.timestamp,
-            bucket=bucket,
-        )
+        # write = TimeseriesWrite(
+        #    series_name=result.series_name,
+        #    fields=point.fields,
+        #    tags=tags or {},
+        #    timestamp=point.timestamp,
+        # )
 
-        ingest_result = state.ingest(write)
+        ingest_result = state.ingest(series, point)
         # log any errors
         unwrap(ingest_result, throw=False)
         if not ingest_result.ok:
             all_ok = False
 
     if all_ok:
-        state.update_range(result.measurement, batch_first, batch_last)
+        state.update_range(point.series_id, batch_first, batch_last)
     return all_ok

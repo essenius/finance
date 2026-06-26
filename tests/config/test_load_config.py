@@ -2,6 +2,7 @@
 # Licensed under the Apache License, Version 2.0. See the LICENSE file for details.
 # File: tests/config/test_load_config.py
 
+from finance.common.model import Asset, Provider, Resolution, Series, SeriesType
 from finance.config.loader import ConfigLoader, load_yaml_config
 
 
@@ -21,9 +22,6 @@ environment:
   paths:
     wal: mywal.jsonl
     state: state.json
-  buckets:
-    intraday: investing_intraday
-    daily: investing_daily
 
 business:
   providers:
@@ -33,25 +31,24 @@ business:
   assets:
     spx:
       provider: yahoo
-      symbol: "^GSPC"
+      provider_code: "^GSPC"
+      symbol: SPX
       tags:
-        symbol: SPX
         instrument: index
-      timeseries:
+        exchange: NYSE
+      resolution:
         daily:
           interval: 1d
-          fields: [open, close]
 
   composites:
     spread:
+      symbol: SPREAD
       expression: "fred_10y_daily - fred_2y_daily"
-      tags:
-        series: SPREAD
 """)
 
-    env_file.write_text("INFLUX_URL=http://y\nINFLUX_DB=db1\n")
+    env_file.write_text("TIMESCALEDB_URL=http://y\nTIMESCALEDB_DB=db1\n")
 
-    environ = {"INFLUX_URL": "http://x", "INFLUX_DB": "db2"}
+    environ = {"TIMESCALEDB_URL": "http://x", "TIMESCALEDB_DB": "db2"}
 
     loader = ConfigLoader(tmp_path, environ)
     result = loader.load()
@@ -59,20 +56,42 @@ business:
     cfg = unwrap(result)
 
     # providers
-    assert cfg["providers"]["yahoo"]["timezone"] == "UTC"
+    assert cfg["providers"]["yahoo"].timezone == "UTC"
 
-    # assets expanded
-    assert "spx_daily" in cfg["assets"]
-    spx = cfg["assets"]["spx_daily"]
-    assert spx["symbol"] == "^GSPC"
-    assert spx["tags"]["symbol"] == "SPX"
+    # assets
+    assert "spx" in cfg["assets"]
+    asset: Asset = cfg["assets"]["spx"]
+    assert asset.provider_code == "^GSPC"
+    assert asset.name == "spx"
+    assert asset.symbol == "SPX"
+    assert asset.provider == "yahoo"
+    assert asset.instrument == "index"
+    assert asset.currency is None
+    assert asset.exchange == "NYSE"
+    assert asset.unit is None
+    assert asset.region is None
+    assert asset.id is None
+
+    # series
+    assert "spx_daily" in cfg["series"]
+    series: Series = cfg["series"]["spx_daily"]
+    assert series.asset_id is None
+    assert series.symbol == "SPX"
+    assert series.history_limit == "10y"
+    assert series.history_limit_seconds == 315576000
+    assert series.interval == "1d"
+    assert series.interval_seconds == 86400
+    assert series.resolution == Resolution.DAILY
+    assert series.series_type == SeriesType.CANDLE
+    assert series.id is None
 
     # composites
     assert cfg["composites"]["spread"]["expression"] == "fred_10y_daily - fred_2y_daily"
+    assert cfg["composites"]["spread"]["asset"].symbol == "SPREAD"
 
     # secrets -- .env overrides environment
-    assert cfg["secrets"]["influx"]["url"] == "http://y"
-    assert cfg["secrets"]["influx"]["db"] == "db1"
+    assert cfg["secrets"]["timescaledb"]["url"] == "http://y"
+    assert cfg["secrets"]["timescaledb"]["db"] == "db1"
 
     assert cfg["paths"]["wal"].is_absolute()
     assert cfg["paths"]["state"].is_absolute()
@@ -92,18 +111,24 @@ def test_load_config_missing_file(tmp_path, assert_error):
 def test_load_config_dev_mode(monkeypatch, tmp_path, unwrap):
     monkeypatch.chdir(tmp_path)
 
-    (tmp_path / "config.yaml").write_text(
-        "environment:\n  buckets:\n    intraday: a\n    daily: b\nbusiness:\n  providers: {}\n  assets: {}\n  composites: {}\n"
-    )
-    (tmp_path / ".env").write_text("INFLUX_URL=http://x\nINFLUX_DB=db\n")
+    (tmp_path / "config.yaml").write_text("business:\n  providers: {}\n  assets: {}\n  composites: {}\n")
+    (tmp_path / ".env").write_text("TIMESCALEDB_URL=http://x\nTIMESCALEDB_DB=db\n")
 
     loader = ConfigLoader(tmp_path)
     result = loader.load()
     cfg = unwrap(result)
+    expected_params = {
+        "timezone": "UTC",
+        "intraday_history_limit": "5d",
+        "daily_history_limit": "10y",
+        "intraday_interval": "10m",
+        "daily_interval": "1d",
+        "daily_series_type": "candle",
+    }
     assert cfg["providers"] == {
-        "yahoo": {"timezone": "UTC", "intraday_history_limit": "5d", "daily_history_limit": "10y"},
-        "ecb": {"timezone": "UTC", "intraday_history_limit": "5d", "daily_history_limit": "10y"},
-        "fred": {"timezone": "UTC", "intraday_history_limit": "5d", "daily_history_limit": "10y"},
+        "yahoo": Provider(name="yahoo", **expected_params),
+        "ecb": Provider(name="ecb", **expected_params),
+        "fred": Provider(name="fred", **expected_params),
     }
 
 
@@ -118,12 +143,9 @@ environment:
   paths:
     wal: "data/mywal.jsonl"
     state: "data/mystate.json"
-  buckets:
-    daily: daily
-    intraday: intraday
 """)
 
-    env_file.write_text("INFLUX_URL=http://x\nINFLUX_DB=db\n")
+    env_file.write_text("TIMESCALEDB_URL=http://x\nTIMESCALEDB_DB=db\n")
 
     loader = ConfigLoader(tmp_path)
     result = loader.load()

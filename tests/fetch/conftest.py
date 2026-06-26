@@ -18,7 +18,7 @@ def assert_ok():
         assert result.ok
         point = result.payload[0]
         assert point.timestamp == timestamp
-        assert point.fields == {"price": value}
+        assert point.value == value
 
     return _assert_ok
 
@@ -103,5 +103,14 @@ def dummy_provider():
         return MarketDataProvider(
             provider_config={"timezone": "UTC"},
         )
+
+    return _make
+
+
+@pytest.fixture
+def make_asset_dict(make_asset):
+    def _make(id=1, name="eur_usd", provider="yahoo", provider_code="EURUSD=X"):
+        asset = make_asset(id=id, name=name, provider=provider, provider_code=provider_code)
+        return {name: asset}
 
     return _make

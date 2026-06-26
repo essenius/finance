@@ -2,10 +2,13 @@
 # Licensed under the Apache License, Version 2.0. See the LICENSE file for details.
 # File: tests/test_main_utils.py
 
+from unittest.mock import MagicMock, Mock
+
 import pytest
 
-from finance.common.model import FetchPoint, MeasurementResult, Result, TimeseriesWrite
-from finance.main_utils import process_result, unwrap
+from finance.common.model import DailyValuePoint, FetchResult, Resolution, Result, Series, SeriesPoint, SeriesResult
+from finance.main_utils import process_result, reconcile_registry, unwrap
+from finance.registry.registry import Registry
 
 # ---------------------------------------------------------------------------
 # unwrap tests
@@ -51,92 +54,117 @@ class FakeState:
     def __init__(self):
         self.calls = []
 
-    def ingest(self, write: TimeseriesWrite):
-        self.calls.append(write)
-        return Result.ok_payload(write)  # success
+    def ingest(self, series: Series, point: SeriesPoint):
+        self.calls.append(point)
+        return SeriesResult.ok_payload("spx", point)  # success
 
-    def update_range(self, measurement: str, first: int, last: int) -> None:
+    def update_range(self, series_id: int, first: int, last: int) -> None:
         pass
 
 
 class SkipState(FakeState):
     """State that returns skip (payload=None)."""
 
-    def ingest(self, write: TimeseriesWrite):
-        self.calls.append(write)
-        return Result.ok_payload(None)  # skip
+    def ingest(self, series: Series, point: SeriesPoint):
+        self.calls.append(point)
+        return SeriesResult.ok_payload("spx", None)  # skip
 
 
 class FailingState(FakeState):
     """State that returns failure."""
 
-    def ingest(self, write: TimeseriesWrite):
-        self.calls.append(write)
-        return Result.fail(write.measurement, "ingest failed")
+    def ingest(self, series: Series, point: SeriesPoint):
+        self.calls.append(point)
+        return SeriesResult.fail("spx", "ingest failed")
 
 
 def test_process_result_failure_result_not_ok():
-    r = MeasurementResult.fail("spx", "network")
+    r = FetchResult.fail("spx", "network")
     state = FakeState()
-    ok = process_result(r, state, {}, "daily")
+    ok = process_result(r, state, Mock())
     assert ok is False
     assert state.calls == []
 
 
 def test_process_result_empty_payload():
-    r = MeasurementResult.ok_payload("spx", [])
+    r = FetchResult.ok_payload("spx", [])
     state = FakeState()
-    ok = process_result(r, state, {}, "daily")
+    ok = process_result(r, state, Mock())
     assert ok is True
     assert state.calls == []
 
 
 def test_process_result_single_point():
-    fp = FetchPoint(fields={"x": 1}, timestamp=100)
-    r = MeasurementResult.ok_payload("spx", [fp])
+    fp = DailyValuePoint(series_id=1, timestamp=100, value=1)
+    r = FetchResult.ok_payload("spx", [fp])
     state = FakeState()
 
-    ok = process_result(r, state, {"tag": "v"}, "daily")
+    ok = process_result(r, state, Mock())
     assert ok is True
 
     assert len(state.calls) == 1
-    w = state.calls[0]
-    assert w.measurement == "spx"
-    assert w.fields == {"x": 1}
-    assert w.tags == {"tag": "v"}
-    assert w.timestamp == 100
-    assert w.bucket == "daily"
+    point: DailyValuePoint = state.calls[0]
+    assert point.series_id == 1
+    assert point.value == 1
+    assert point.timestamp == 100
 
 
 def test_process_result_multiple_points():
-    fp1 = FetchPoint(fields={"a": 1}, timestamp=10)
-    fp2 = FetchPoint(fields={"b": 2}, timestamp=20)
-    r = MeasurementResult.ok_payload("spx", [fp1, fp2])
+    fp1 = DailyValuePoint(series_id=1, timestamp=10, value=1)
+    fp2 = DailyValuePoint(series_id=2, timestamp=20, value=2)
+    r = FetchResult.ok_payload("spx", [fp1, fp2])
     state = FakeState()
 
-    ok = process_result(r, state, {}, "intraday")
+    ok = process_result(r, state, Mock())
     assert ok is True
     assert len(state.calls) == 2
 
-    assert state.calls[0].fields == {"a": 1}
-    assert state.calls[1].fields == {"b": 2}
+    assert state.calls[0].value == 1
+    assert state.calls[1].value == 2
 
 
 def test_process_result_skip():
-    fp = FetchPoint(fields={"x": 1}, timestamp=100)
-    r = MeasurementResult.ok_payload("spx", [fp])
+    fp = DailyValuePoint(series_id=1, timestamp=100, value=1)
+    r = FetchResult.ok_payload("spx", [fp])
     state = SkipState()
 
-    ok = process_result(r, state, {}, "daily")
+    ok = process_result(r, state, Mock())
     assert ok is True
     assert len(state.calls) == 1
 
 
 def test_process_result_ingest_failure():
-    fp = FetchPoint(fields={"x": 1}, timestamp=100)
-    r = MeasurementResult.ok_payload("spx", [fp])
+    fp = DailyValuePoint(series_id=1, timestamp=100, value=1)
+    r = FetchResult.ok_payload("spx", [fp])
     state = FailingState()
 
-    ok = process_result(r, state, {}, "daily")
+    ok = process_result(r, state, Mock())
     assert ok is False
     assert len(state.calls) == 1
+
+
+def test_reconcile_registry(make_asset, make_series):
+    registry = Registry()
+    asset = make_asset("SPX", id=None, instrument="stock")
+    registry.load_yaml_assets([asset])
+    series = make_series(asset, resolution=Resolution.INTRADAY, id=None, interval="1h")
+    registry.load_yaml_series([series])
+    backend = MagicMock()
+
+    old_asset = make_asset("SPX", id=1, instrument="forex")
+    old_series = make_series(asset, resolution=Resolution.INTRADAY, id=2, interval="2h")
+
+    new_asset = asset.with_id(1)
+    new_series = series.with_id(2)
+
+    backend.get_assets.return_value = Result.ok_payload([old_asset])
+    backend.get_series.return_value = Result.ok_payload([old_series])
+    backend.store_asset.return_value = Result.ok_payload(new_asset)
+    backend.store_series.return_value = Result.ok_payload(new_series)
+    backend.refresh_intraday_series_ids.return_value = None
+
+    reconcile_registry(registry, backend)
+
+    assert registry.all_assets() == [new_asset]
+    assert registry.all_series() == [new_series]
+    assert backend.refresh_intraday_series_ids.call_count == 1

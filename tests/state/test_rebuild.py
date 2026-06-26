@@ -2,7 +2,7 @@
 # Licensed under the Apache License, Version 2.0. See the LICENSE file for details.
 # File: tests/state/test_rebuild.py
 
-from finance.common.model import TimeseriesResult, TimeseriesWrite
+from finance.common.model import DailyValuePoint, SeriesPoint, SeriesResult, SeriesState
 from finance.state.state import State
 
 # --------
@@ -23,10 +23,10 @@ class FakeSeriesStore:
         self._first = first
         self._last = last
 
-    def read_first(self, bucket, measurement):
+    def read_first(self, series_id):
         return self._first
 
-    def read_last(self, bucket, measurement):
+    def read_last(self, series_id):
         return self._last
 
 
@@ -41,37 +41,30 @@ class FakeStorage:
         self._data = data
 
 
-def bucket_for(measurement):
-    return "bucket"
+def make_backend_result(timestamp, value):
+    return SeriesResult.ok_payload("spx", DailyValuePoint(series_id=1, timestamp=timestamp, value=value))
 
 
-def make_influx_result(timestamp, value):
-    return TimeseriesResult.ok_payload("spx", TimeseriesWrite("spx", {"v": value}, {}, timestamp, "b"))
+def make_backend_fail_result():
+    return SeriesResult.fail("spx", "server down")
 
 
-def make_influx_fail_result():
-    return TimeseriesResult.fail("spx", "server down")
+def make_wal_result(timestamp, value) -> SeriesPoint:
+    return DailyValuePoint(series_id=1, timestamp=timestamp, value=value)
 
 
-def make_wal_result(timestamp, value):
-    return {"measurement": "spx", "timestamp": timestamp, "fields": {"v": value}}
-
-
-def make_state(*, wal_entries=None, first=None, last=None, initial_state=None):
-    last = last or make_influx_fail_result()
-    first = first or make_influx_fail_result()
+def make_state(*, wal_entries=None, first=None, last=None, initial_state=None) -> State:
+    last = last or make_backend_fail_result()
+    first = first or make_backend_fail_result()
     wal = FakeWAL(wal_entries or [])
     store = FakeSeriesStore(first=first, last=last)
     storage = FakeStorage(initial_state)
-    return State(store, wal, storage, bucket_for)
+    return State(store, wal, storage)
 
 
-def assert_result(result, first: int, last: int, value: float):
-    assert result == {
-        "fields": {"v": value},
-        "first_timestamp": first,
-        "last_timestamp": last,
-    }
+def assert_result(result: SeriesState, first: int, last: int):
+    assert result.first_timestamp == first
+    assert result.last_timestamp == last
 
 
 # ------
@@ -87,23 +80,23 @@ def test_rebuild_wal_only():
 
     state = make_state(wal_entries=wal_entries)
 
-    result = state._rebuild_measurement_state("spx")
-    assert_result(result, 10, 20, 2)
+    result = state._rebuild_measurement_state(1)
+    assert_result(result, 10, 20)
 
 
-def test_rebuild_influx_only():
-    first = make_influx_result(5, 1)
-    last = make_influx_result(15, 2)
+def test_rebuild_backend_only():
+    first = make_backend_result(5, 1)
+    last = make_backend_result(15, 2)
 
     state = make_state(first=first, last=last)
 
-    result = state._rebuild_measurement_state("spx")
-    assert_result(result, 5, 15, 2)
+    result = state._rebuild_measurement_state(1)
+    assert_result(result, 5, 15)
 
 
 def test_rebuild_merge_influx_and_wal():
-    first = make_influx_result(5, 1)
-    last = make_influx_result(15, 2)
+    first = make_backend_result(5, 1)
+    last = make_backend_result(15, 2)
 
     wal_entries = [
         make_wal_result(12, 99),
@@ -112,15 +105,15 @@ def test_rebuild_merge_influx_and_wal():
 
     state = make_state(wal_entries=wal_entries, first=first, last=last)
 
-    result = state._rebuild_measurement_state("spx")
-    assert_result(result, 5, 20, 100)
+    result = state._rebuild_measurement_state(1)
+    assert_result(result, 5, 20)
 
 
 def test_rebuild_empty_everywhere():
     state = make_state()
-    assert state._rebuild_measurement_state("spx") is None
+    assert state._rebuild_measurement_state(1) is None
 
 
 def test_rebuild_influx_malformed():
-    state = make_state(first=make_influx_fail_result(), last=make_influx_fail_result())
-    assert state._rebuild_measurement_state("spx") is None
+    state = make_state(first=make_backend_fail_result(), last=make_backend_fail_result())
+    assert state._rebuild_measurement_state(1) is None

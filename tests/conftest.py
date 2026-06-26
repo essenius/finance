@@ -8,14 +8,12 @@ from unittest.mock import Mock
 
 import pytest
 
-from finance.common.model import Result
-from finance.state.state import JsonlWAL, State
+from finance.common.model import INTRADAY, Asset, Result, Series, SeriesType
+from finance.common.time_utils import parse_duration
+from finance.state.state import State
 from finance.state.storage import StateStorage
-from finance.timeseries.influx import InfluxBackend
-
-
-def bucket_for_test(measurement: str) -> str:
-    return "test_bucket"
+from finance.state.wal import JsonlWAL
+from finance.timeseries.timescale_backend import TimescaleBackend
 
 
 class MockStorage:
@@ -32,7 +30,7 @@ class MockStorage:
 @pytest.fixture
 def state_deps(tmp_path):
     wal = Mock()
-    influx = Mock()
+    backend = Mock()
     storage = StateStorage(tmp_path / "state.json")
 
     wal.peek.return_value = None
@@ -40,18 +38,18 @@ def state_deps(tmp_path):
     wal.dequeue.return_value = None
     wal.enqueue.return_value = None
 
-    return influx, wal, storage
+    return backend, wal, storage
 
 
 @pytest.fixture
-def state_env(state_deps) -> tuple[State, InfluxBackend, JsonlWAL, StateStorage]:
+def state_env(state_deps) -> tuple[State, TimescaleBackend, JsonlWAL, StateStorage]:
     """Provides a State with mocked WAL + TS client + resolved path."""
 
-    influx, wal, storage = state_deps
-    state = State(influx, wal, storage, bucket_for_test)
-    state._rebuild_measurement_state = lambda measurement: None
+    backend, wal, storage = state_deps
+    state = State(backend, wal, storage)
+    state._rebuild_measurement_state = lambda series_id: None
 
-    return state, influx, wal, storage
+    return state, backend, wal, storage
 
 
 @pytest.fixture
@@ -103,3 +101,51 @@ def assert_warning():
         return result.payload
 
     return _assert_warning
+
+
+@pytest.fixture
+def make_asset():
+    def _make(name: str = "eur_usd", **overrides) -> Asset:
+        defaults = {
+            "id": 1,
+            "name": name,
+            "symbol": name,
+            "provider": "yahoo",
+            "provider_code": "EURUSD=X",
+            "display_name": f"d_{name}",
+            "instrument": "forex",
+            "region": "Europe",
+            "exchange": "DEX",
+            "currency": "USD",
+            "unit": "EUR",
+        }
+        return Asset(**(defaults | overrides))
+
+    return _make
+
+
+@pytest.fixture
+def make_series(make_asset):
+    def _make(
+        asset: Asset | None, **overrides
+    ):  # interval="10m", history_limit="5d", resolution=INTRADAY, series_type=SeriesType.VALUE, id=1):
+        if asset is None:
+            asset = make_asset()
+
+        defaults = {
+            "id": asset.id,
+            "resolution": INTRADAY,
+            "asset_id": asset.id,
+            "symbol": asset.name,
+            "series_type": SeriesType.VALUE,
+            "interval": "10m",
+            "history_limit": "5d",
+        }
+        params = defaults | overrides
+        params["name"] = f"{asset.name}_{params['resolution']}"
+        params["interval_seconds"] = parse_duration(params["interval"])
+        params["history_limit_seconds"] = parse_duration(params["history_limit"])
+
+        return Series(**params)
+
+    return _make

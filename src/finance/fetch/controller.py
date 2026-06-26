@@ -2,13 +2,12 @@
 # Licensed under the Apache License, Version 2.0. See the LICENSE file for details.
 # File: src/finance/fetch/controller.py
 
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from datetime import UTC, datetime
 
 from finance.fetch.provider import MarketDataProvider
 
-from ..common.freshness import is_recent
-from ..common.model import FetchResult
+from ..common.model import Asset, FetchResult, Provider, Series
 from ..state.state import State
 from .ecb import EcbProvider
 from .fred import FredProvider
@@ -30,9 +29,16 @@ def create_providers(providers_config: dict[str, dict], api_keys: dict[str, dict
 
 
 class FetchController:
-    def __init__(self, assets: dict, providers: dict, **kwargs):
-        self.assets = assets
-        self.providers = providers
+    def __init__(
+        self,
+        series: Iterable[Series],
+        get_asset_by_id: Callable[[int], Asset],
+        get_provider: Callable[[str], Provider],
+        **kwargs,
+    ):
+        self.series_list: Iterable[Series] = series
+        self.get_asset_by_id = get_asset_by_id
+        self.get_providers = get_provider
         self.now = kwargs.pop("now_provider", lambda: datetime.now(UTC))
 
     def get_window(self, first_saved: int | None, last_saved: int | None, limit: int) -> tuple[int, int]:
@@ -55,32 +61,41 @@ class FetchController:
         # Case 4: normal incremental fetch → fetch after last_saved
         return last_saved, now_timestamp
 
-    def fetch_one_series(self, name: str, asset: dict, state: State) -> FetchResult:
+    def fetch_one_series(self, series: Series, state: State) -> FetchResult:
 
-        provider = self.providers.get(asset["provider"])
+        asset = self.get_asset_by_id(series.asset_id)
+        if asset is None:
+            return FetchResult.fail(
+                series.name,
+                f"Could not find asset {series.asset_id} ({series.symbol})",
+                f"Skipped series '{series.name}'",
+            )
+
+        provider = self.get_providers(asset.provider)
         if provider is None:
-            result = FetchResult.fail(name, f"no provider '{asset['provider']}'", f"Skipped series {name}")
+            result = FetchResult.fail(series.name, f"no provider '{asset.provider}'", f"Skipped series '{series.name}'")
         else:
-            entry = state.get(name, {})
-            first_saved = entry.get("first_timestamp")
-            last_saved = entry.get("last_timestamp")
-            limit = asset["history_limit_seconds"]
-            start, end = self.get_window(first_saved, last_saved, limit)
-            result = provider.fetch(name, asset, start, end)
+            entry = state.get(series.id)
+            first_saved = None if entry is None else entry.first_timestamp
+            last_saved = None if entry is None else entry.last_timestamp
+            start, end = self.get_window(first_saved, last_saved, series.history_limit_seconds)
 
-        state.update_after_fetch(result, self.now().timestamp())
+            result: FetchResult = provider.fetch(series, asset, start, end)
+
+        # TODO eliminate. Don't think we need it right now
+        state.update_after_fetch(series.id, self.now().timestamp())
         return result
 
     def fetch_incrementally(self, state: State) -> Iterable[FetchResult]:
         now_timestamp = int(self.now().timestamp())
 
-        for name, asset in self.assets.items():
+        for series in self.series_list:
             # Freshness check
-            interval_s = asset["interval_seconds"]
-            state_entry = state.get(name)
-            if is_recent(state_entry, now_timestamp, interval_s):
+            state_entry = state.get(series.id)
+            fresh = state_entry is not None and now_timestamp - state_entry.last_timestamp < series.interval_seconds
+            if fresh:
                 # not an error, just skip
                 continue
 
             # Fetch
-            yield self.fetch_one_series(name, asset, state)
+            yield self.fetch_one_series(series, state)

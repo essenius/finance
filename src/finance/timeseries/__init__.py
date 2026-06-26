@@ -2,6 +2,6 @@
 # Licensed under the Apache License, Version 2.0. See the LICENSE file for details.
 # File: src/finance/timeseries/__init__.py
 
-from .influx import InfluxBackend
+from .timescale_backend import TimescaleBackend
 
-__all__ = ["InfluxBackend"]
+__all__ = ["TimescaleBackend"]

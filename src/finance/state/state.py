@@ -2,113 +2,103 @@
 # Licensed under the Apache License, Version 2.0. See the LICENSE file for details.
 # File: src/finance/state/state.py
 
-from collections.abc import Callable, Iterable
+from collections.abc import Iterable
+from dataclasses import replace
 
-from ..common.model import FetchResult, TimeseriesResult, TimeseriesWrite
+from ..common.model import Series, SeriesPoint, SeriesResult, SeriesState
 from ..state.storage import StateStorage
 from ..state.wal import JsonlWAL
-from ..timeseries import InfluxBackend
+from ..timeseries.timescale_backend import TimescaleBackend
 
 
 class State:
-    def __init__(
-        self, series_store: InfluxBackend, wal: JsonlWAL, storage: StateStorage, bucket_for: Callable[[str], str]
-    ):
-        self._timeseries_client = series_store
-        self._wal = wal
-        self._storage = storage
-        self._bucket_for = bucket_for
-        self._state: dict[str, dict] = storage.load()
+    def __init__(self, backend: TimescaleBackend, wal: JsonlWAL, storage: StateStorage):
+        self._backend: TimescaleBackend = backend
+        self._wal: JsonlWAL = wal
+        self._storage: StateStorage = storage
+        self.series: dict[int, SeriesState] = storage.load()
 
     def save(self) -> None:
-        self._storage.save(self._state)
+        self._storage.save(self.series)
 
-    def get(self, measurement: str, default: dict | None = None) -> dict | None:
-        entry = self._state.get(measurement)
+    def get(self, series_id: int) -> SeriesState | None:
+        entry = self.series.get(series_id)
         if entry is not None:
             return entry
 
-        rebuilt = self._rebuild_measurement_state(measurement)
+        rebuilt = self._rebuild_measurement_state(series_id)
         if rebuilt:
-            self._state[measurement] = rebuilt
+            self.series[series_id] = rebuilt
             return rebuilt
 
-        return default
+        return None
 
-    def update_after_fetch(self, result: FetchResult, now: int) -> bool:
+    def update_after_fetch(self, series_id: int, now: int) -> bool:
         """
         Record that a fetch attempt was made
         """
+        old = self.series.get(series_id)
+        if old is None:
+            # No state yet → create minimal entry
+            self.series[series_id] = SeriesState(last_try=now)
+        else:
+            self.series[series_id] = replace(old, last_try=now)
 
-        entry = self.data.setdefault(result.measurement, {})
-        entry["last_try"] = now
-
-    @property
-    def data(self) -> dict:
-        return self._state
-
-    def _compute_policy(self, measurement: str, timestamp: int) -> dict:
-        entry = self.get(measurement)
+    def _compute_policy(self, series_id: int, timestamp: int) -> dict:
+        entry = self.get(series_id)
 
         # No state or no timestamp → first ever point, must write
-        if entry is None:
-            return {"skipped": False, "reason": "first"}
-
-        first_ts = entry.get("first_timestamp")
-        if first_ts is None:
-            return {"skipped": False, "reason": "first"}
-
-        last_ts = entry.get("last_timestamp")
-        if last_ts is None:
+        if entry is None or entry.first_timestamp is None or entry.last_timestamp is None:
             return {"skipped": False, "reason": "first"}
 
         # Before known window → must write
-        if timestamp < first_ts:
+        if timestamp < entry.first_timestamp:
             return {"skipped": False, "reason": "before-window"}
 
         # After known window → must write
-        if timestamp > last_ts:
+        if timestamp > entry.last_timestamp:
             return {"skipped": False, "reason": "new"}
 
         # Inside window → skip
-        if timestamp == last_ts:
+        if timestamp == entry.last_timestamp:
             return {"skipped": True, "reason": "unchanged"}
 
         return {"skipped": True, "reason": "inside-window"}
 
-    def update_range(self, measurement: str, first: int, last: int) -> None:
+    def update_range(self, series_id: int, first: int, last: int) -> None:
         """
         Update the saved range after a batch has been ingested
         """
-        # when this is called, the entry is always there
-        entry = self._state[measurement]
-        last_saved = entry.get("last_timestamp")
-        if last_saved is None or last > last_saved:
-            entry["last_timestamp"] = last
-        first_saved = entry.get("first_timestamp")
-        if first_saved is None or first < first_saved:
-            entry["first_timestamp"] = first
+        s = self.series.get(series_id) or SeriesState()
 
-    def ingest(self, write: TimeseriesWrite) -> TimeseriesResult:
+        new_first = s.first_timestamp
+        new_last = s.last_timestamp
+
+        if new_last is None or last > new_last:
+            new_last = last
+
+        if new_first is None or first < new_first:
+            new_first = first
+
+        if new_first != s.first_timestamp or new_last != s.last_timestamp:
+            self.series[series_id] = replace(s, first_timestamp=new_first, last_timestamp=new_last)
+
+    def ingest(self, series: Series, point: SeriesPoint) -> SeriesResult:
         """
         Ingest a new metric:
         - check if write is needed, if not bail out
         - append to WAL (ingestion succeeds here)
-        - flush WAL oldest → newest to timeseries_client
-        - dequeue flushed entries
+        - flush WAL FIFO to timeseries_client
         - on first write failure, stop and return that result
 
         Note: first and last timestamps are not updated, that needs to happen after the batch was done
         """
-
-        policy = self._compute_policy(write.measurement, write.timestamp)
+        policy = self._compute_policy(series.id, point.timestamp)
         if policy["skipped"]:
-            return TimeseriesResult.ok_payload(write.measurement, None, meta=policy)
-        # Durable accept: enqueue
-        self._wal.enqueue(write)
+            return SeriesResult.ok_payload(series.name, None, meta=policy)
 
-        entry = self._state.setdefault(write.measurement, {})
-        entry["fields"] = write.fields
+        # Durable accept: enqueue
+        self._wal.enqueue(point)
 
         # Flush WAL FIFO
         while True:
@@ -116,7 +106,7 @@ class State:
             if oldest is None:
                 break
 
-            result = self._timeseries_client.write(oldest)
+            result = self._backend.add(oldest)
 
             if not result.ok:
                 # stop flushing, keep WAL intact. Always give back requested entry even if an older failed
@@ -126,9 +116,9 @@ class State:
             # successful write → remove from WAL
             self._wal.dequeue()
 
-        return TimeseriesResult.ok_payload(write.measurement, write, meta=policy)
+        return SeriesResult.ok_payload(series.name, point, meta=policy)
 
-    def iter_metrics(self) -> Iterable[dict]:
+    def iter_series_state(self) -> Iterable[tuple[int, SeriesState]]:
         """
         Yield (metric_name, entry_dict) for all metrics currently in state.
 
@@ -136,63 +126,50 @@ class State:
         already present in _state. CompositeEngine uses this to build the
         namespace for evaluation.
         """
-        yield from self._state.items()
+        yield from self.series.items()
 
-    def get_last_timestamp(self, measurement: str) -> int | None:
+    def get_last_timestamp(self, series_id: int) -> int | None:
         """
         Return the last_timestamp for a metric, performing lazy rebuild if needed.
         """
-        entry = self.get(measurement)
-        if entry is None:
-            return None
-        return entry.get("last_timestamp")
+        entry = self.get(series_id)
+        return None if entry is None else entry.last_timestamp
 
-    def update_composite(self, measurement: str, fields: dict, timestamp: int) -> None:
+    '''
+    Removed from V1 scope
+    def update_composite(self, series_id: str, fields: dict, timestamp: int) -> None:
         """
         Update a composite metric in state.
-
-        This does NOT write to WAL or Influx — composites are derived data.
-        They are stored directly in state and persisted on state.save().
         """
-        self._state[measurement] = {
+        self.series[series_id] = {
             "fields": fields,
             "last_timestamp": timestamp,
         }
+    '''
 
-    def _rebuild_measurement_state(self, measurement: str) -> dict | None:
-
-        bucket = self._bucket_for(measurement)
-        wal_entries = [e for e in self._wal.read_all() if e["measurement"] == measurement]
+    def _rebuild_measurement_state(self, series_id: int) -> SeriesState | None:
+        wal_entries = [e for e in self._wal.read_all() if e.series_id == series_id]
 
         # no need to check property existence as read_all already removes invalid entries
-        wal_first = min((e["timestamp"] for e in wal_entries), default=None)
-        wal_last = max((e["timestamp"] for e in wal_entries), default=None)
-        wal_fields = next((e["fields"] for e in wal_entries if e["timestamp"] == wal_last), None)
+        wal_first = min((e.timestamp for e in wal_entries), default=None)
+        wal_last = max((e.timestamp for e in wal_entries), default=None)
 
-        # Collect Influx timestamps
-        influx_first_point = self._timeseries_client.read_first(bucket, measurement)
-        influx_last_point = self._timeseries_client.read_last(bucket, measurement)
+        # Collect Timescale timestamps
+        timescale_first_point = self._backend.read_first(series_id)
+        timescale_last_point = self._backend.read_last(series_id)
 
-        influx_first = influx_first_point.payload.timestamp if influx_first_point.payload else None
-        influx_last = influx_last_point.payload.timestamp if influx_last_point.payload else None
-        influx_fields = influx_last_point.payload.fields if influx_last_point.payload else None
+        timescale_first = timescale_first_point.payload.timestamp if timescale_first_point.payload else None
+        timescale_last = timescale_last_point.payload.timestamp if timescale_last_point.payload else None
 
         # If nothing exists anywhere, bail out
-        if wal_first is None and influx_first is None:
+        if wal_first is None and timescale_first is None:
             return None
 
-        # Combine earliest and latest
-        first_timestamp = min(timestamp for timestamp in (wal_first, influx_first) if timestamp is not None)
-        last_timestamp = max(timestamp for timestamp in (wal_last, influx_last) if timestamp is not None)
+        first_timestamp = min(timestamp for timestamp in (wal_first, timescale_first) if timestamp is not None)
+        last_timestamp = max(timestamp for timestamp in (wal_last, timescale_last) if timestamp is not None)
 
-        # Pick fields from the newest point
-        if wal_last is not None and (influx_last is None or wal_last >= influx_last):
-            fields = wal_fields
-        else:
-            fields = influx_fields
-
-        return {
-            "fields": fields,
-            "first_timestamp": first_timestamp,
-            "last_timestamp": last_timestamp,
-        }
+        return SeriesState(
+            first_timestamp=first_timestamp,
+            last_timestamp=last_timestamp,
+            last_try=None,
+        )

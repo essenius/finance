@@ -2,6 +2,7 @@
 # Licensed under the Apache License, Version 2.0. See the LICENSE file for details.
 # File: src/finance/composites/deps.py
 
+'''TODO re-introduce in scope for V2
 import ast
 from collections.abc import Iterable
 
@@ -65,3 +66,4 @@ def topo_sort(graph):
         visit(node)
 
     return order
+'''

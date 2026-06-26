@@ -2,12 +2,13 @@
 # Licensed under the Apache License, Version 2.0. See the LICENSE file for details.
 # File: tests/timeseries/conftest.py
 
-from unittest.mock import Mock
+from datetime import UTC, datetime, timedelta
+from unittest.mock import MagicMock, Mock
 
 import pytest
 
-from finance.common.model import TimeseriesWrite
-from finance.timeseries.influx import InfluxBackend, InfluxConfig
+from finance.common.model import Resolution, SeriesPoint
+from finance.timeseries.timescale_backend import TimescaleBackend, TimescaleConfig
 
 
 @pytest.fixture
@@ -17,64 +18,44 @@ def session():
 
 class FakeClock:
     def __init__(self):
-        self.t = 0.0
+        self.t = datetime(2025, 6, 15, 15, 6, 40, tzinfo=UTC)
 
     def __call__(self):
         return self.t
 
     def advance(self, dt):
-        self.t += dt
+        self.t += timedelta(seconds=dt)
+
+
+class FakeConnection:
+    closed: bool = False
 
 
 @pytest.fixture
-def backend_v1():
-    session = Mock()
-    cfg = InfluxConfig(
-        ssl_verify=True,
-        ssl_use_legacy=False,
-        version=1,
-        base_url="http://x/write",
-        db="finance",
-        auth=("u", "p"),
-        max_batch_size=1,
-        max_batch_age_seconds=0,
-    )
-    return InfluxBackend(session, cfg, FakeClock())
+def make_backend():
+    def _make(max_batch_size: int = 2, max_batch_age_seconds: int = 2):
+        cfg = TimescaleConfig(
+            host="x",
+            dbname="finance",
+            user="u",
+            password="p",
+            max_batch_size=max_batch_size,
+            max_batch_age_seconds=max_batch_age_seconds,
+        )
+        backend = TimescaleBackend(cfg, FakeClock())
+        backend._connection = MagicMock()
+        # make it connected
+        backend._connection.closed = False
 
+        return backend
 
-@pytest.fixture
-def backend_v2():
-    session = Mock()
-    cfg = InfluxConfig(
-        ssl_verify=True,
-        ssl_use_legacy=False,
-        version=2,
-        base_url="https://example/api/v2/write",
-        org="rik",
-        read_token="123",
-        write_token="abc",
-        max_batch_size=3,
-        max_batch_age_seconds=5.0,
-    )
-    return InfluxBackend(session, cfg, FakeClock())
+    return _make
 
 
 @pytest.fixture
 def make_entry():
-    def _make(
-        measurement="m",
-        fields=None,
-        tags=None,
-        timestamp=0,
-        bucket="bucket",
-    ):
-        return TimeseriesWrite(
-            measurement=measurement,
-            fields=fields or {},
-            tags=tags or {},
-            timestamp=timestamp,
-            bucket=bucket,
-        )
+    def _make(id=1, fields=None, resolution=Resolution.DAILY, timestamp=0):
+        return SeriesPoint(series_id=id, timestamp=timestamp, resolution=resolution, fields=fields or {})
 
     return _make
 
@@ -85,40 +66,3 @@ def make_entries(make_entry):
         return [make_entry(fields={"v": i}, timestamp=i) for i in range(n)]
 
     return _make
-
-
-@pytest.fixture
-def mock_post():
-    def _mock(backend, *, status, text="", json_data=None, exception=None):
-        class MockResponse:
-            def __init__(self):
-                self.status_code = status
-                self.text = text
-
-            def raise_for_status(self):
-                # 204 OK
-                if self.status_code < 300:
-                    return
-
-                # 400 is NOT an exception for InfluxDB v2 batch writes
-                if self.status_code == 400:
-                    return
-
-                # 500+ should raise
-                if self.status_code >= 500:
-                    raise Exception(f"HTTP {self.status_code}")
-
-            def json(self):
-                if json_data is None:
-                    return {}
-                return json_data
-
-        def fake_post(*args, **kwargs):
-            if exception:
-                raise exception
-            return MockResponse()
-
-        backend.session = Mock()
-        backend.session.post = Mock(side_effect=fake_post)
-
-    return _mock

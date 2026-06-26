@@ -4,21 +4,17 @@
 
 import pytest
 
-from finance.common.model import TimeseriesWrite
+from finance.common.model import DAILY, DailyValuePoint, Resolution, Series, SeriesPoint
 
 # state_env is defined in the parent folder's conftest.py
 
 
-@pytest.fixture
-def make_entry() -> TimeseriesWrite:
-    def _make(measurement="spx", value=1, timestamp=100, bucket="bucket"):
-        return TimeseriesWrite(
-            measurement=measurement,
-            fields={"v": value},
-            timestamp=timestamp,
-            bucket=bucket,
-            tags={},
-        )
+@pytest.fixture()
+def make_entry(make_asset, make_series) -> dict:
+    def _make(series_id=1, value=1, timestamp=100, name="spx"):
+        asset = make_asset(id=series_id, name="spx")
+        series = make_series(asset, id=series_id, resolution=Resolution(DAILY))
+        return {"series": series, "point": DailyValuePoint(series_id=series_id, timestamp=timestamp, value=value)}
 
     return _make
 
@@ -29,22 +25,22 @@ def wal_sequence():
 
 
 @pytest.fixture
-def two_wal_entries(make_entry) -> list[TimeseriesWrite | None]:
+def two_wal_entries(make_entry) -> list[tuple[Series, SeriesPoint] | None]:
     def _entries():
         return [
-            make_entry(measurement="a", value=1, timestamp=10),
-            make_entry(measurement="a", value=2, timestamp=20),
+            make_entry(series_id=1, value=1, timestamp=10),
+            make_entry(series_id=1, value=2, timestamp=20),
         ]
 
     return _entries
 
 
 @pytest.fixture
-def two_wal_entries_with_none(make_entry) -> list[TimeseriesWrite | None]:
+def two_wal_entries_with_none(make_entry) -> list[tuple[Series, SeriesPoint] | None]:
     def _entries():
         return [
-            make_entry(measurement="a", value=1, timestamp=10),
-            make_entry(measurement="a", value=2, timestamp=20),
+            make_entry(series_id=1, value=1, timestamp=10),
+            make_entry(series_id=1, value=2, timestamp=20),
             None,
         ]
 

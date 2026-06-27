@@ -56,16 +56,16 @@ def run(
         config = unwrap(load_config())
 
         paths = config["paths"]
-        assets = config["assets"]
-        series_dict = config["series"]
+        asset_list = config["assets"]
+        series_list = config["series"]
         # composites = config["composites"]
         secrets = config["secrets"]
         provider_cfg = config["providers"]
 
         registry = registry_factory()
         # TODO make assets and series lists instead of dicts ^^^
-        registry.load_yaml_assets(assets.values())
-        registry.load_yaml_series(series_dict.values())
+        registry.load_yaml_assets(asset_list)
+        registry.load_yaml_series(series_list)
 
         backend_result = backend_factory(secrets[BACKEND] | config[BACKEND])
         if not backend_result.ok:
@@ -85,7 +85,7 @@ def run(
         # Fetch and save primary asset metrics
 
         providers = provider_factory(api_keys=secrets.get("api_keys"), providers_config=provider_cfg)
-        fetch_controller = fetch_controller_factory(series_dict, registry.get_asset_by_id, providers.get)
+        fetch_controller = fetch_controller_factory(series_list, registry.get_asset_by_id, providers.get)
         for result in fetch_controller.fetch_incrementally(state):
             series = registry.get_series_by_name(result.series_name)
             if not process_result(result, state, series):

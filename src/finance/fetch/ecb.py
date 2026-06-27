@@ -83,8 +83,7 @@ class EcbProvider(MarketDataProvider):
 
     def _fetch(self, series: Series, provider_code: str, params: dict) -> FetchResult:
         """
-        symbol: e.g. 'USD_EUR'
-        returns: [{"timestamp": int, "fields": {field: float}}] or []
+        provider_code: e.g. 'USD_EUR'
         """
 
         name = series.name

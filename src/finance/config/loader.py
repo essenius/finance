@@ -182,7 +182,7 @@ def check_field_set(field_set: list[str], name: str):
 # -----------------------------
 def normalize_assets_and_series(
     raw_assets: dict, providers: dict[str, Provider]
-) -> Result[tuple[dict[str, Asset], dict[str, Series]]]:
+) -> Result[tuple[list[Asset], list[Series]]]:
     """
     Expand YAML asset blocks with 'resolution' into asset and series definitions.
 
@@ -198,27 +198,27 @@ def normalize_assets_and_series(
             history_limit: 5d
 
     """
-    asset_dict = {}
-    series_dict = {}
+    asset_list = []
+    series_list = []
     try:
         for asset_name, cfg in raw_assets.items():
             provider = require(cfg, "provider", f"asset '{asset_name}'")
 
             provider_config: dict = asdict(providers.get(provider, EmptyConfig()))
-            symbol = require(cfg, "symbol", f"asset '{asset_name}'")
+            symbol = cfg.get("symbol", asset_name)
             tags = {k.lower(): v for k, v in cfg.get("tags", {}).items()}
 
             asset = Asset.create(name=asset_name, symbol=symbol, config=cfg, tags=tags)
-            asset_dict[asset_name] = asset
+            asset_list.append(asset)
 
             resolution_config = require(cfg, RESOLUTION, f"asset '{asset_name}'")
 
             for resolution, resolution_def in resolution_config.items():
                 # merge provider config with resolution definition to provide defaults
                 series = Series.create(asset, resolution, (provider_config | resolution_def))
-                series_dict[series.name] = series
+                series_list.append(series)
 
-        return Result.ok_payload((asset_dict, series_dict))
+        return Result.ok_payload((asset_list, series_list))
 
     except Exception as exc:  # by require()
         return Result.fail("Error parsing assets", exc)
@@ -275,15 +275,11 @@ def load_environment_config(env_cfg: dict, project_root: Path) -> dict:
     paths_cfg = env_cfg.get("paths", {})
 
     paths = {
-        "wal": resolve_config_path(paths_cfg.get("wal"), "wal.jsonl", project_root),
-        "state": resolve_config_path(paths_cfg.get("state"), "state.json", project_root),
+        key: resolve_config_path(value, key, project_root)
+        for key, value in paths_cfg.items()
     }
 
     timescaledb_cfg = env_cfg.get(BACKEND, {})
-    timescaledb_dict = {
-        "max_batch_size": timescaledb_cfg.get("max_batch_size"),
-        "max_batch_age": timescaledb_cfg.get("max_batch_age_seconds"),
-    }
 
     # buckets = env_cfg.get("buckets", {})
 
@@ -295,7 +291,7 @@ def load_environment_config(env_cfg: dict, project_root: Path) -> dict:
     # if missing:
     #    return Result.fail(f"Missing bucket definitions for: {sorted(missing)}", meta=context)
 
-    return {"paths": paths, BACKEND: timescaledb_dict}
+    return {"paths": paths, BACKEND: timescaledb_cfg}
 
 
 def load_business_config(biz_cfg: dict) -> Result[dict]:

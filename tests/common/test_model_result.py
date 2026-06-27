@@ -70,18 +70,21 @@ def test_seriespoint_from_to_dict():
     result1 = SeriesPoint.from_dict(dict1)
     assert isinstance(result1, IntradayPoint), "intraday"
     assert result1 == intraday_point
+    assert f"{result1}" == "IntradayPoint(id=1, ts=2, value=3)"
 
     daily_value_point = DailyValuePoint(4, 5, 6)
     dict2 = daily_value_point.to_dict()
     result2 = SeriesPoint.from_dict(dict2)
     assert isinstance(result2, DailyValuePoint), "daily"
     assert result2 == daily_value_point
+    assert f"{result2}" == "DailyValuePoint(id=4, ts=5, value=6)"
 
     candle_point = CandlePoint(1, 2, open=10, high=14, low=8, close=12, volume=100)
     dict3 = candle_point.to_dict()
     result3 = SeriesPoint.from_dict(dict3)
     assert isinstance(result3, CandlePoint), "candle"
     assert result3 == candle_point
+    assert f"{result3}" == "CandlePoint(id=1, ts=2, open=10, high=14, low=8, close=12, volume=100)"
 
     dict4 = {"type": "bogus"}
     with pytest.raises(ValueError) as exc_info:
@@ -104,6 +107,7 @@ def test_asset_create_with_id_differs():
     assert asset.region is None
     assert asset.currency is None
     assert asset.unit is None
+    assert f"{asset}" == "Asset(id=None, name=spx, symbol=SPX, provider_code=^SPX, region=None)"
 
     asset2 = asset.with_id(1)
     assert asset2.id == 1
@@ -123,7 +127,7 @@ def test_series_create_with_id_differs(make_asset):
     series = Series.create(asset=asset, resolution="daily", config=config)
     assert series.id is None
     assert series.name == "spx_daily"
-    assert series.symbol == "SPX"
+    assert series.asset_name == "spx"
     assert series.asset_id == 3
     assert series.resolution == Resolution.DAILY
     assert series.series_type == SeriesType.CANDLE
@@ -133,8 +137,7 @@ def test_series_create_with_id_differs(make_asset):
     assert series.history_limit_seconds == 315576000
 
     series2 = series.with_id(10)
-    assert series2.id == 10
-    assert series2.name == "spx_daily"
+    assert f"{series2}" == "Series(id=10, name=spx_daily, asset_name=spx, asset_id=3, resolution=daily, series_type=candle)"
 
     # differs from only looks at metadata, not at id, name
     assert not series.differs_from(series2)

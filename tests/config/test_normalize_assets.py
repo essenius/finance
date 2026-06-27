@@ -21,9 +21,7 @@ def test_normalize_assets_basic(unwrap):
 
     assets, series = unwrap(normalize_assets_and_series(raw, {}))
 
-    # loader expands into eurusd_intraday
-    asset: Asset = assets["eurusd"]
-
+    asset: Asset = assets[0]
     assert asset.provider == "yahoo"
     assert asset.provider_code == "EURUSD=X"
     assert asset.name == "eurusd"
@@ -31,7 +29,8 @@ def test_normalize_assets_basic(unwrap):
     assert asset.instrument == "Forex"
 
     # series fields preserved / defaulted
-    series: Series = series["eurusd_intraday"]
+    series: Series = series[0]
+    assert series.name == "eurusd_intraday"
     assert series.interval == "10m"
     assert series.interval_seconds == 600
     assert series.history_limit == "4d"
@@ -84,6 +83,8 @@ def test_normalize_assets_default_resolution_settings(unwrap):
     providers = unwrap(normalize_providers({}))
     assets, series = unwrap(normalize_assets_and_series(raw, providers))
 
-    assert assets["spx"].symbol == "SPX"
-    assert series[f"spx_{DAILY}"].interval == "1d"
-    assert series[f"spx_{DAILY}"].history_limit == "10y"
+    assert len(assets) == 1
+    assert assets[0].symbol == "SPX"
+    assert len(series) ==1
+    assert series[0].interval == "1d"
+    assert series[0].history_limit == "10y"

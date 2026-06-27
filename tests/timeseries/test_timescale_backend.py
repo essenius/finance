@@ -22,7 +22,7 @@ def test_constructor_is_pure():
     assert backend._pending == []
 
 
-def test_from_config_success_no_defaults():
+def test_from_config_failure_cert(assert_error):
     config = {
         "host": "myhost",
         "port": 1234,
@@ -30,6 +30,22 @@ def test_from_config_success_no_defaults():
         "password": "secret",
         "db": "fin1",
         "ssl_mode": "verify-ca",
+        "max_batch_size": 500,
+        "max_batch_age_seconds": 2.5,
+    }
+
+    result = TimescaleBackend.from_config(config)
+
+    assert_error(result, "Timescale backend initialization failed", "verify-ca requires path in TIMESCALEDB_SSL_ROOT_CERT in .env or ssl_root_cert in yaml")
+
+def test_from_config_success_no_defaults():
+    config = {
+        "host": "myhost",
+        "port": 1234,
+        "user": "finuser",
+        "password": "secret",
+        "db": "fin1",
+        "ssl_mode": "verify-full",
         "max_batch_size": 500,
         "max_batch_age_seconds": 2.5,
     }
@@ -45,7 +61,7 @@ def test_from_config_success_no_defaults():
     assert timescale_config.user == "finuser"
     assert timescale_config.password == "secret"
     assert timescale_config.dbname == "fin1"
-    assert timescale_config.sslmode == "verify-ca"
+    assert timescale_config.sslmode == "verify-full"
     assert timescale_config.max_batch_size == 500
     assert timescale_config.max_batch_age_seconds == 2.5
 
@@ -68,7 +84,7 @@ def test_from_config_success_defaults():
     assert timescale_config.password == "s3cr3t"
     assert timescale_config.dbname == "fin2"
     assert timescale_config.port == 5432
-    assert timescale_config.sslmode == "verify-ca"
+    assert timescale_config.sslmode == "verify-full"
     assert timescale_config.max_batch_size == 1000
     assert timescale_config.max_batch_age_seconds == 2.0
 

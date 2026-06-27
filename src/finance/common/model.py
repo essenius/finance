@@ -110,6 +110,9 @@ class SeriesPoint:
             case _:
                 raise ValueError(f"Unknown point type: {point_type}")
 
+    def __repr__(self):
+        return f"{self.__class__.__name__}(id={self.series_id}, ts={self.timestamp})"
+
 
 @dataclass(frozen=True)
 class CandlePoint(SeriesPoint):
@@ -151,6 +154,10 @@ class CandlePoint(SeriesPoint):
             volume=d["volume"],
         )
 
+    def __repr__(self):
+        parent = super().__repr__()
+        return f"{parent[:-1]}, open={self.open}, high={self.high}, low={self.low}, close={self.close}, volume={self.volume})"
+
 
 @dataclass(frozen=True)
 class DailyValuePoint(SeriesPoint):
@@ -172,6 +179,10 @@ class DailyValuePoint(SeriesPoint):
             value=d["value"],
         )
 
+    def __repr__(self):
+        parent = super().__repr__()
+        return f"{parent[:-1]}, value={self.value})"
+
 
 @dataclass(frozen=True)
 class IntradayPoint(SeriesPoint):
@@ -192,6 +203,10 @@ class IntradayPoint(SeriesPoint):
             timestamp=d["timestamp"],
             value=d["value"],
         )
+
+    def __repr__(self):
+        parent = super().__repr__()
+        return f"{parent[:-1]}, value={self.value})"
 
 
 T = TypeVar("T")
@@ -334,6 +349,9 @@ class Asset:
             or self.unit != other.unit
         )
 
+    def __repr__(self):
+        return f"Asset(id={self.id}, name={self.name}, symbol={self.symbol}, provider_code={self.provider_code}, region={self.region})"
+
 
 @dataclass
 class Series:
@@ -343,7 +361,7 @@ class Series:
 
     # derivative
     name: str
-    symbol: str
+    asset_name: str
 
     # meta-data
     series_type: SeriesType
@@ -366,7 +384,7 @@ class Series:
             return cls(
                 name=name,
                 asset_id=asset.id,
-                symbol=asset.symbol,
+                asset_name=asset.name,
                 resolution=Resolution(resolution),
                 series_type=SeriesType.VALUE,
             )
@@ -387,7 +405,7 @@ class Series:
         return cls(
             name=name,
             asset_id=asset.id,
-            symbol=asset.symbol,
+            asset_name=asset.name,
             resolution=Resolution(resolution),
             series_type=series_type,
             interval=interval,
@@ -402,13 +420,16 @@ class Series:
     def differs_from(self, other: Series) -> bool:
         # only include things not in the identity (like resolution and name) or linked
         # asset_id is here as it is only assigned after storing in the database
-        # symbol is the asset identity and is therefore also not checked.
+        # asset_name is the asset identity and is therefore also not checked.
         return (
             self.asset_id != other.asset_id
             or self.series_type != other.series_type
             or self.interval != other.interval
             or self.history_limit != other.history_limit
         )
+
+    def __repr__(self):
+        return f"Series(id={self.id}, name={self.name}, asset_name={self.asset_name}, asset_id={self.asset_id}, resolution={self.resolution}, series_type={self.series_type})"
 
 
 @dataclass

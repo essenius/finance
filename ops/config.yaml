@@ -2,21 +2,21 @@
 # Licensed under the Apache License, Version 2.0. See the LICENSE file for details.
 # File: ops/config.yaml
 
+
 environment:
   logging:
     level: info
   paths:
     wal: wal.jsonl
     state: state.json
-  buckets:
-    intraday: test1
-    daily: test1
-  influx:
-    url: https://localhost:8086
-    org: rik
-    ssl_verify: false
-    max_batch_size: 20
-    max_batch_age_seconds: 2.0
+  timescaledb:
+    host: pironman5
+    port: 5432
+    ssl_mode: verify-full
+    ssl_root_cert: /opt/home-automation/certs/ca-all.crt
+    db: test
+    max_batch_size: 1
+    max_batch_age_seconds: 1.0
 
 business:
   providers:
@@ -24,284 +24,27 @@ business:
       timezone: UTC
       intraday_history_limit: 5d
       daily_history_limit: 10y
+      daily_series_type: candle
     
     ecb:
       timezone: Europe/Berlin
+      daily_series_type: value
     
     fred:
       timezone: America/Chicago
-
-  field_sets:
-    simple: [close, volume]
+      daily_series_type: value
 
   assets:
 
-    # -------------------------
-    # FOREX: EURUSD (Yahoo)
-    # -------------------------
-    eurusd_yahoo:
+    eurusd:
       provider: yahoo
-      symbol: EURUSD=X
+      provider_code: EURUSD=X
+      display_name: Euro-USD rate
       tags:
-        symbol: EURUSD
         instrument: forex
         exchange: FOREX
         region: GLOBAL
         currency: USD
         unit: ratio
-        provider: yahoo
-      timeseries:
-        intraday:
-          interval: 10m
-        daily:
-          fields: candle
-          interval: 1d
-
-    # -------------------------
-    # FOREX: EURUSD (ECB)
-    # -------------------------
-    eurusd_ecb:
-      provider: ecb
-      symbol: USD_EUR
-      tags:
-        symbol: EURUSD
-        instrument: forex
-        exchange: FOREX
-        region: EU
-        currency: USD
-        unit: ratio
-        provider: ecb
-      timeseries:
-        daily:
-          interval: 1d
-
-    # -------------------------
-    # COMMODITIES
-    # -------------------------
-    gold:
-      provider: yahoo
-      symbol: GC=F
-      tags:
-        symbol: GOLD
-        instrument: commodity
-        exchange: COMMODITY
-        region: GLOBAL
-        currency: USD
-        unit: USD
-        provider: yahoo
-      timeseries:
-        intraday:
-          interval: 10m
-        daily:
-          fields: candle
-          interval: 1d
-
-    wti:
-      provider: yahoo
-      symbol: CL=F
-      tags:
-        symbol: WTI
-        instrument: commodity
-        exchange: COMMODITY
-        region: GLOBAL
-        currency: USD
-        unit: USD
-        provider: yahoo
-      timeseries:
-        intraday:
-          interval: 10m
-        daily:
-          fields: candle
-          interval: 1d
-
-    brent:
-      provider: yahoo
-      symbol: BZ=F
-      tags:
-        symbol: BRENT
-        instrument: commodity
-        exchange: COMMODITY
-        region: GLOBAL
-        currency: USD
-        unit: USD
-        provider: yahoo
-      timeseries:
-        intraday:
-          interval: 10m
-        daily:
-          fields: candle
-          interval: 1d
-
-    # -------------------------
-    # EQUITIES
-    # -------------------------
-    shell:
-      provider: yahoo
-      symbol: SHEL
-      tags:
-        symbol: SHEL
-        instrument: equity
-        exchange: NYSE
-        region: GLOBAL
-        currency: USD
-        unit: USD
-        provider: yahoo
-      timeseries:
-        daily:
-          fields: candle
-          interval: 1d
-        intraday:
-          interval: 10m
-
-    shell_as:
-      provider: yahoo
-      symbol: SHELL.AS
-      tags:
-        symbol: SHELL.AS
-        instrument: equity
-        exchange: EURONEXT
-        region: GLOBAL
-        currency: EUR
-        unit: EUR
-        provider: yahoo
-      timeseries:
-        daily:
-          fields: candle
-          interval: 1d
-        intraday:
-          interval: 10m
-
-    # -------------------------
-    # INDEXES
-    # -------------------------
-    spx:
-      provider: yahoo
-      symbol: ^GSPC
-      tags:
-        symbol: SPX
-        instrument: index
-        exchange: NYSE
-        region: US
-        currency: USD
-        unit: index
-        provider: yahoo
-      timeseries:
-        daily:
-          fields: candle
-          interval: 1d
-
-    vix:
-      provider: yahoo
-      symbol: ^VIX
-      tags:
-        symbol: VIX
-        instrument: index
-        exchange: CBOE
-        region: US
-        currency: USD
-        unit: index
-        provider: yahoo
-      timeseries:
-        daily:
-          fields: candle
-          interval: 1d
-
-    # -------------------------
-    # CRYPTO
-    # -------------------------
-    bitcoin:
-      provider: yahoo
-      symbol: "BTC-USD"
-      tags:
-        symbol: BTCUSD
-        instrument: crypto
-        exchange: CRYPTO
-        region: GLOBAL
-        currency: USD
-        unit: USD
-        provider: yahoo
-      timeseries:
-        intraday:
-          interval: 10m
-        daily:
-          fields: candle
-          interval: 1d
-
-    # -------------------------
-    # MACRO (FRED + Treasury)
-    # -------------------------
-    fred_10y_nominal:
-      provider: fred
-      symbol: DGS10
-      tags:
-        symbol: 10Y_NOMINAL
-        instrument: macro
-        region: US
-        unit: percent
-        provider: fred
-      timeseries:
-        daily:
-          interval: 1d
-
-    fred_10y_breakeven:
-      provider: fred
-      symbol: T10YIE
-      tags:
-        symbol: 10Y_BREAKEVEN
-        instrument: macro
-        region: US
-        unit: percent
-        provider: fred
-      timeseries:
-        daily:
-          interval: 1d
-
-    fed_balance_sheet:
-      provider: fred
-      symbol: WALCL
-      tags:
-        symbol: BALANCE_SHEET
-        instrument: macro
-        region: US
-        unit: billions_usd
-        provider: fred
-      timeseries:
-        daily:
-          interval: 1d
-
-    #treasury_avg:
-    #  provider: treasury
-    #  symbol: avg_interest_rate
-    #  tags:
-    #    symbol: AVG_INTEREST_RATE
-    #    instrument: macro
-    #    region: US
-    #    unit: percent
-    #    provider: treasury
-    #  timeseries:
-    #    daily:
-    #      interval: 1d
-
-  # -------------------------
-  # COMPOSITES
-  # -------------------------
-  composites:
-    10Y_REAL:
-      expression: "fred_10y_nominal - fred_10y_breakeven"
-      timeseries: daily
-      tags:
-        symbol: 10Y_REAL
-        instrument: macro
-        region: US
-        unit: percent
-        provider: composite
-
-    GOLD_DAILY_RANGE:
-      expression: "gold.high - gold.low"
-      timeseries: daily
-      tags:
-        symbol: GOLD_DAILY_RANGE
-        instrument: commodity
-        region: GLOBAL
-        unit: USD
-        provider: composite
+      resolution:
+        daily: {}

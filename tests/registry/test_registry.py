@@ -125,7 +125,7 @@ def test_reconcile_series_update(make_asset, make_series):
 
     result = registry._reconcile_series()
 
-    assert result.to_persist == [series_yaml]
+    assert result.to_persist == [series_yaml.with_id(10)]
     assert result.orphans == []
     assert result.final == []
 
@@ -151,27 +151,28 @@ def test_reconcile_series_orphans(make_asset, make_series):
 # ------------------------------------------------------------
 
 
-def test_reconcile(make_asset, make_series):
+def test_reconcile_same(make_asset, make_series):
     registry = Registry()
     asset = make_asset("SPX", id=None)
     registry.load_yaml_assets([asset])
+    asset2 = asset.with_id(1)
+    registry.load_db_assets([asset2])
+    reconciled_assets = registry.reconcile_assets()
+    assert reconciled_assets.orphans == [], "no orphan assets"
+    assert reconciled_assets.to_persist == [], "no asset to persist"
+    assert reconciled_assets.final == [asset2], "final assets filled"
+
+
     series = make_series(asset, resolution=Resolution.DAILY, id=None)
     registry.load_yaml_series([series])
-    asset2 = asset.with_id(1)
-    series2 = series.with_id(2)
-    registry.load_db_assets([asset2])
+    series2 = make_series(asset2, resolution=Resolution.DAILY, id=2)
     registry.load_db_series([series2])
 
-    result = registry.reconcile()
+    reconciled_series = registry.reconcile_series()
 
-    reconciled_assets = result.assets
-    assert reconciled_assets.orphans == [], "no orphan assets"
-    assert reconciled_assets.to_persist == [], "no assets to persist"
-    assert reconciled_assets.final == [asset2], "final assets ok"
-    reconciled_series = result.series
     assert reconciled_series.orphans == [], "no orphan series"
     assert reconciled_series.to_persist == [], "no series to persist"
-    assert reconciled_series.final == [series2], "final series ok"
+    assert reconciled_series.final == [series2], "final series filled"
 
 
 # ------------------------------------------------------------
@@ -232,7 +233,7 @@ def test_lookup_assets_and_series(make_asset, make_series):
     registry.register_final_series(series)
 
     assert registry.get_asset_by_id(1) is asset
-    assert registry.get_asset_by_symbol("SPX") is asset
+    assert registry.get_asset_by_name("SPX") is asset
     assert registry.get_series_by_id(10) is series
     assert registry.get_series_by_name("SPX_intraday") is series
 

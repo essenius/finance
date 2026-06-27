@@ -1,3 +1,7 @@
+-- Copyright 2026 Rik Essenius
+-- Licensed under the Apache License, Version 2.0. See the LICENSE file for details.
+-- File: db/setup.sql
+
 -- run with psql -f db/setup.sql "host=... sslmode=require ..."
 
 -- Create database if not exists (Postgres doesn't have CREATE DATABASE IF NOT EXISTS)
@@ -22,7 +26,7 @@ ALTER SYSTEM SET timescaledb.telemetry_level = 'off';
 -- Asset table
 -- ============================
 
-CREATE TABLE asset (
+CREATE TABLE IF NOT EXISTS asset (
     id            SERIAL PRIMARY KEY,
     -- identity/logic
     name          TEXT NOT NULL,
@@ -43,42 +47,59 @@ CREATE TABLE asset (
     UNIQUE(provider, provider_code)
 );
 
+CREATE INDEX IF NOT EXISTS asset_symbol_idx ON asset (symbol);
+CREATE INDEX IF NOT EXISTS asset_name_idx ON asset (name);
+CREATE INDEX IF NOT EXISTS asset_provider_idx ON asset (provider);
+
 -- ============================
 -- Series table
 -- ============================
 
-CREATE TYPE series_type AS ENUM ('candle', 'value');
-CREATE TYPE series_resolution AS ENUM ('daily', 'intraday');
+CREATE TYPE IF NOT EXISTS series_type AS ENUM ('candle', 'value');
+CREATE TYPE IF NOT EXISTS series_resolution AS ENUM ('daily', 'intraday');
 
-CREATE TABLE series (
+CREATE TABLE IF NOT EXISTS series (
     id SERIAL PRIMARY KEY,
     asset_id INTEGER NOT NULL REFERENCES asset(id),
     resolution series_resolution NOT NULL,
     series_type series_type NOT NULL,
     interval TEXT NOT NULL,
-    history_limit TEXT NOT NULL
+    history_limit TEXT NOT NULL,
 
-    UNIQUE (asset_id, resolution)
+    UNIQUE(asset_id, resolution)
 );
 
+CREATE INDEX IF NOT EXISTS series_asset_id_idx ON series (asset_id);
+CREATE INDEX IF NOT EXISTS series_resolution_type_idx ON series (resolution, series_type);
+CREATE INDEX IF NOT EXISTS series_type_idx ON series (series_type);
 -- ============================
 -- Intraday hypertable
 -- ============================
 
 CREATE TABLE IF NOT EXISTS prices_intraday (
-    time        TIMESTAMPTZ NOT NULL,
     series_id   INT NOT NULL REFERENCES series(id),
+    time        TIMESTAMPTZ NOT NULL,
     value       DOUBLE PRECISION NOT NULL
 );
 
 SELECT create_hypertable('prices_intraday', 'time', if_not_exists => TRUE);
 
+ALTER TABLE prices_intraday ADD PRIMARY KEY (series_id, time);
+
+CREATE INDEX IF NOT EXISTS prices_intraday_series_time_idx ON prices_intraday (series_id, time DESC);
+
+ALTER TABLE prices_intraday SET (
+    timescaledb.compress,
+    timescaledb.compress_segmentby = 'series_id',
+    timescaledb.compress_orderby = 'time DESC'
+);
+
+SELECT add_compression_policy('prices_intraday', INTERVAL '3 days', if_not_exists => TRUE);
+
 -- Retention: 30 days
 SELECT add_retention_policy('prices_intraday', INTERVAL '30 days', if_not_exists => TRUE);
 
 -- Compression: after 3 days
-ALTER TABLE intraday_prices SET (timescaledb.compress);
-SELECT add_compression_policy('prices_intraday', INTERVAL '3 days', if_not_exists => TRUE);
 
 -- ============================
 -- Daily hypertable
@@ -96,9 +117,16 @@ CREATE TABLE IF NOT EXISTS prices_daily (
 
 SELECT create_hypertable('prices_daily', 'time', if_not_exists => TRUE);
 
--- Daily data kept forever (no retention)
--- Compression: after 7 days
-ALTER TABLE prices_daily SET (timescaledb.compress, timescaledb.compress_segmentby = 'series_id');
+ALTER TABLE prices_daily ADD PRIMARY KEY (series_id, time);
+
+CREATE INDEX IF NOT EXISTS prices_daily_series_time_idx ON prices_daily (series_id, time DESC);
+
+ALTER TABLE prices_daily SET (
+    timescaledb.compress,
+    timescaledb.compress_segmentby = 'series_id',
+    timescaledb.compress_orderby = 'time DESC'
+);
+
 SELECT add_compression_policy('prices_daily', INTERVAL '7 days', if_not_exists => TRUE);
 
 -- Reload config to apply telemetry change

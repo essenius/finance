@@ -136,7 +136,7 @@ def make_series(make_asset):
             "id": asset.id,
             "resolution": INTRADAY,
             "asset_id": asset.id,
-            "symbol": asset.name,
+            "asset_name": asset.name,
             "series_type": SeriesType.VALUE,
             "interval": "10m",
             "history_limit": "5d",

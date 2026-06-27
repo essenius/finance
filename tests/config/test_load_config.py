@@ -59,8 +59,8 @@ business:
     assert cfg["providers"]["yahoo"].timezone == "UTC"
 
     # assets
-    assert "spx" in cfg["assets"]
-    asset: Asset = cfg["assets"]["spx"]
+    assert len(cfg["assets"]) == 1
+    asset: Asset = cfg["assets"][0]
     assert asset.provider_code == "^GSPC"
     assert asset.name == "spx"
     assert asset.symbol == "SPX"
@@ -73,10 +73,10 @@ business:
     assert asset.id is None
 
     # series
-    assert "spx_daily" in cfg["series"]
-    series: Series = cfg["series"]["spx_daily"]
+    assert len(cfg["series"]) == 1
+    series: Series = cfg["series"][0]
     assert series.asset_id is None
-    assert series.symbol == "SPX"
+    assert series.asset_name == "spx"
     assert series.history_limit == "10y"
     assert series.history_limit_seconds == 315576000
     assert series.interval == "1d"

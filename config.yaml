@@ -11,7 +11,7 @@ environment:
   timescaledb:
     host: localhost
     port: 5432
-    ssl_mode: verify_ca
+    ssl_mode: verify-ca
     db: finance
     max_batch_size: 1000
     max_batch_age_seconds: 2.0

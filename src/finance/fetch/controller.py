@@ -67,7 +67,7 @@ class FetchController:
         if asset is None:
             return FetchResult.fail(
                 series.name,
-                f"Could not find asset {series.asset_id} ({series.symbol})",
+                f"Could not find asset {series.asset_id} ({series.asset_name})",
                 f"Skipped series '{series.name}'",
             )
 

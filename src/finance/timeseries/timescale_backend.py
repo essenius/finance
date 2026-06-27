@@ -16,6 +16,7 @@ from psycopg import sql
 
 from finance.common.applogger import AppLogger
 from finance.common.model import (
+    BACKEND,
     Asset,
     CandlePoint,
     DailyValuePoint,
@@ -35,10 +36,16 @@ class TimescaleConfig:
     user: str
     password: str
     port: int = 5432
-    sslmode: str = "verify-ca"
+    sslmode: str = "verify-full"
+    sslrootcert: str = "system"
 
     max_batch_size: int = 1000
     max_batch_age_seconds: float = 2.0
+
+    CONNECTION_FIELDS = ("host", "port", "dbname", "user", "password", "sslmode", "sslrootcert")
+
+    def connect_config(self) -> dict:
+        return {field: getattr(self, field) for field in self.CONNECTION_FIELDS}
 
 
 class TimescaleBackend:
@@ -59,12 +66,18 @@ class TimescaleBackend:
                 dbname=config["db"],
                 user=config["user"],
                 password=config["password"],
-                sslmode=config.get("ssl_mode", "verify-ca"),
+                sslmode=config.get("ssl_mode", "verify-full"),
+                sslrootcert=config.get("ssl_root_cert", "system"),
                 max_batch_size=config.get("max_batch_size", 1000),
                 max_batch_age_seconds=config.get("max_batch_age_seconds", 2.0),
             )
 
-            # Pure: no I/O
+            if ts_config.sslmode == "verify-ca" and ts_config.sslrootcert == "system":
+                return Result.fail(
+                    "Timescale backend initialization failed",
+                    f"verify-ca requires path in {BACKEND.upper()}_SSL_ROOT_CERT in .env or ssl_root_cert in yaml",
+                )
+
             backend = cls(ts_config, now)
             backend.refresh_intraday_series_ids()
             return Result.ok_payload(backend)
@@ -81,7 +94,7 @@ class TimescaleBackend:
             return Result.ok_payload(None)
 
         try:
-            self._connection = psycopg.connect(**self._config.__dict__)
+            self._connection = psycopg.connect(**self._config.connect_config())
         except Exception as exc:
             return Result.fail("Connect failed", exc)
 
@@ -172,11 +185,8 @@ class TimescaleBackend:
         Data-driven batch insertion for all SeriesPoint subclasses.
         """
 
-        sql_template = """
-            INSERT INTO {table} (
-                series_id, ts{extra_fields}
-            ) VALUES (%s, %s{placeholders})
-        """
+        sql_template = "INSERT INTO {table} (series_id, time{extra_fields}) VALUES (%s, %s{placeholders})"
+
 
         # Define the batch types
         batch_specs = [
@@ -364,6 +374,8 @@ class TimescaleBackend:
         Insert or update a series row.
         YAML is authoritative, so we upsert on (asset_id, resolution).
         """
+        if series.asset_id is None:
+            return Result.fail("Store series failed", "asset_id was not set")
 
         metadata = (series.series_type, series.interval, series.history_limit)
 
@@ -461,7 +473,7 @@ class TimescaleBackend:
                     Series(
                         id=row[0],
                         asset_id=row[1],
-                        symbol=row[2],
+                        asset_name=row[2],
                         name=row[3],
                         resolution=row[4],
                         series_type=row[5],

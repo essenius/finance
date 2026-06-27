@@ -40,7 +40,7 @@ def make_series_list(asset, interval="10m", history_limit="5d", resolution=INTRA
             name=series,
             resolution=resolution,
             asset_id=asset.id,
-            symbol=asset.name,
+            asset_name=asset.name,
             series_type=SeriesType.VALUE,
             interval=interval,
             interval_seconds=parse_duration(interval),

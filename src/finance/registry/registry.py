@@ -76,20 +76,23 @@ class Registry:
     # Reconciliation entry point
     # ------------------------------------------------------------
 
-    def reconcile(self) -> ReconciliationResult:
+    def reconcile_assets(self) -> ReconciledAssets:
         assets_result = self._reconcile_assets()
 
         # Register authoritative assets
         for a in assets_result.final:
             self.register_final_asset(a)
 
+        return assets_result
+
+    def reconcile_series(self) -> ReconciledSeries:
         series_result = self._reconcile_series()
 
         # Register authoritative series
         for s in series_result.final:
             self.register_final_series(s)
 
-        return ReconciliationResult(assets=assets_result, series=series_result)
+        return series_result
 
     # ------------------------------------------------------------
     # Asset reconciliation
@@ -107,7 +110,7 @@ class Registry:
             if db_asset is None:
                 to_persist.append(yaml_asset)
             elif yaml_asset.differs_from(db_asset):
-                to_persist.append(yaml_asset)
+                to_persist.append(yaml_asset.with_id(db_asset.id))
             else:
                 final.append(db_asset)
 
@@ -127,11 +130,15 @@ class Registry:
         final = []
 
         for key, yaml_series in yaml.items():
+            # get the asset id. Yaml doesn't know about ids
+            if yaml_series.asset_id is None:
+                asset = self.get_asset_by_name(yaml_series.asset_name)
+                yaml_series.asset_id = asset.id
             db_series = db.get(key)
             if db_series is None:
                 to_persist.append(yaml_series)
             elif yaml_series.differs_from(db_series):
-                to_persist.append(yaml_series)
+                to_persist.append(yaml_series.with_id(db_series.id))
             else:
                 final.append(db_series)
 
@@ -172,8 +179,8 @@ class Registry:
     def get_asset_by_id(self, asset_id: int) -> Asset:
         return self._assets_by_id[asset_id]
 
-    def get_asset_by_symbol(self, symbol: str) -> Asset:
-        return self._assets_by_name[symbol]
+    def get_asset_by_name(self, name: str) -> Asset:
+        return self._assets_by_name[name]
 
     def get_series_by_id(self, series_id: int) -> Series:
         return self._series_by_id[series_id]

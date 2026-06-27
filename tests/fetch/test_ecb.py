@@ -45,7 +45,7 @@ def test_ecb_fetch_ok(ecb_provider, assert_ok, make_asset, make_series):
         "_",
     ],
 )
-def test_ecb_fetch_wrong_symbol(ecb_provider, make_series, make_asset, provider_code):
+def test_ecb_fetch_wrong_provider_code(ecb_provider, make_series, make_asset, provider_code):
     provider = ecb_provider()
     provider.session.queue(200, {})
 

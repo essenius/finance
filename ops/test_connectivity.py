@@ -5,10 +5,11 @@
 from datetime import UTC, datetime
 from pathlib import Path
 
-from finance.timeseries.influx import InfluxBackend  # your unified backend
-
-from finance.common.model import TimeseriesWrite
+from finance.common.model import DailyValuePoint
 from finance.config.loader import ConfigLoader
+from finance.main_utils import reconcile_registry, unwrap
+from finance.registry.registry import Registry
+from finance.timeseries import TimescaleBackend
 
 
 def main():
@@ -22,41 +23,77 @@ def main():
         return
 
     full_cfg = cfg_result.payload
-    secrets = full_cfg["secrets"]["influx"]
-    env_cfg = full_cfg["influx"]
+    asset_list = full_cfg["assets"]
+    series_list = full_cfg["series"]
+    print("loaded assets: ")
+    for entry in asset_list:
+        print(f"{entry}")
+    print("loaded series: ")
+    for entry in series_list:
+        print(f"{entry}")
 
-    # Build InfluxConfig
+    if len(series_list) == 0:
+        print("Terminating as there are no series")
+        return
 
-    # Build backend
-    backend_result = InfluxBackend.from_config(config=env_cfg, secrets=secrets)
+    secrets = full_cfg["secrets"]["timescaledb"]
+    env_cfg = full_cfg["timescaledb"]
+    print(f"secrets: {secrets}")
+    print(f"environment config: {env_cfg}")
+    print("creating backend")
+
+    backend_result = TimescaleBackend.from_config(secrets | env_cfg)
     if not backend_result.ok:
         print("Backend creation failed:", backend_result.reason, backend_result.error)
         return
-    # Write a point
-    backend = backend_result.payload
-    now = int(datetime.now(tz=UTC).timestamp())
-    write = TimeseriesWrite(
-        series_name="connectivity_test", fields={"value": 43.0}, tags={"env": "acc"}, timestamp=now, bucket="test1"
-    )
-    """
-    write_result = backend.write(entry = write)
 
-    if not write_result.ok:
-        print("Write failed:", write_result.reason, write_result.error)
+    backend = backend_result.payload
+
+    print("reconciling registry")
+    registry = Registry()
+    registry.load_yaml_assets(asset_list)
+    registry.load_yaml_series(series_list)
+    reconcile_registry(registry, backend)
+
+    print ("registry assets")
+    for entry in registry.all_assets():
+        print(entry)
+
+    print ("registry series")
+    for entry in registry.all_series():
+        print(entry)
+
+    print("backend get_assets():")
+    assets = unwrap(backend.get_assets())
+    for entry in assets:
+        print(entry)
+
+    print("backend get_series():")
+    series = unwrap(backend.get_series())
+    for entry in series:
+        print(entry)
+
+    print("writing point")
+    now = datetime.now(tz=UTC).timestamp()
+    id = registry.all_series()[0].id
+    point = DailyValuePoint(id, now, 123.45)
+    result = backend.add(point)
+    if not result.ok:
+        print(f"Write failed: {result.reason}, {result.error}")
         return
 
     print("Write OK")
-    """
     # Read it back
+
     print("Reading back...")
-    read_result = backend.read_first(bucket=write.bucket, measurement=write.series_name)
+    read_result = backend.read_first(id)
 
     if not read_result.ok:
         print("Read failed:", read_result.error)
         return
 
     print("Read OK")
-    print("Returned point:", read_result.payload)
+    print(f"Returned point: {read_result.payload}")
 
 
 if __name__ == "__main__":

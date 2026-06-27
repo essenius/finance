@@ -163,7 +163,7 @@ def test_store_series_update(make_backend, make_asset, make_series):
     assert params[-1] == 77
 
 
-def test_store_series_error(assert_error, make_backend, make_asset, make_series):
+def test_store_series_error_execute(assert_error, make_backend, make_asset, make_series):
     backend = make_backend()
     backend._connection.closed = False
 
@@ -174,6 +174,15 @@ def test_store_series_error(assert_error, make_backend, make_asset, make_series)
 
     result = backend.store_series(series)
     assert_error(result, "fail", None)
+
+
+def test_store_series_error_no_asset_id(assert_error, make_backend, make_asset, make_series):
+    backend = make_backend()
+    asset = make_asset(id=None)
+    series = make_series(asset=asset, id=None)
+
+    result = backend.store_series(series)
+    assert_error(result, "Store series failed", "asset_id was not set")
 
 
 # ------------------------------------------------------------

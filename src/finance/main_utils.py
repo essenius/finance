@@ -40,16 +40,17 @@ def unwrap(result: Result[T], throw: bool | None = True) -> T | None:
 def reconcile_registry(registry: Registry, backend: TimescaleBackend):
     saved_assets = unwrap(backend.get_assets())
     registry.load_db_assets(saved_assets)
-    saved_series = unwrap(backend.get_series())
-    registry.load_db_series(saved_series)
 
-    reconciliation_result = registry.reconcile()
-    reconciled_assets = reconciliation_result.assets
+    reconciled_assets = registry.reconcile_assets()
     for asset in reconciled_assets.to_persist:
         stored = unwrap(backend.store_asset(asset))
         registry.register_final_asset(stored)
 
-    reconciled_series = reconciliation_result.series
+    # series must be done after asset since it refers to final assets
+    saved_series = unwrap(backend.get_series())
+    registry.load_db_series(saved_series)
+
+    reconciled_series = registry.reconcile_series()
     for series in reconciled_series.to_persist:
         stored = unwrap(backend.store_series(series))
         registry.register_final_series(stored)

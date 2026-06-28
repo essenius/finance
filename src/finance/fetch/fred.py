@@ -2,7 +2,7 @@
 # Licensed under the Apache License, Version 2.0. See the LICENSE file for details.
 # File: src/finance/fetch/fred.py
 
-from datetime import UTC, datetime
+from datetime import datetime
 
 from finance.common.time_utils import to_utc_midnight
 

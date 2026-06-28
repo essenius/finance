@@ -162,7 +162,6 @@ def test_reconcile_same(make_asset, make_series):
     assert reconciled_assets.to_persist == [], "no asset to persist"
     assert reconciled_assets.final == [asset2], "final assets filled"
 
-
     series = make_series(asset, resolution=Resolution.DAILY, id=None)
     registry.load_yaml_series([series])
     series2 = make_series(asset2, resolution=Resolution.DAILY, id=2)

@@ -68,7 +68,7 @@ def test_from_config_success_no_defaults():
     assert timescale_config.dbname == "fin1"
     assert timescale_config.sslmode == "verify-full"
     assert timescale_config.max_batch_size == 500
-    assert timescale_config.max_batch_age== timedelta(seconds=2.5)
+    assert timescale_config.max_batch_age == timedelta(seconds=2.5)
 
     assert backend._connection is None
     assert backend._pending == []

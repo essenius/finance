@@ -87,7 +87,10 @@ def test_seriespoint_from_to_dict(fixed_now):
     result3 = SeriesPoint.from_dict(dict3)
     assert isinstance(result3, CandlePoint), "candle"
     assert result3 == candle_point
-    assert f"{result3}" == "CandlePoint(id=1, time=2025-06-15T15:06:40+00:00, open=10, high=14, low=8, close=12, volume=100)"
+    assert (
+        f"{result3}"
+        == "CandlePoint(id=1, time=2025-06-15T15:06:40+00:00, open=10, high=14, low=8, close=12, volume=100)"
+    )
 
     dict4 = {"series_id": 1, "time": "2025-01-01T00:00:00+00:00", "type": "bogus"}
     with pytest.raises(Exception) as exc_info:
@@ -140,7 +143,10 @@ def test_series_create_with_id_differs(make_asset):
     assert series.history_limit_delta == timedelta(days=3652.5)
 
     series2 = series.with_id(10)
-    assert f"{series2}" == "Series(id=10, name=spx_daily, asset_name=spx, asset_id=3, resolution=daily, series_type=candle)"
+    assert (
+        f"{series2}"
+        == "Series(id=10, name=spx_daily, asset_name=spx, asset_id=3, resolution=daily, series_type=candle)"
+    )
 
     # differs from only looks at metadata, not at id, name
     assert not series.differs_from(series2)

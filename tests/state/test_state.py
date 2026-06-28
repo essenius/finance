@@ -2,8 +2,8 @@
 # Licensed under the Apache License, Version 2.0. See the LICENSE file for details.
 # File: tests/state/test_state.py
 
-from datetime import datetime, timedelta
 import json
+from datetime import datetime, timedelta
 from unittest.mock import Mock
 
 from finance.common.model import SeriesState
@@ -61,7 +61,9 @@ def test_save_writes_actual_file(tmp_path, fixed_now):
     state.save()
 
     assert path.exists()
-    assert json.loads(path.read_text()) == {"1": {"first_time": None, "last_time": now.isoformat(timespec="seconds"), "last_try": None}}
+    assert json.loads(path.read_text()) == {
+        "1": {"first_time": None, "last_time": now.isoformat(timespec="seconds"), "last_try": None}
+    }
 
 
 def test_save_does_not_mutate_state():

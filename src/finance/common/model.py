@@ -130,6 +130,7 @@ class CandlePoint(SeriesPoint):
     Point for daily candles. The time is the start of the day (UTC) of publication.
     so e.g. 26-Jun-2026T00:00:00Z means the daily value published June 26
     """
+
     close: float
     open: float | None = None
     high: float | None = None
@@ -178,6 +179,7 @@ class DailyValuePoint(SeriesPoint):
     Point for daily values. The time is the start of the day (UTC) of publication.
     so e.g. 26-Jun-2026T00:00:00Z means the daily value published June 26
     """
+
     value: float
 
     def to_dict(self) -> dict:
@@ -205,6 +207,7 @@ class IntradayPoint(SeriesPoint):
     """
     Point for intraday values. The time is the published time of the value.
     """
+
     value: float
 
     def to_dict(self) -> dict:
@@ -457,8 +460,9 @@ class SeriesState:
     last_try: datetime | None = None
 
     def to_dict(self):
-        def serialize(s: datetime| None) -> str|None:
+        def serialize(s: datetime | None) -> str | None:
             return None if s is None else s.isoformat(timespec="seconds")
+
         return {
             "first_time": serialize(self.first_time),
             "last_time": serialize(self.last_time),
@@ -469,6 +473,7 @@ class SeriesState:
     def from_dict(cls, input: dict):
         def parse(s: str) -> datetime | None:
             return datetime.fromisoformat(s) if s is not None else None
+
         return cls(
             first_time=parse(input.get("first_time")),
             last_time=parse(input.get("last_time")),

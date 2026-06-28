@@ -81,7 +81,11 @@ def test_storage_save_overwrites_existing(tmp_path, fixed_now):
 
     storage.save(new_state)
 
-    assert json.loads(path.read_text())["2"] == {"first_time": None, "last_time": None, "last_try": now.isoformat(timespec="seconds")}
+    assert json.loads(path.read_text())["2"] == {
+        "first_time": None,
+        "last_time": None,
+        "last_try": now.isoformat(timespec="seconds"),
+    }
 
 
 def test_storage_save_creates_tmp_file_then_replaces(tmp_path):

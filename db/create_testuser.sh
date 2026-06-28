@@ -1,4 +1,8 @@
 #!/bin/bash
+# Copyright 2026 Rik Essenius
+# Licensed under the Apache License, Version 2.0. See the LICENSE file for details.
+# File: db/create_testuser.sh
+
 set -e
 
 CONTAINER="timescaledb"

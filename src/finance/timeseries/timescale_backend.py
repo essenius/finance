@@ -188,7 +188,6 @@ class TimescaleBackend:
 
         sql_template = "INSERT INTO {table} (series_id, time{extra_fields}) VALUES (%s, %s{placeholders}) ON CONFLICT (series_id, time) DO NOTHING"
 
-
         # Define the batch types
         batch_specs = [
             (

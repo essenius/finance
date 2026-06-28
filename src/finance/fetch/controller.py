@@ -41,7 +41,9 @@ class FetchController:
         self.get_providers = get_provider
         self.now = kwargs.pop("now_provider", lambda: datetime.now(UTC))
 
-    def get_window(self, first_saved: datetime | None, last_saved: datetime | None, limit: timedelta) -> tuple[datetime, datetime]:
+    def get_window(
+        self, first_saved: datetime | None, last_saved: datetime | None, limit: timedelta
+    ) -> tuple[datetime, datetime]:
 
         now = self.now()
         window_start = now - limit

@@ -87,6 +87,6 @@ def test_normalize_assets_default_resolution_settings(unwrap):
 
     assert len(assets) == 1
     assert assets[0].symbol == "SPX"
-    assert len(series) ==1
+    assert len(series) == 1
     assert series[0].interval == "1d"
     assert series[0].history_limit == "10y"

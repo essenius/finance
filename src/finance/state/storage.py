@@ -3,7 +3,6 @@
 # File: src/finance/state/storage.py
 
 import json
-from dataclasses import asdict
 from pathlib import Path
 
 from finance.state.state import SeriesState

@@ -67,7 +67,7 @@ def test_ecb_fetch_wrong_provider_code(ecb_provider, make_series, make_asset, pr
 
 
 def test_ecb_fetch_non_200(ecb_provider, assert_error, make_asset, make_series, fixed_now):
-    now=fixed_now()
+    now = fixed_now()
     provider = ecb_provider()
     provider.session.queue(500, "", "Internal Server Error")
 
@@ -94,7 +94,9 @@ MALFORMED_CASES = [
 
 
 @pytest.mark.parametrize("json_data, expected, context", MALFORMED_CASES)
-def test_ecb_malformed_json(ecb_provider, make_asset, make_series, json_data, expected, context, assert_error, fixed_now):
+def test_ecb_malformed_json(
+    ecb_provider, make_asset, make_series, json_data, expected, context, assert_error, fixed_now
+):
     now = fixed_now()
     provider = ecb_provider()
     provider.session.queue(200, json_data)

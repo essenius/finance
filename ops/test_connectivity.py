@@ -55,11 +55,11 @@ def main():
     registry.load_yaml_series(series_list)
     reconcile_registry(registry, backend)
 
-    print ("registry assets")
+    print("registry assets")
     for entry in registry.all_assets():
         print(entry)
 
-    print ("registry series")
+    print("registry series")
     for entry in registry.all_series():
         print(entry)
 

@@ -11,7 +11,7 @@ from finance.common.model import IntradayPoint, SeriesPoint
 from finance.state.wal import JsonlWAL
 
 
-def make(series_id=1, value=None, time=datetime(2026,1,1,0,0,0,tzinfo=UTC)):
+def make(series_id=1, value=None, time=datetime(2026, 1, 1, 0, 0, 0, tzinfo=UTC)):
     return IntradayPoint(series_id=series_id, value=value, time=time)
 
 

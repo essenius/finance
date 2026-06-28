@@ -274,10 +274,7 @@ def load_environment_config(env_cfg: dict, project_root: Path) -> dict:
 
     paths_cfg = env_cfg.get("paths", {})
 
-    paths = {
-        key: resolve_config_path(value, key, project_root)
-        for key, value in paths_cfg.items()
-    }
+    paths = {key: resolve_config_path(value, key, project_root) for key, value in paths_cfg.items()}
 
     timescaledb_cfg = env_cfg.get(BACKEND, {})
 

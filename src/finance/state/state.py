@@ -129,7 +129,6 @@ class State:
         """
         yield from self.series.items()
 
-
     # used for composite
     def get_last_time(self, series_id: int) -> datetime | None:
         """

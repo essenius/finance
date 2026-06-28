@@ -3,6 +3,8 @@
 # File: tests/fetch/yahoo/test_candles.py
 
 
+from datetime import UTC, datetime
+
 from finance.common.model import DAILY, INTRADAY, CandlePoint, SeriesType
 
 # ----------------------------------------------------------------------
@@ -36,7 +38,7 @@ def test_extract_candles_valid_output_structure(yahoo_provider, unwrap, make_ass
     assert len(candles) == 1
     c = candles[0]
     assert isinstance(c, CandlePoint)
-    assert c.time == now
+    assert c.time == datetime(now.year, now.month, now.day, tzinfo=UTC)
     assert c.open == 1.0
     assert c.high == 2.0
     assert c.low == 0.5

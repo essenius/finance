@@ -94,6 +94,11 @@ class SeriesPoint:
     def map(raw_fields: dict):
         return {"value": raw_fields.get(Candle.CLOSE)}
 
+    @classmethod
+    def normalize_time(cls, dt: datetime) -> datetime:
+        """Daily timestamps snap to midnight UTC. Must be overridden for intraday"""
+        return datetime(dt.year, dt.month, dt.day, 0, 0, tzinfo=UTC)
+
     @staticmethod
     def factory(series: Series) -> Callable[..., SeriesPoint]:
         if series.resolution == Resolution.INTRADAY:
@@ -209,6 +214,11 @@ class IntradayPoint(SeriesPoint):
     """
 
     value: float
+
+    @classmethod
+    def normalize_time(cls, dt: datetime) -> datetime:
+        """No change needed for intraday"""
+        return dt
 
     def to_dict(self) -> dict:
         return {

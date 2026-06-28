@@ -2,19 +2,22 @@
 -- Licensed under the Apache License, Version 2.0. See the LICENSE file for details.
 -- File: db/setup.sql
 
--- run with psql -f db/setup.sql "host=... sslmode=require ..."
+-- run with psql -f db/setup.sql "host=localhost user=postgres dbname=postgres sslmode=require"
 
 -- Create database if not exists (Postgres doesn't have CREATE DATABASE IF NOT EXISTS)
+
+CREATE EXTENSION IF NOT EXISTS dblink;
+
 DO $$
 BEGIN
    IF NOT EXISTS (
-      SELECT FROM pg_database WHERE datname = 'finance'
+      SELECT FROM pg_database WHERE datname = 'test'
    ) THEN
-      PERFORM dblink_exec('dbname=postgres', 'CREATE DATABASE finance');
+      PERFORM dblink_exec('dbname=postgres', 'CREATE DATABASE test');
    END IF;
 END$$;
 
-\connect finance;
+\connect test;
 
 -- Enable TimescaleDB
 CREATE EXTENSION IF NOT EXISTS timescaledb;
@@ -55,8 +58,21 @@ CREATE INDEX IF NOT EXISTS asset_provider_idx ON asset (provider);
 -- Series table
 -- ============================
 
-CREATE TYPE IF NOT EXISTS series_type AS ENUM ('candle', 'value');
-CREATE TYPE IF NOT EXISTS series_resolution AS ENUM ('daily', 'intraday');
+-- 'create type if not exists' does not exist
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'series_type') THEN
+        CREATE TYPE series_type AS ENUM ('candle', 'value');
+    END IF;
+END$$;
+
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'series_resolution') THEN
+        CREATE TYPE series_resolution AS ENUM ('daily', 'intraday');
+    END IF;
+END$$;
+
 
 CREATE TABLE IF NOT EXISTS series (
     id SERIAL PRIMARY KEY,
@@ -79,14 +95,11 @@ CREATE INDEX IF NOT EXISTS series_type_idx ON series (series_type);
 CREATE TABLE IF NOT EXISTS prices_intraday (
     series_id   INT NOT NULL REFERENCES series(id),
     time        TIMESTAMPTZ NOT NULL,
-    value       DOUBLE PRECISION NOT NULL
+    value       DOUBLE PRECISION NOT NULL,
+    PRIMARY KEY (series_id, time)
 );
 
 SELECT create_hypertable('prices_intraday', 'time', if_not_exists => TRUE);
-
-ALTER TABLE prices_intraday ADD PRIMARY KEY (series_id, time);
-
-CREATE INDEX IF NOT EXISTS prices_intraday_series_time_idx ON prices_intraday (series_id, time DESC);
 
 ALTER TABLE prices_intraday SET (
     timescaledb.compress,
@@ -106,20 +119,17 @@ SELECT add_retention_policy('prices_intraday', INTERVAL '30 days', if_not_exists
 -- ============================
 
 CREATE TABLE IF NOT EXISTS prices_daily (
-    time        DATE NOT NULL,
     series_id   INT NOT NULL REFERENCES series(id),
+    time        DATE NOT NULL,
     open        DOUBLE PRECISION,
     high        DOUBLE PRECISION,
     low         DOUBLE PRECISION,
     close       DOUBLE PRECISION,
-    volume      DOUBLE PRECISION
+    volume      DOUBLE PRECISION,
+    PRIMARY KEY (series_id, time)
 );
 
 SELECT create_hypertable('prices_daily', 'time', if_not_exists => TRUE);
-
-ALTER TABLE prices_daily ADD PRIMARY KEY (series_id, time);
-
-CREATE INDEX IF NOT EXISTS prices_daily_series_time_idx ON prices_daily (series_id, time DESC);
 
 ALTER TABLE prices_daily SET (
     timescaledb.compress,

@@ -2,9 +2,7 @@
 # Licensed under the Apache License, Version 2.0. See the LICENSE file for details.
 # File: src/finance/fetch/fred.py
 
-from datetime import datetime
-
-from finance.common.time_utils import to_utc_midnight
+from datetime import UTC, datetime
 
 from ..common.model import Asset, DailyValuePoint, FetchResult, Series
 from .provider import MarketDataProvider
@@ -53,13 +51,14 @@ class FredProvider(MarketDataProvider):
             if value_str in (None, ".", ""):
                 continue
 
-            # FRED date is YYYY-MM-DD
+            # FRED date is YYYY-MM-DD. While it isn't in UTC,
+            # we interpret it as such anyway, since for daily data,
+            # dates are labels, not timestamps.
             try:
-                local_datetime = datetime.fromisoformat(date_str).replace(tzinfo=self.timezone)
+                time = datetime.fromisoformat(date_str).replace(tzinfo=UTC)
             except Exception:
                 continue
 
-            time = to_utc_midnight(local_datetime)
             value = float(value_str)
             points.append(DailyValuePoint(series_id=series.id, time=time, value=value))
 

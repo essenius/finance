@@ -13,7 +13,6 @@ environment:
     host: pironman5
     port: 5432
     ssl_mode: verify-ca
-    ssl_root_cert: /opt/home-automation/certs/ca-all.crt
     db: test
     max_batch_size: 1
     max_batch_age_seconds: 1.0
@@ -47,4 +46,7 @@ business:
         currency: USD
         unit: ratio
       resolution:
-        daily: {}
+        daily: {
+          series_type: value
+        }
+        intraday: {}

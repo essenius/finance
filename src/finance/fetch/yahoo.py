@@ -109,7 +109,8 @@ class YahooProvider(MarketDataProvider):
         factory_class = point_factory.func
         for i, ts in enumerate(timestamps):
             values = {}
-            time = datetime.fromtimestamp(ts, tz=UTC)
+            raw_dt = datetime.fromtimestamp(ts, tz=UTC)
+            time = factory_class.normalize_time(raw_dt)
 
             for field in factory_class.fields():
                 arr = arrays[field]

@@ -3,11 +3,10 @@
 # File: tests/common/test_time_utils.py
 
 from datetime import UTC, datetime, timedelta
-from zoneinfo import ZoneInfo
 
 import pytest
 
-from finance.common.time_utils import normalize_db_time, parse_duration, to_utc_midnight
+from finance.common.time_utils import normalize_db_time, parse_duration
 
 # ---------------
 # Parse duration
@@ -41,7 +40,8 @@ def test_parse_duration_accepts_no_context():
 # to UTC Midnight
 # ----------------
 
-
+"""
+TODO delete if no longer needed
 def test_to_utc_midnight_chicago_summer():
     tz = ZoneInfo("America/Chicago")
     local_dt = datetime(2024, 5, 9, 0, 0, tzinfo=tz)
@@ -125,6 +125,7 @@ def test_to_utc_midnight_hawaii():
     # Local midnight in Sydney corresponds to previous UTC date
     expected = datetime(2024, 5, 10, 0, 0, tzinfo=UTC)
     assert time == expected
+"""
 
 
 def test_normalize_db_time_datetime(fixed_now):

@@ -36,6 +36,8 @@ def normalize_db_time(value):
     raise TypeError(f"Unexpected time type: {type(value)}")
 
 
+'''
+TODO delete if no longer needed
 def to_utc_midnight(local_dt: datetime) -> datetime:
     """
     Given a timezone-aware datetime representing a *local date label*,
@@ -62,3 +64,4 @@ def to_utc_midnight(local_dt: datetime) -> datetime:
     # start_utc <= next_midnight < end_utc. Invalid dates can't happen.
     next_midnight = candidate + timedelta(days=1)
     return next_midnight
+'''

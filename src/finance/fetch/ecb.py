@@ -72,7 +72,9 @@ class EcbProvider(MarketDataProvider):
                 continue
 
             try:
-                # synchronize timestamps to UTC (ECB uses CET)
+                # synchronize timestamps to UTC (ECB uses CET).
+                # this is OK, since for daily data, dates are labels. We always
+                # express them in UTC midnight so we can compare different series.
                 time = datetime.fromisoformat(date_str).replace(tzinfo=UTC)
             except Exception:
                 continue

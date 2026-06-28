@@ -25,9 +25,8 @@ def test_fred_fetch_normal_with_skipped(fred_provider, assert_ok, make_asset, ma
     asset = make_asset(provider_code="T10YIE")
     now = fixed_now()  # ignored but we need a value
     result = provider.fetch(make_series(asset), asset, now, now)
-    # timestamp should be May 10 since that is the UTC midnight timestamp where the value is valid
-    # since Fred is in the America/Chicago time zone.
-    assert_ok(result, datetime(2024, 5, 10, 0, 0, 0, tzinfo=UTC), 2.34)
+    # no change in date as the date is a label, not a timestamp
+    assert_ok(result, datetime(2024, 5, 9, 0, 0, 0, tzinfo=UTC), 2.34)
     assert len(result.payload) == 1, "Ignored invalid values"
 
 

@@ -3,7 +3,7 @@
 # File: src/finance/fetch/controller.py
 
 from collections.abc import Callable, Iterable
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 from finance.fetch.provider import MarketDataProvider
 
@@ -41,25 +41,25 @@ class FetchController:
         self.get_providers = get_provider
         self.now = kwargs.pop("now_provider", lambda: datetime.now(UTC))
 
-    def get_window(self, first_saved: int | None, last_saved: int | None, limit: int) -> tuple[int, int]:
+    def get_window(self, first_saved: datetime | None, last_saved: datetime | None, limit: timedelta) -> tuple[datetime, datetime]:
 
-        now_timestamp = self.now().timestamp()
-        window_start = now_timestamp - limit
+        now = self.now()
+        window_start = now - limit
 
         # Case 1: no history yet, get maximum
         if first_saved is None or last_saved is None:
-            return window_start, now_timestamp
+            return window_start, now
 
         # Case 2: history needed before first saved point (so get maximum and let the ingestion eliminate duplicates)
         if first_saved > window_start:
-            return window_start, now_timestamp
+            return window_start, now
 
         # Case 3: user waited too long → last_saved is outside the allowed window
         if last_saved < window_start:
-            return window_start, now_timestamp
+            return window_start, now
 
         # Case 4: normal incremental fetch → fetch after last_saved
-        return last_saved, now_timestamp
+        return last_saved, now
 
     def fetch_one_series(self, series: Series, state: State) -> FetchResult:
 
@@ -76,23 +76,23 @@ class FetchController:
             result = FetchResult.fail(series.name, f"no provider '{asset.provider}'", f"Skipped series '{series.name}'")
         else:
             entry = state.get(series.id)
-            first_saved = None if entry is None else entry.first_timestamp
-            last_saved = None if entry is None else entry.last_timestamp
-            start, end = self.get_window(first_saved, last_saved, series.history_limit_seconds)
+            first_saved = None if entry is None else entry.first_time
+            last_saved = None if entry is None else entry.last_time
+            start, end = self.get_window(first_saved, last_saved, series.history_limit_delta)
 
             result: FetchResult = provider.fetch(series, asset, start, end)
 
         # TODO eliminate. Don't think we need it right now
-        state.update_after_fetch(series.id, self.now().timestamp())
+        state.update_after_fetch(series.id, self.now())
         return result
 
     def fetch_incrementally(self, state: State) -> Iterable[FetchResult]:
-        now_timestamp = int(self.now().timestamp())
+        now = self.now()
 
         for series in self.series_list:
             # Freshness check
             state_entry = state.get(series.id)
-            fresh = state_entry is not None and now_timestamp - state_entry.last_timestamp < series.interval_seconds
+            fresh = state_entry is not None and now - state_entry.last_time < series.interval_delta
             if fresh:
                 # not an error, just skip
                 continue

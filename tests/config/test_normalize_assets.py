@@ -2,6 +2,8 @@
 # Licensed under the Apache License, Version 2.0. See the LICENSE file for details.
 # File: tests/config/test_normalize_assets.py
 
+from datetime import timedelta
+
 from finance.common.model import DAILY, INTRADAY, Asset, Resolution, Series
 from finance.config.loader import normalize_assets_and_series, normalize_providers
 
@@ -32,9 +34,9 @@ def test_normalize_assets_basic(unwrap):
     series: Series = series[0]
     assert series.name == "eurusd_intraday"
     assert series.interval == "10m"
-    assert series.interval_seconds == 600
+    assert series.interval_delta == timedelta(minutes=10)
     assert series.history_limit == "4d"
-    assert series.history_limit_seconds == 345600
+    assert series.history_limit_delta == timedelta(days=4)
     assert series.series_type == "value"
     assert series.resolution == Resolution.INTRADAY
 

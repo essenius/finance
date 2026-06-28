@@ -47,8 +47,8 @@ class MarketDataProvider:
                 return Result.fail(f"cannot index with [{key}] at {path[:i]}")
         return Result.ok_payload(current)
 
-    def fetch(self, series: Series, asset: Asset, start_timestamp: int, end_timestamp: int) -> FetchResult:
+    def fetch(self, series: Series, asset: Asset, start_time: datetime, end_time: datetime) -> FetchResult:
         """
-        Fetch data points for the given asset definition between start_timestamp and end_timestamp.
+        Fetch data points for the given asset definition between start_time and end_time.
         """
         return FetchResult.fail(series.name, "fetch not implemented")

@@ -2,6 +2,8 @@
 # Licensed under the Apache License, Version 2.0. See the LICENSE file for details.
 # File: tests/common/test_model_result.py
 
+from datetime import timedelta
+
 import pytest
 
 from finance.common.model import (
@@ -133,9 +135,9 @@ def test_series_create_with_id_differs(make_asset):
     assert series.resolution == Resolution.DAILY
     assert series.series_type == SeriesType.CANDLE
     assert series.interval == "1d"
-    assert series.interval_seconds == 86400
+    assert series.interval_delta == timedelta(days=1)
     assert series.history_limit == "10y"
-    assert series.history_limit_seconds == 315576000
+    assert series.history_limit_delta == timedelta(days=3652.5)
 
     series2 = series.with_id(10)
     assert f"{series2}" == "Series(id=10, name=spx_daily, asset_name=spx, asset_id=3, resolution=daily, series_type=candle)"

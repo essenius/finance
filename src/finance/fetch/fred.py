@@ -15,12 +15,12 @@ BASE_URL = "https://api.stlouisfed.org/fred/series/observations"
 class FredProvider(MarketDataProvider):
     """FRED daily economic data provider."""
 
-    def fetch(self, series: Series, asset: Asset, start_timestamp: int, end_timestamp: int) -> FetchResult:
+    def fetch(self, series: Series, asset: Asset, start_time: datetime, end_time: datetime) -> FetchResult:
         if not self.api_key:
             return FetchResult.fail(series.name, "FRED requires an API key")
 
-        start_date = datetime.fromtimestamp(start_timestamp, tz=UTC).date().strftime("%Y-%m-%d")
-        end_date = datetime.fromtimestamp(end_timestamp, tz=UTC).date().strftime("%Y-%m-%d")
+        start_date = start_time.date().strftime("%Y-%m-%d")
+        end_date = end_time.date().strftime("%Y-%m-%d")
 
         params = {
             "series_id": asset.provider_code,

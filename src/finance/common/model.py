@@ -7,7 +7,7 @@ from __future__ import annotations
 from abc import abstractmethod
 from collections.abc import Callable
 from dataclasses import dataclass, replace
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from enum import StrEnum
 from functools import partial
 from typing import Generic, TypeVar
@@ -83,7 +83,7 @@ class SeriesPoint:
     def to_dict(self) -> dict:
         return {
             "series_id": self.series_id,
-            "time": self.time.astimezone(UTC).isoformat(),
+            "time": self.time.astimezone(UTC).isoformat(timespec="seconds"),
         }
 
     @staticmethod
@@ -121,7 +121,7 @@ class SeriesPoint:
                 raise ValueError(f"Unknown point type: {point_type}")
 
     def __repr__(self):
-        return f"{self.__class__.__name__}(id={self.series_id}, time={self.time.astimezone(UTC).isoformat()})"
+        return f"{self.__class__.__name__}(id={self.series_id}, time={self.time.astimezone(UTC).isoformat(timespec='seconds')})"
 
 
 @dataclass(frozen=True)
@@ -384,9 +384,9 @@ class Series:
     # meta-data
     series_type: SeriesType
     interval: str | None = None
-    interval_seconds: int = 0
+    interval_delta: timedelta = timedelta(seconds=0)
     history_limit: str | None = None
-    history_limit_seconds: int = 0
+    history_limit_delta: timedelta = timedelta(seconds=0)
 
     # assigned by backend
     id: int | None = None
@@ -427,9 +427,9 @@ class Series:
             resolution=Resolution(resolution),
             series_type=series_type,
             interval=interval,
-            interval_seconds=parse_duration(interval, f"interval for {name}"),
+            interval_delta=parse_duration(interval, f"interval for {name}"),
             history_limit=history_limit,
-            history_limit_seconds=parse_duration(history_limit, f"history limit for {name}"),
+            history_limit_delta=parse_duration(history_limit, f"history limit for {name}"),
         )
 
     def with_id(self, new_id: id) -> Series:
@@ -452,6 +452,25 @@ class Series:
 
 @dataclass
 class SeriesState:
-    first_timestamp: int | None = None
-    last_timestamp: int | None = None
-    last_try: int | None = None
+    first_time: datetime | None = None
+    last_time: datetime | None = None
+    last_try: datetime | None = None
+
+    def to_dict(self):
+        def serialize(s: datetime| None) -> str|None:
+            return None if s is None else s.isoformat(timespec="seconds")
+        return {
+            "first_time": serialize(self.first_time),
+            "last_time": serialize(self.last_time),
+            "last_try": serialize(self.last_try),
+        }
+
+    @classmethod
+    def from_dict(cls, input: dict):
+        def parse(s: str) -> datetime | None:
+            return datetime.fromisoformat(s) if s is not None else None
+        return cls(
+            first_time=parse(input.get("first_time")),
+            last_time=parse(input.get("last_time")),
+            last_try=parse(input.get("last_try")),
+        )

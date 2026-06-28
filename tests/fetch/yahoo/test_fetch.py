@@ -68,13 +68,14 @@ def test_fetch_impl_yahoo_error_object(yahoo_provider, assert_error):
 # ----------------------------------------------------------------------
 
 
-def test_fetch_success(yahoo_provider, unwrap, make_asset, make_series):
+def test_fetch_success(yahoo_provider, unwrap, make_asset, make_series, fixed_now):
     response = Mock()
+    now = fixed_now()
     response.json.return_value = {
         "chart": {
             "result": [
                 {
-                    "timestamp": [1000],
+                    "timestamp": [now.timestamp()],
                     "indicators": {"quote": [{"close": [10.0]}]},
                     "meta": {},
                 }
@@ -86,7 +87,7 @@ def test_fetch_success(yahoo_provider, unwrap, make_asset, make_series):
     asset = make_asset(provider_code="AAPL")
     series = make_series(asset, interval="1d", resolution=DAILY, series_type=SeriesType.VALUE)
     with patch.object(yahoo_provider.session, "get", return_value=response):
-        result = yahoo_provider.fetch(series, asset, 900, 1100)
+        result = yahoo_provider.fetch(series, asset, now, now)
 
     payload = unwrap(result)
     assert isinstance(payload[0], DailyValuePoint), "result is DailyValuePoint"
@@ -94,18 +95,20 @@ def test_fetch_success(yahoo_provider, unwrap, make_asset, make_series):
     assert payload[0].value == 10.0, "Value is 10"
 
 
-def test_impl_http_error(yahoo_provider, assert_error, make_asset, make_series):
+def test_impl_http_error(yahoo_provider, assert_error, make_asset, make_series, fixed_now):
+    now = fixed_now()
     response = Mock()
     response.raise_for_status.side_effect = Exception("boom")
     asset = make_asset()
     series = make_series(asset)
     with patch.object(yahoo_provider.session, "get", return_value=response):
-        result = yahoo_provider.fetch(series, asset, 10, 100)
+        result = yahoo_provider.fetch(series, asset, now, now)
 
     assert_error(result, "Exception during Yahoo fetch", "boom")
 
 
-def test_fetch_fallback_to_meta(yahoo_provider, unwrap, make_asset, make_series):
+def test_fetch_fallback_to_meta(yahoo_provider, unwrap, make_asset, make_series, fixed_now):
+    now = fixed_now()
     response = Mock()
     response.json.return_value = {
         "chart": {
@@ -113,7 +116,7 @@ def test_fetch_fallback_to_meta(yahoo_provider, unwrap, make_asset, make_series)
                 {
                     "timestamp": [],
                     "indicators": {"quote": [{}]},
-                    "meta": {"regularMarketTime": 1000, "regularMarketPrice": 42.0},
+                    "meta": {"regularMarketTime": now.timestamp(), "regularMarketPrice": 42.0},
                 }
             ],
             "error": None,
@@ -124,7 +127,7 @@ def test_fetch_fallback_to_meta(yahoo_provider, unwrap, make_asset, make_series)
     with patch.object(yahoo_provider.session, "get", return_value=response):
         asset = make_asset(provider_code="AAPL")
         series = make_series(asset, interval="1d", resolution=DAILY, series_type=SeriesType.CANDLE)
-        result = yahoo_provider.fetch(series, asset, 900, 1100)
+        result = yahoo_provider.fetch(series, asset, now, now)
 
     payload = unwrap(result)
     assert len(payload) == 1
@@ -133,7 +136,7 @@ def test_fetch_fallback_to_meta(yahoo_provider, unwrap, make_asset, make_series)
     assert result.warnings == ["Missing value for 'high'", "Missing value for 'low'", "Missing value for 'volume'"]
 
 
-def test_fetch_propagates_extract_candles_error(yahoo_provider, assert_error, make_asset, make_series):
+def test_fetch_propagates_extract_candles_error(yahoo_provider, assert_error, make_asset, make_series, fixed_now):
     response = Mock()
     response.json.return_value = {
         "chart": {
@@ -148,10 +151,10 @@ def test_fetch_propagates_extract_candles_error(yahoo_provider, assert_error, ma
         }
     }
     response.raise_for_status.return_value = None
-
+    now = fixed_now()
     with patch.object(yahoo_provider.session, "get", return_value=response):
         asset = make_asset(provider_code="AAPL")
         series = make_series(asset, interval="1d", resolution=DAILY, series_type=SeriesType.VALUE)
-        result = yahoo_provider.fetch(series, asset, 900, 1100)
+        result = yahoo_provider.fetch(series, asset, now, now)
 
     assert_error(result, "Cannot synthesize from metadata", "timestamp missing")

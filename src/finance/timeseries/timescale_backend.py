@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 # import side-effectful functions like 'connect' via module (so you can easily mock)
 import psycopg
@@ -41,7 +41,7 @@ class TimescaleConfig:
     sslrootcert: str = "system"
 
     max_batch_size: int = 1000
-    max_batch_age_seconds: float = 2.0
+    max_batch_age: timedelta = timedelta(seconds=2.0)
 
     CONNECTION_FIELDS = ("host", "port", "dbname", "user", "password", "sslmode", "sslrootcert")
 
@@ -70,7 +70,7 @@ class TimescaleBackend:
                 sslmode=config.get("ssl_mode", "verify-full"),
                 sslrootcert=config.get("ssl_root_cert", "system"),
                 max_batch_size=config.get("max_batch_size", 1000),
-                max_batch_age_seconds=config.get("max_batch_age_seconds", 2.0),
+                max_batch_age=timedelta(seconds=config.get("max_batch_age_seconds", 2.0)),
             )
 
             if ts_config.sslmode == "verify-ca" and ts_config.sslrootcert == "system":
@@ -151,8 +151,8 @@ class TimescaleBackend:
         # Flush by size
         if len(self._pending) >= self._config.max_batch_size:
             return True
-        age = (now - self._last_flush).total_seconds()
-        if age >= self._config.max_batch_age_seconds:
+        age = now - self._last_flush
+        if age >= self._config.max_batch_age:
             return True
         return False
 

@@ -55,7 +55,6 @@ def state_env(state_deps) -> tuple[State, TimescaleBackend, JsonlWAL, StateStora
 @pytest.fixture
 def fixed_now():
     return lambda: datetime(2025, 6, 15, 15, 6, 40, tzinfo=UTC)
-    # equals timestamp 1_750_000_000
 
 
 @pytest.fixture
@@ -143,8 +142,8 @@ def make_series(make_asset):
         }
         params = defaults | overrides
         params["name"] = f"{asset.name}_{params['resolution']}"
-        params["interval_seconds"] = parse_duration(params["interval"])
-        params["history_limit_seconds"] = parse_duration(params["history_limit"])
+        params["interval_delta"] = parse_duration(params["interval"])
+        params["history_limit_delta"] = parse_duration(params["history_limit"])
 
         return Series(**params)
 

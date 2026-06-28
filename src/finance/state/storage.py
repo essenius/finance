@@ -34,7 +34,7 @@ class StateStorage:
             try:
                 sid = int(key)
                 if isinstance(value, dict):
-                    result[sid] = SeriesState(**value)
+                    result[sid] = SeriesState.from_dict(value)
             except Exception:
                 continue
 
@@ -47,7 +47,7 @@ class StateStorage:
 
         tmp_path = self.path.with_suffix(".tmp")
 
-        serializable = {series_id: asdict(entry) for series_id, entry in state.items()}
+        serializable = {series_id: entry.to_dict() for series_id, entry in state.items()}
         with tmp_path.open("w", encoding="utf-8") as f:
             json.dump(serializable, f, indent=2)
         tmp_path.replace(self.path)

@@ -19,9 +19,9 @@ class YahooProvider(MarketDataProvider):
     # API
     # ----
 
-    def fetch(self, series: Series, asset: Asset, start_timestamp: int, end_timestamp: int) -> FetchResult:
+    def fetch(self, series: Series, asset: Asset, start_time: datetime, end_time: datetime) -> FetchResult:
         name = series.name
-        url = self._build_url(asset.provider_code, series.interval, start_timestamp, end_timestamp)
+        url = self._build_url(asset.provider_code, series.interval, start_time, end_time)
         result = self._safe_call(measurement=name, fn=lambda: self._fetch_impl(url, name), context="Yahoo fetch")
 
         if not result.ok:
@@ -32,7 +32,7 @@ class YahooProvider(MarketDataProvider):
         # Fallback to metadata if no candles
         if not candles.payload:
             meta = result.payload.get("meta", {})
-            return self._get_from_meta(series, meta, start_timestamp, end_timestamp)
+            return self._get_from_meta(series, meta, start_time, end_time)
 
         return candles
 
@@ -40,12 +40,12 @@ class YahooProvider(MarketDataProvider):
     # Fetch data
     # -----------
 
-    def _build_url(self, provider_code, interval_str, start_ts, end_ts):
+    def _build_url(self, provider_code, interval_str, start_time, end_time):
         encoded = quote(provider_code, safe="")
         params = {
             "interval": interval_str,
-            "period1": int(start_ts),
-            "period2": int(end_ts),
+            "period1": int(start_time.timestamp()),
+            "period2": int(end_time.timestamp()),
             "includePrePost": "false",
             "events": "div,splits",
         }
@@ -156,7 +156,7 @@ class YahooProvider(MarketDataProvider):
         "volume": "regularMarketVolume",
     }
 
-    def _get_from_meta(self, series: Series, meta: dict, start_timestamp: int, end_timestamp: int) -> FetchResult:
+    def _get_from_meta(self, series: Series, meta: dict, start_time: datetime, end_time: datetime) -> FetchResult:
 
         name = series.name
         timestamp = meta.get("regularMarketTime")
@@ -168,7 +168,7 @@ class YahooProvider(MarketDataProvider):
         time = datetime.fromtimestamp(timestamp, UTC)
 
         # Reject metadata outside requested window
-        if not (start_timestamp <= timestamp <= end_timestamp):
+        if not (start_time <= time <= end_time):
             return FetchResult.fail(name, reason, "metadata timestamp outside requested range")
 
         factory = SeriesPoint.factory(series)

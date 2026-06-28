@@ -3,7 +3,7 @@
 # File: tests/fetch/test_controller.py
 
 from collections.abc import Callable, Iterable
-from datetime import datetime
+from datetime import datetime, timedelta
 from unittest.mock import Mock
 
 from finance.common.model import INTRADAY, Asset, MeasurementResult, Series, SeriesState, SeriesType
@@ -43,9 +43,9 @@ def make_series_list(asset, interval="10m", history_limit="5d", resolution=INTRA
             asset_name=asset.name,
             series_type=SeriesType.VALUE,
             interval=interval,
-            interval_seconds=parse_duration(interval),
+            interval_delta=parse_duration(interval),
             history_limit=history_limit,
-            history_limit_seconds=parse_duration(history_limit),
+            history_limit_delta=parse_duration(history_limit),
         )
     ]
 
@@ -93,9 +93,12 @@ def test_controller_skips_fresh(state, fixed_now, make_asset):
     series = make_series_list(asset, interval="1h")
     fc = make_fetch_controller(series, assets.get, fixed_now)
 
-    now = fixed_now().timestamp()
+    now = fixed_now()
+    first = now - timedelta(seconds=10000)
+    last = now - timedelta(seconds=1000)
+    last_try = now - timedelta(seconds=100)
     state.series.clear()
-    state.series[1] = SeriesState(last_try=now - 100, first_timestamp=now - 10000, last_timestamp=now - 1000)
+    state.series[1] = SeriesState(last_try=last_try, first_time=first, last_time=last)
 
     results = list(fc.fetch_incrementally(state))
     assert results == []
@@ -109,11 +112,13 @@ def test_controller_fetches_when_stale(state, fixed_now, make_asset):
     series = make_series_list(asset, interval="1h")
 
     fc = make_fetch_controller(series, assets.get, fixed_now)
-    now = fixed_now().timestamp()
+    now = fixed_now()
     state.series.clear()
 
     # stale vs 1h
-    state.series[1] = SeriesState(last_try=now - 7200, first_timestamp=now - 36000, last_timestamp=now - 7200)
+    state.series[1] = SeriesState(
+        last_try=now - timedelta(hours=2), first_time=now - timedelta(hours=10), last_time=now - timedelta(hours=2)
+    )
 
     result = single_result(fc, state)
     assert result.ok
@@ -137,7 +142,7 @@ def test_controller_unknown_provider(assert_error, state, fixed_now, make_asset)
     assert result.series_name == "eur_usd_intraday"
 
     assert 1 in state.series
-    assert state.series[1].last_try == fixed_now().timestamp()
+    assert state.series[1].last_try == fixed_now()
 
 
 def test_controller_unknown_asset(assert_error, state, fixed_now, make_asset):
@@ -166,7 +171,7 @@ def test_controller_malformed_result(assert_error, state, fixed_now, make_asset)
     assert_error(result, "bad data", None)
 
     # always updates state, even when failed
-    assert state.series[1].last_try == fixed_now().timestamp()
+    assert state.series[1].last_try == fixed_now()
 
 
 def test_controller_multiple_assets(state, fixed_now, make_asset):
@@ -197,14 +202,18 @@ def test_controller_multiple_assets(state, fixed_now, make_asset):
 
 def test_get_window_user_waited_too_long(fixed_now):
     fc = FetchController([], always_none, always_none, now_provider=fixed_now)
-    now = fixed_now().timestamp()
-    start, end = fc.get_window(first_saved=now - 1000, last_saved=now - 1000, limit=500)
-    assert (start, end) == (now - 500, now)
+    now = fixed_now()
+    last = now - timedelta(seconds=1000)
+    limit = timedelta(seconds=500)
+    start, end = fc.get_window(first_saved=last, last_saved=last, limit=limit)
+    assert (start, end) == (now - limit, now)
 
 
 def test_get_window_normal_incremental(fixed_now):
     fc = FetchController([], always_none, always_none, now_provider=fixed_now)
-    now = fixed_now().timestamp()
-    # limit = 500 → window_start = 1500
-    start, end = fc.get_window(first_saved=now - 500, last_saved=now - 400, limit=500)
-    assert (start, end) == (now - 400, now)
+    now = fixed_now()
+    limit = timedelta(seconds=500)
+    first = now - limit
+    last = now - timedelta(seconds=400)
+    start, end = fc.get_window(first_saved=first, last_saved=last, limit=limit)
+    assert (start, end) == (last, now)

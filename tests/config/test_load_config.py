@@ -2,6 +2,8 @@
 # Licensed under the Apache License, Version 2.0. See the LICENSE file for details.
 # File: tests/config/test_load_config.py
 
+from datetime import timedelta
+
 from finance.common.model import Asset, Provider, Resolution, Series, SeriesType
 from finance.config.loader import ConfigLoader, load_yaml_config
 
@@ -78,9 +80,9 @@ business:
     assert series.asset_id is None
     assert series.asset_name == "spx"
     assert series.history_limit == "10y"
-    assert series.history_limit_seconds == 315576000
+    assert series.history_limit_delta == timedelta(days=3652.5)
     assert series.interval == "1d"
-    assert series.interval_seconds == 86400
+    assert series.interval_delta == timedelta(days=1)
     assert series.resolution == Resolution.DAILY
     assert series.series_type == SeriesType.CANDLE
     assert series.id is None

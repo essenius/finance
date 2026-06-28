@@ -85,8 +85,9 @@ def test_safe_get_errors(dummy_provider, data: any, path, expected):
 # -----------
 
 
-def test_fetch_not_implemented(dummy_provider, make_series, make_asset_dict):
+def test_fetch_not_implemented(dummy_provider, make_series, make_asset_dict, fixed_now):
     assets = make_asset_dict()
-    result = dummy_provider().fetch(make_series(assets["eur_usd"]), assets, start_timestamp=0, end_timestamp=0)
+    now = fixed_now()
+    result = dummy_provider().fetch(make_series(assets["eur_usd"]), assets, start_time=now, end_time=now)
     assert not result.ok
     assert result.reason == "fetch not implemented"

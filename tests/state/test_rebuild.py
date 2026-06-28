@@ -63,8 +63,8 @@ def make_state(*, wal_entries=None, first=None, last=None, initial_state=None) -
 
 
 def assert_result(result: SeriesState, first: int, last: int):
-    assert result.first_timestamp == first
-    assert result.last_timestamp == last
+    assert result.first_time == first
+    assert result.last_time == last
 
 
 # ------

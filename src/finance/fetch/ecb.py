@@ -15,9 +15,9 @@ BASE_URL = "https://data-api.ecb.europa.eu/service/data"
 class EcbProvider(MarketDataProvider):
     """ECB daily FX provider (no intraday)."""
 
-    def fetch(self, series: Series, asset: Asset, start_timestamp: int, end_timestamp: int) -> FetchResult:
-        start_date = datetime.fromtimestamp(start_timestamp, tz=UTC).date().isoformat()
-        end_date = datetime.fromtimestamp(end_timestamp, tz=UTC).date().isoformat()
+    def fetch(self, series: Series, asset: Asset, start_time: datetime, end_time: datetime) -> FetchResult:
+        start_date = start_time.date().isoformat()
+        end_date = end_time.date().isoformat()
 
         params = {"format": "jsondata", "startPeriod": start_date, "endPeriod": end_date, "detail": "dataonly"}
         return self._safe_call(

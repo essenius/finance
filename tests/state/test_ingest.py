@@ -107,7 +107,7 @@ def test_ingest_first_time(state_env, make_entry, unwrap):
 def test_ingest_no_first_timestamp(state_env, make_entry):
     state, _, wal, _ = state_env
     # inconsistent state, should treat last as None
-    state.series[1] = SeriesState(last_timestamp=1000)
+    state.series[1] = SeriesState(last_time=1000)
     args = make_entry(timestamp=1000)
     write = replace(args["point"], value=1.11)
 
@@ -122,7 +122,7 @@ def test_ingest_no_first_timestamp(state_env, make_entry):
 def test_ingest_no_last_timestamp(state_env, make_entry):
     state, _, wal, _ = state_env
     # inconsistent state, should treat last as None
-    state.series[1] = SeriesState(first_timestamp=0)
+    state.series[1] = SeriesState(first_time=0)
 
     args = make_entry(timestamp=0)
     write = replace(args["point"], value=1.11)
@@ -137,7 +137,7 @@ def test_ingest_no_last_timestamp(state_env, make_entry):
 
 def test_ingest_new_write(state_env, make_entry):
     state, _, wal, _ = state_env
-    state.series[1] = SeriesState(first_timestamp=0, last_timestamp=1000)
+    state.series[1] = SeriesState(first_time=0, last_time=1000)
 
     args = make_entry(timestamp=2000)
     write = replace(args["point"], value=1.11)
@@ -151,7 +151,7 @@ def test_ingest_new_write(state_env, make_entry):
 
 def test_ingest_skip_unchanged(state_env, make_entry):
     state, _, wal, _ = state_env
-    state.series[1] = SeriesState(first_timestamp=0, last_timestamp=1000)
+    state.series[1] = SeriesState(first_time=0, last_time=1000)
 
     args = make_entry(timestamp=1000)
     write = replace(args["point"], value=1.10)
@@ -166,7 +166,7 @@ def test_ingest_skip_unchanged(state_env, make_entry):
 
 def test_ingest_skip_in_range(state_env, make_entry):
     state, _, wal, _ = state_env
-    state.series[1] = SeriesState(first_timestamp=0, last_timestamp=2000)
+    state.series[1] = SeriesState(first_time=0, last_time=2000)
 
     args = make_entry(timestamp=1000)
     write = replace(args["point"], value=1.09)
@@ -181,7 +181,7 @@ def test_ingest_skip_in_range(state_env, make_entry):
 
 def test_ingest_before_range(state_env, make_entry):
     state, _, wal, _ = state_env
-    state.series[1] = SeriesState(first_timestamp=1000, last_timestamp=2000)
+    state.series[1] = SeriesState(first_time=1000, last_time=2000)
 
     args = make_entry(timestamp=500)
     write = replace(args["point"], value=1.09)

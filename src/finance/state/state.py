@@ -4,6 +4,7 @@
 
 from collections.abc import Iterable
 from dataclasses import replace
+from datetime import datetime
 
 from ..common.model import Series, SeriesPoint, SeriesResult, SeriesState
 from ..state.storage import StateStorage
@@ -33,7 +34,7 @@ class State:
 
         return None
 
-    def update_after_fetch(self, series_id: int, now: int) -> bool:
+    def update_after_fetch(self, series_id: int, now: datetime) -> bool:
         """
         Record that a fetch attempt was made
         """
@@ -44,35 +45,35 @@ class State:
         else:
             self.series[series_id] = replace(old, last_try=now)
 
-    def _compute_policy(self, series_id: int, timestamp: int) -> dict:
+    def _compute_policy(self, series_id: int, time: datetime) -> dict:
         entry = self.get(series_id)
 
-        # No state or no timestamp → first ever point, must write
-        if entry is None or entry.first_timestamp is None or entry.last_timestamp is None:
+        # No state or no time → first ever point, must write
+        if entry is None or entry.first_time is None or entry.last_time is None:
             return {"skipped": False, "reason": "first"}
 
         # Before known window → must write
-        if timestamp < entry.first_timestamp:
+        if time < entry.first_time:
             return {"skipped": False, "reason": "before-window"}
 
         # After known window → must write
-        if timestamp > entry.last_timestamp:
+        if time > entry.last_time:
             return {"skipped": False, "reason": "new"}
 
         # Inside window → skip
-        if timestamp == entry.last_timestamp:
+        if time == entry.last_time:
             return {"skipped": True, "reason": "unchanged"}
 
         return {"skipped": True, "reason": "inside-window"}
 
-    def update_range(self, series_id: int, first: int, last: int) -> None:
+    def update_range(self, series_id: int, first: datetime, last: datetime) -> None:
         """
         Update the saved range after a batch has been ingested
         """
         s = self.series.get(series_id) or SeriesState()
 
-        new_first = s.first_timestamp
-        new_last = s.last_timestamp
+        new_first = s.first_time
+        new_last = s.last_time
 
         if new_last is None or last > new_last:
             new_last = last
@@ -80,8 +81,8 @@ class State:
         if new_first is None or first < new_first:
             new_first = first
 
-        if new_first != s.first_timestamp or new_last != s.last_timestamp:
-            self.series[series_id] = replace(s, first_timestamp=new_first, last_timestamp=new_last)
+        if new_first != s.first_time or new_last != s.last_time:
+            self.series[series_id] = replace(s, first_time=new_first, last_time=new_last)
 
     def ingest(self, series: Series, point: SeriesPoint) -> SeriesResult:
         """
@@ -91,7 +92,7 @@ class State:
         - flush WAL FIFO to timeseries_client
         - on first write failure, stop and return that result
 
-        Note: first and last timestamps are not updated, that needs to happen after the batch was done
+        Note: first and last times are not updated, that needs to happen after the batch was done
         """
         policy = self._compute_policy(series.id, point.time)
         if policy["skipped"]:
@@ -128,12 +129,14 @@ class State:
         """
         yield from self.series.items()
 
-    def get_last_timestamp(self, series_id: int) -> int | None:
+
+    # used for composite
+    def get_last_time(self, series_id: int) -> datetime | None:
         """
-        Return the last_timestamp for a metric, performing lazy rebuild if needed.
+        Return the last_time for a metric, performing lazy rebuild if needed.
         """
         entry = self.get(series_id)
-        return None if entry is None else entry.last_timestamp
+        return None if entry is None else entry.last_time
 
     '''
     Removed from V1 scope
@@ -154,7 +157,6 @@ class State:
         wal_first = min((e.time for e in wal_entries), default=None)
         wal_last = max((e.time for e in wal_entries), default=None)
 
-        # Collect Timescale timestamps
         timescale_first_point = self._backend.read_first(series_id)
         timescale_last_point = self._backend.read_last(series_id)
 
@@ -165,11 +167,11 @@ class State:
         if wal_first is None and timescale_first is None:
             return None
 
-        first_timestamp = min(timestamp for timestamp in (wal_first, timescale_first) if timestamp is not None)
-        last_timestamp = max(timestamp for timestamp in (wal_last, timescale_last) if timestamp is not None)
+        first_time = min(time for time in (wal_first, timescale_first) if time is not None)
+        last_time = max(time for time in (wal_last, timescale_last) if time is not None)
 
         return SeriesState(
-            first_timestamp=first_timestamp,
-            last_timestamp=last_timestamp,
+            first_time=first_time,
+            last_time=last_time,
             last_try=None,
         )

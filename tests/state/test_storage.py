@@ -15,13 +15,15 @@ def test_storage_load_missing_file(tmp_path):
     assert storage.load() == {}
 
 
-def test_storage_load_valid_dict(tmp_path):
+def test_storage_load_valid_dict(tmp_path, fixed_now):
+    now = fixed_now()
     path = tmp_path / "state.json"
-    data = {1: {"last_try": 123}}
+    data = {1: {"last_try": now.isoformat(timespec="seconds")}}
     path.write_text(json.dumps(data))
 
     storage = StateStorage(path)
-    assert storage.load()[1] == SeriesState(first_timestamp=None, last_timestamp=None, last_try=123)
+    state_dict = storage.load()
+    assert state_dict[1] == SeriesState(first_time=None, last_time=None, last_try=now)
 
 
 def test_storage_load_ignore_non_dict(tmp_path):
@@ -56,28 +58,30 @@ def test_storage_load_ignore_invalid_json(tmp_path):
     assert storage.load() == {}
 
 
-def test_storage_save_atomic_success(tmp_path):
+def test_storage_save_atomic_success(tmp_path, fixed_now):
+    now = fixed_now()
     path = tmp_path / "state.json"
     storage = StateStorage(path)
 
-    state = {1: SeriesState(last_try=123)}
+    state = {1: SeriesState(last_try=now)}
     storage.save(state)
 
     assert path.exists()
     result = json.loads(path.read_text())
-    assert result["1"] == {"first_timestamp": None, "last_timestamp": None, "last_try": 123}
+    assert result["1"] == {"first_time": None, "last_time": None, "last_try": now.isoformat(timespec="seconds")}
 
 
-def test_storage_save_overwrites_existing(tmp_path):
+def test_storage_save_overwrites_existing(tmp_path, fixed_now):
+    now = fixed_now()
     path = tmp_path / "state.json"
     path.write_text("OLD DATA")
 
     storage = StateStorage(path)
-    new_state = {2: SeriesState(last_try=2000)}
+    new_state = {2: SeriesState(last_try=now)}
 
     storage.save(new_state)
 
-    assert json.loads(path.read_text())["2"] == {"first_timestamp": None, "last_timestamp": None, "last_try": 2000}
+    assert json.loads(path.read_text())["2"] == {"first_time": None, "last_time": None, "last_try": now.isoformat(timespec="seconds")}
 
 
 def test_storage_save_creates_tmp_file_then_replaces(tmp_path):
@@ -98,11 +102,12 @@ def test_storage_save_creates_tmp_file_then_replaces(tmp_path):
     assert not tmp_path.exists()
 
 
-def test_storage_load_after_save(tmp_path):
+def test_storage_load_after_save(tmp_path, fixed_now):
+    now = fixed_now()
     path = tmp_path / "state.json"
     storage = StateStorage(path)
 
-    state = {3: SeriesState(last_try=123)}
+    state = {3: SeriesState(last_try=now)}
     storage.save(state)
 
     loaded = storage.load()

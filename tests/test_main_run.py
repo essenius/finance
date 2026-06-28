@@ -30,8 +30,8 @@ class FakeFetchController:
         self.outputs = outputs
 
     def fetch_incrementally(self, state) -> Iterable[FetchResult]:
-        for id, value, ts in self.outputs:
-            fp = DailyValuePoint(series_id=id, time=ts, value=value)
+        for id, value, time in self.outputs:
+            fp = DailyValuePoint(series_id=id, time=time, value=value)
             yield FetchResult.ok_payload("spx", [fp])
 
 
@@ -60,7 +60,7 @@ class FakeCompositeEngine:
 def test_run_happy_path(tmp_path, caplog, fixed_now, state_deps, make_asset, make_series):
 
     timescale_backend, wal, storage = state_deps
-
+    now = fixed_now()
     state_holder = {}
     caplog.set_level("DEBUG")
     asset = make_asset()
@@ -86,7 +86,7 @@ def test_run_happy_path(tmp_path, caplog, fixed_now, state_deps, make_asset, mak
         return Result.ok_payload(fake_config)
 
     def fetch_controller_factory(series, get_assets, get_providers):
-        return FakeFetchController([(1, 4321, 100)])
+        return FakeFetchController([(1, 4321, now)])
 
     # def composite_engine_builder(composites, state):
     #    return Result.ok_payload(FakeCompositeEngine([("spread", {"value": 10}, 200)]))
@@ -108,7 +108,7 @@ def test_run_happy_path(tmp_path, caplog, fixed_now, state_deps, make_asset, mak
     state = state_holder["state"]
 
     # Validate state writes
-    assert state.series.get(1) == SeriesState(first_timestamp=100, last_timestamp=100)
+    assert state.series.get(1) == SeriesState(first_time=now, last_time=now)
 
     assert "Finance version:" in caplog.text
     assert "Done." in caplog.text

@@ -40,7 +40,7 @@ def make_backend():
             user="u",
             password="p",
             max_batch_size=max_batch_size,
-            max_batch_age_seconds=max_batch_age_seconds,
+            max_batch_age=timedelta(seconds=max_batch_age_seconds),
         )
         backend = TimescaleBackend(cfg, FakeClock())
         backend._connection = MagicMock()

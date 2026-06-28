@@ -73,11 +73,11 @@ class EcbProvider(MarketDataProvider):
 
             try:
                 # synchronize timestamps to UTC (ECB uses CET)
-                ts = int(datetime.fromisoformat(date_str).replace(tzinfo=UTC).timestamp())
+                time = datetime.fromisoformat(date_str).replace(tzinfo=UTC)
             except Exception:
                 continue
 
-            points.append(DailyValuePoint(series_id=series.id, timestamp=ts, value=value))
+            points.append(DailyValuePoint(series_id=series.id, time=time, value=value))
 
         return points
 

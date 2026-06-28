@@ -2,7 +2,7 @@
 # Licensed under the Apache License, Version 2.0. See the LICENSE file for details.
 # File: tests/timeseries/test_timescale_backend.py
 
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 from unittest.mock import MagicMock, patch
 
 from finance.common.model import CandlePoint, DailyValuePoint, IntradayPoint, SeriesPoint
@@ -36,7 +36,12 @@ def test_from_config_failure_cert(assert_error):
 
     result = TimescaleBackend.from_config(config)
 
-    assert_error(result, "Timescale backend initialization failed", "verify-ca requires path in TIMESCALEDB_SSL_ROOT_CERT in .env or ssl_root_cert in yaml")
+    assert_error(
+        result,
+        "Timescale backend initialization failed",
+        "verify-ca requires path in TIMESCALEDB_SSL_ROOT_CERT in .env or ssl_root_cert in yaml",
+    )
+
 
 def test_from_config_success_no_defaults():
     config = {
@@ -135,7 +140,7 @@ def test_flush_without_connection_and_exception(unwrap, fixed_now, assert_error)
     backend = unwrap(TimescaleBackend.from_config(default_config | {"max_batch_size": 1}))
     now = fixed_now()
 
-    entry = IntradayPoint(series_id=0, timestamp=now, value=1)
+    entry = IntradayPoint(series_id=0, time=now, value=1)
 
     with patch("psycopg.connect") as mock_connect:
         mock_connect.side_effect = Exception("Boom!")
@@ -153,8 +158,8 @@ def test_add_writes_two_entries(unwrap, fixed_now):
 
     now = fixed_now()
     next = now + timedelta(seconds=1)
-    entry1 = IntradayPoint(series_id=1, timestamp=now, value=1)
-    entry2 = CandlePoint(series_id=2, timestamp=next, close=1.1, volume=2)
+    entry1 = IntradayPoint(series_id=1, time=now, value=1)
+    entry2 = CandlePoint(series_id=2, time=next, close=1.1, volume=2)
 
     with patch("psycopg.connect", return_value=mock_conn):
         result = backend.add(entry1)
@@ -176,7 +181,7 @@ def test_close_writes(unwrap, fixed_now):
     mock_conn.cursor.return_value.__enter__.return_value = mock_cursor
 
     now = fixed_now()
-    entry1 = IntradayPoint(series_id=1, timestamp=now, value=1)
+    entry1 = IntradayPoint(series_id=1, time=now, value=1)
 
     with patch("psycopg.connect", return_value=mock_conn):
         result = backend.add(entry1)
@@ -197,7 +202,7 @@ def test_flush_writes_when_batch_too_old(unwrap, fixed_now):
     mock_conn.cursor.return_value.__enter__.return_value = mock_cursor
 
     now = fixed_now()
-    entry = IntradayPoint(series_id=1, timestamp=now, value=1)
+    entry = IntradayPoint(series_id=1, time=now, value=1)
 
     with patch("psycopg.connect", return_value=mock_conn):
         result = backend.add(entry)
@@ -218,7 +223,7 @@ def test_flush_raises_in_context_manager(unwrap, fixed_now, assert_error):
     mock_cursor_cm.__enter__.side_effect = Exception("Cursor boom!")
     mock_conn.cursor.return_value = mock_cursor_cm
 
-    entry = IntradayPoint(series_id=1, timestamp=fixed_now(), value=1)
+    entry = IntradayPoint(series_id=1, time=fixed_now(), value=1)
 
     # patch connect so ensure_connected() returns our mock_conn
     with patch("psycopg.connect", return_value=mock_conn):
@@ -230,7 +235,7 @@ def test_flush_raises_in_context_manager(unwrap, fixed_now, assert_error):
 def test_flush_invalid_series_point(unwrap, fixed_now, assert_error):
     backend: TimescaleBackend = unwrap(TimescaleBackend.from_config(default_config | {"max_batch_size": 1}))
 
-    entry = SeriesPoint(series_id=1, timestamp=fixed_now())
+    entry = SeriesPoint(series_id=1, time=fixed_now())
 
     # patch connect so ensure_connected() returns our mock_conn
     # with patch("psycopg.connect", return_value=mock_conn):
@@ -258,11 +263,11 @@ def make_mock_cursor(rows):
     return mock_cm
 
 
-def test_read_first_returns_candle_row(unwrap):
+def test_read_first_returns_candle_row(unwrap, fixed_now):
     backend = unwrap(TimescaleBackend.from_config(default_config))
-
+    now = fixed_now()
     mock_conn = MagicMock()
-    mock_cursor_cm = make_mock_cursor(rows=[(1, 0, 10, 12, 8, 11, 1000)])
+    mock_cursor_cm = make_mock_cursor(rows=[(1, now, 10, 12, 8, 11, 1000)])
 
     mock_conn.cursor.return_value = mock_cursor_cm
 
@@ -270,14 +275,16 @@ def test_read_first_returns_candle_row(unwrap):
         result = backend.read_first(1)
 
     assert result.ok
-    assert result.payload == CandlePoint(series_id=1, timestamp=0, open=10, high=12, low=8, close=11, volume=1000)
+    assert result.payload == CandlePoint(series_id=1, time=now, open=10, high=12, low=8, close=11, volume=1000)
 
 
-def test_read_first_returns_value_row(unwrap):
+def test_read_first_returns_value_row(unwrap, fixed_now):
     backend = unwrap(TimescaleBackend.from_config(default_config))
     backend._intraday_series_ids = {1}
     mock_conn = MagicMock()
-    mock_cursor_cm = make_mock_cursor(rows=[(1, 0, 15)])
+
+    now = fixed_now()
+    mock_cursor_cm = make_mock_cursor(rows=[(1, now, 15)])
 
     mock_conn.cursor.return_value = mock_cursor_cm
 
@@ -285,7 +292,7 @@ def test_read_first_returns_value_row(unwrap):
         result = backend.read_first(1)
 
     assert result.ok
-    assert result.payload == IntradayPoint(series_id=1, timestamp=0, value=15)
+    assert result.payload == IntradayPoint(series_id=1, time=now, value=15)
 
 
 def test_read_first_returns_none_when_empty(unwrap):
@@ -329,11 +336,11 @@ def test_read_first_rejects_empty_id(unwrap, assert_error):
     assert_error(result, "Series id not set for Read first", None)
 
 
-def test_read_last_returns_daily_value_point(unwrap):
+def test_read_last_returns_daily_value_point(unwrap, fixed_now):
     backend = unwrap(TimescaleBackend.from_config(default_config))
-
+    now = fixed_now().date()
     mock_conn = MagicMock()
-    mock_cursor_cm = make_mock_cursor(rows=[(1, 0, None, None, None, 11, None)])
+    mock_cursor_cm = make_mock_cursor(rows=[(1, now, None, None, None, 11, None)])
 
     mock_conn.cursor.return_value = mock_cursor_cm
 
@@ -341,4 +348,5 @@ def test_read_last_returns_daily_value_point(unwrap):
         result = backend.read_last(1)
 
     assert result.ok
-    assert result.payload == DailyValuePoint(series_id=1, timestamp=0, value=11)
+    midnight_today = datetime(now.year, now.month, now.day, 0, 0, 0, tzinfo=UTC)
+    assert result.payload == DailyValuePoint(series_id=1, time=midnight_today, value=11)

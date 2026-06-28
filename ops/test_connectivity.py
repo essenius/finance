@@ -73,10 +73,10 @@ def main():
     for entry in series:
         print(entry)
 
-    print("writing point")
-    now = datetime.now(tz=UTC).timestamp()
+    now = datetime.now(tz=UTC)
+    print(f"writing point at {now}")
     id = registry.all_series()[0].id
-    point = DailyValuePoint(id, now, 123.45)
+    point = DailyValuePoint(id, now, 123.47)
     result = backend.add(point)
     if not result.ok:
         print(f"Write failed: {result.reason}, {result.error}")
@@ -86,7 +86,7 @@ def main():
     # Read it back
 
     print("Reading back...")
-    read_result = backend.read_first(id)
+    read_result = backend.read_last(id)
 
     if not read_result.ok:
         print("Read failed:", read_result.error)

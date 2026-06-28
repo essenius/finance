@@ -3,6 +3,7 @@
 # File: src/finance/fetch/yahoo.py
 
 from collections.abc import Callable
+from datetime import UTC, datetime
 from urllib.parse import quote, urlencode
 
 from ..common.model import Asset, FetchResult, MeasurementResult, Result, Series, SeriesPoint
@@ -108,6 +109,7 @@ class YahooProvider(MarketDataProvider):
         factory_class = point_factory.func
         for i, ts in enumerate(timestamps):
             values = {}
+            time = datetime.fromtimestamp(ts, tz=UTC)
 
             for field in factory_class.fields():
                 arr = arrays[field]
@@ -119,7 +121,7 @@ class YahooProvider(MarketDataProvider):
 
             else:
                 mapped = factory_class.map(values)
-                point = point_factory(timestamp=ts, **mapped)
+                point = point_factory(time=time, **mapped)
                 candles.append(point)
 
         return candles, invalid_count
@@ -163,6 +165,8 @@ class YahooProvider(MarketDataProvider):
         if timestamp is None:
             return FetchResult.fail(name, reason, "timestamp missing")
 
+        time = datetime.fromtimestamp(timestamp, UTC)
+
         # Reject metadata outside requested window
         if not (start_timestamp <= timestamp <= end_timestamp):
             return FetchResult.fail(name, reason, "metadata timestamp outside requested range")
@@ -188,4 +192,4 @@ class YahooProvider(MarketDataProvider):
             return FetchResult.fail(name, reason, "No fields synthesized", warnings)
 
         mapped = factory.func.map(synthetic)
-        return FetchResult.ok_payload(name, [factory(timestamp=timestamp, **mapped)], warnings)
+        return FetchResult.ok_payload(name, [factory(time=time, **mapped)], warnings)

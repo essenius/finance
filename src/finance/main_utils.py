@@ -80,17 +80,10 @@ def process_result(result: FetchResult, state: State, series: Series) -> bool:
 
     all_ok = True
 
-    batch_first = payload[0].timestamp
-    batch_last = payload[-1].timestamp
+    batch_first = payload[0].time
+    batch_last = payload[-1].time
 
     for point in payload:
-        # write = TimeseriesWrite(
-        #    series_name=result.series_name,
-        #    fields=point.fields,
-        #    tags=tags or {},
-        #    timestamp=point.timestamp,
-        # )
-
         ingest_result = state.ingest(series, point)
         # log any errors
         unwrap(ingest_result, throw=False)

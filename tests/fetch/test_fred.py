@@ -2,6 +2,8 @@
 # Licensed under the Apache License, Version 2.0. See the LICENSE file for details.
 # File: tests/fetch/test_fred.py
 
+from datetime import UTC, datetime
+
 import pytest
 
 
@@ -23,7 +25,7 @@ def test_fred_fetch_normal_with_skipped(fred_provider, assert_ok, make_asset, ma
     asset = make_asset(provider_code="T10YIE")
     result = provider.fetch(make_series(asset), asset, 0, 1000)
     # timestamp should be 2026-05-10 00:00 UTC since that is the UTC midnight timsetamp where the value is valid
-    assert_ok(result, 1715299200, 2.34)
+    assert_ok(result, datetime(2024,5,10,0,0,0, tzinfo=UTC), 2.34)
     assert len(result.payload) == 1, "Ignored invalid values"
 
 

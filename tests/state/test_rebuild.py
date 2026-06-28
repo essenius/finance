@@ -42,7 +42,7 @@ class FakeStorage:
 
 
 def make_backend_result(timestamp, value):
-    return SeriesResult.ok_payload("spx", DailyValuePoint(series_id=1, timestamp=timestamp, value=value))
+    return SeriesResult.ok_payload("spx", DailyValuePoint(series_id=1, time=timestamp, value=value))
 
 
 def make_backend_fail_result():
@@ -50,7 +50,7 @@ def make_backend_fail_result():
 
 
 def make_wal_result(timestamp, value) -> SeriesPoint:
-    return DailyValuePoint(series_id=1, timestamp=timestamp, value=value)
+    return DailyValuePoint(series_id=1, time=timestamp, value=value)
 
 
 def make_state(*, wal_entries=None, first=None, last=None, initial_state=None) -> State:

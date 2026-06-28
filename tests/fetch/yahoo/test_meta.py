@@ -6,9 +6,12 @@
 from finance.common.model import DAILY, CandlePoint, DailyValuePoint, SeriesType
 
 
-def test_get_from_meta_full_success(yahoo_provider, unwrap, make_asset, make_series):
+def test_get_from_meta_full_success(yahoo_provider, unwrap, make_asset, make_series, fixed_now):
+    now = int(fixed_now().timestamp())
+    min = now - 100
+    max = now + 100
     meta = {
-        "regularMarketTime": 1000,
+        "regularMarketTime": now,
         "regularMarketPrice": 10.0,
         "regularMarketDayHigh": 12.0,
         "regularMarketDayLow": 8.0,
@@ -17,19 +20,21 @@ def test_get_from_meta_full_success(yahoo_provider, unwrap, make_asset, make_ser
 
     asset = make_asset()
     series = make_series(asset, resolution=DAILY, series_type=SeriesType.CANDLE)
-    result = yahoo_provider._get_from_meta(series, meta, 900, 1100)
+    result = yahoo_provider._get_from_meta(series, meta, min, max)
     payload = unwrap(result)
 
     assert len(payload) == 1
     assert isinstance(payload[0], CandlePoint)
     assert payload[0] == CandlePoint(
-        series_id=series.id, timestamp=1000, open=None, high=12.0, low=8.0, close=10.0, volume=999
+        series_id=series.id, time=fixed_now(), open=None, high=12.0, low=8.0, close=10.0, volume=999
     )
 
 
-def test_get_from_meta_partial_success(yahoo_provider, unwrap, make_asset, make_series):
+def test_get_from_meta_partial_success(yahoo_provider, unwrap, make_asset, make_series, fixed_now):
+    now = fixed_now()
+    now_timestamp = int(now.timestamp())
     meta = {
-        "regularMarketTime": 1000,
+        "regularMarketTime": now_timestamp,
         "regularMarketPrice": 10.0,
         "regularMarketDayHigh": None,
         "regularMarketDayLow": 8.0,
@@ -39,19 +44,23 @@ def test_get_from_meta_partial_success(yahoo_provider, unwrap, make_asset, make_
     asset = make_asset()
     series = make_series(asset, resolution=DAILY, series_type=SeriesType.CANDLE)
 
-    result = yahoo_provider._get_from_meta(series, meta, 900, 1100)
+    result = yahoo_provider._get_from_meta(series, meta, now_timestamp, now_timestamp)
     payload = unwrap(result)
 
     assert len(payload) == 1
     assert payload[0] == CandlePoint(
-        series_id=series.id, timestamp=1000, open=None, high=None, low=8.0, close=10.0, volume=None
+        series_id=series.id, time=now, open=None, high=None, low=8.0, close=10.0, volume=None
     )
     assert result.warnings == ["Missing value for 'high'", "Missing value for 'volume'"]
 
 
-def test_get_from_meta_all_missing(yahoo_provider, assert_error, make_asset, make_series):
+def test_get_from_meta_all_missing(yahoo_provider, assert_error, make_asset, make_series, fixed_now):
+
+    now = fixed_now()
+    now_timestamp = int(now.timestamp())
+
     meta = {
-        "regularMarketTime": 1000,
+        "regularMarketTime": now_timestamp,
         "regularMarketPrice": None,
         "regularMarketDayHigh": None,
         "regularMarketDayLow": None,
@@ -61,32 +70,37 @@ def test_get_from_meta_all_missing(yahoo_provider, assert_error, make_asset, mak
     asset = make_asset()
     series = make_series(asset, resolution=DAILY, series_type=SeriesType.CANDLE)
 
-    result = yahoo_provider._get_from_meta(series, meta, 900, 1100)
+    result = yahoo_provider._get_from_meta(series, meta, now_timestamp, now_timestamp)
     assert_error(result, "Cannot synthesize from metadata", "No fields synthesized")
 
 
-def test_get_from_meta_no_timestamp(yahoo_provider, assert_error, make_asset, make_series):
+def test_get_from_meta_no_timestamp(yahoo_provider, assert_error, make_asset, make_series, fixed_now):
     meta = {"regularMarketPrice": 10.0}
-
+    now = fixed_now()
+    now_timestamp = int(now.timestamp())
     asset = make_asset()
     series = make_series(asset, series_type=SeriesType.VALUE)
-    result = yahoo_provider._get_from_meta(series, meta, 900, 1100)
+    result = yahoo_provider._get_from_meta(series, meta, now_timestamp, now_timestamp)
     assert_error(result, "Cannot synthesize from metadata", "timestamp missing")
 
 
-def test_get_from_meta_timestamp_outside_range(yahoo_provider, assert_error, make_asset, make_series):
+def test_get_from_meta_timestamp_outside_range(yahoo_provider, assert_error, make_asset, make_series, fixed_now):
+    now = fixed_now()
+    now_timestamp = int(now.timestamp())
     meta = {"regularMarketTime": 500, "regularMarketPrice": 10.0}
     asset = make_asset()
     series = make_series(asset, series_type=SeriesType.VALUE)
-    result = yahoo_provider._get_from_meta(series, meta, 900, 1100)
+    result = yahoo_provider._get_from_meta(series, meta, now_timestamp, now_timestamp)
     assert_error(result, "Cannot synthesize from metadata", "metadata timestamp outside requested range")
 
 
-def test_get_from_meta_daily_value(yahoo_provider, unwrap, make_asset, make_series):
-    meta = {"regularMarketTime": 1000, "regularMarketPrice": 42.0}
+def test_get_from_meta_daily_value(yahoo_provider, unwrap, make_asset, make_series, fixed_now):
+    now = fixed_now()
+    now_timestamp = int(now.timestamp())
+    meta = {"regularMarketTime": now.timestamp(), "regularMarketPrice": 42.0}
     asset = make_asset()
     series = make_series(asset, resolution=DAILY, series_type=SeriesType.VALUE)
-    result = yahoo_provider._get_from_meta(series, meta, 900, 1100)
+    result = yahoo_provider._get_from_meta(series, meta, now_timestamp, now_timestamp)
     payload = unwrap(result)
     assert isinstance(payload[0], DailyValuePoint)
-    assert payload[0] == DailyValuePoint(series_id=series.id, timestamp=1000, value=42.0)
+    assert payload[0] == DailyValuePoint(series_id=series.id, time=now, value=42.0)

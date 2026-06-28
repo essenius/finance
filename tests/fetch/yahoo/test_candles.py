@@ -10,13 +10,14 @@ from finance.common.model import DAILY, INTRADAY, CandlePoint, SeriesType
 # ----------------------------------------------------------------------
 
 
-def test_extract_candles_valid_output_structure(yahoo_provider, unwrap, make_asset, make_series):
+def test_extract_candles_valid_output_structure(yahoo_provider, unwrap, make_asset, make_series, fixed_now):
     """Full candle set → all fields extracted correctly."""
 
+    now = fixed_now()
     asset = make_asset()
     series = make_series(asset, resolution=DAILY, series_type=SeriesType.CANDLE)
     result = {
-        "timestamp": [1000],
+        "timestamp": [now.timestamp()],
         "indicators": {
             "quote": [
                 {
@@ -35,7 +36,7 @@ def test_extract_candles_valid_output_structure(yahoo_provider, unwrap, make_ass
     assert len(candles) == 1
     c = candles[0]
     assert isinstance(c, CandlePoint)
-    assert c.timestamp == 1000
+    assert c.time == now
     assert c.open == 1.0
     assert c.high == 2.0
     assert c.low == 0.5

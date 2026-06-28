@@ -12,7 +12,7 @@ environment:
   timescaledb:
     host: pironman5
     port: 5432
-    ssl_mode: verify-full
+    ssl_mode: verify-ca
     ssl_root_cert: /opt/home-automation/certs/ca-all.crt
     db: test
     max_batch_size: 1

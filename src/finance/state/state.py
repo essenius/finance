@@ -93,7 +93,7 @@ class State:
 
         Note: first and last timestamps are not updated, that needs to happen after the batch was done
         """
-        policy = self._compute_policy(series.id, point.timestamp)
+        policy = self._compute_policy(series.id, point.time)
         if policy["skipped"]:
             return SeriesResult.ok_payload(series.name, None, meta=policy)
 
@@ -151,15 +151,15 @@ class State:
         wal_entries = [e for e in self._wal.read_all() if e.series_id == series_id]
 
         # no need to check property existence as read_all already removes invalid entries
-        wal_first = min((e.timestamp for e in wal_entries), default=None)
-        wal_last = max((e.timestamp for e in wal_entries), default=None)
+        wal_first = min((e.time for e in wal_entries), default=None)
+        wal_last = max((e.time for e in wal_entries), default=None)
 
         # Collect Timescale timestamps
         timescale_first_point = self._backend.read_first(series_id)
         timescale_last_point = self._backend.read_last(series_id)
 
-        timescale_first = timescale_first_point.payload.timestamp if timescale_first_point.payload else None
-        timescale_last = timescale_last_point.payload.timestamp if timescale_last_point.payload else None
+        timescale_first = timescale_first_point.payload.time if timescale_first_point.payload else None
+        timescale_last = timescale_last_point.payload.time if timescale_last_point.payload else None
 
         # If nothing exists anywhere, bail out
         if wal_first is None and timescale_first is None:

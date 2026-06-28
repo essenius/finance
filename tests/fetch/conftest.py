@@ -2,6 +2,8 @@
 # Licensed under the Apache License, Version 2.0. See the LICENSE file for details.
 # File: tests/fetch/conftest.py
 
+from datetime import datetime
+
 import pytest
 import requests
 
@@ -14,10 +16,10 @@ from finance.fetch.yahoo import YahooProvider
 
 @pytest.fixture
 def assert_ok():
-    def _assert_ok(result: FetchResult, timestamp: int, value: float):
+    def _assert_ok(result: FetchResult, time: datetime, value: float):
         assert result.ok
         point = result.payload[0]
-        assert point.timestamp == timestamp
+        assert point.time == time
         assert point.value == value
 
     return _assert_ok

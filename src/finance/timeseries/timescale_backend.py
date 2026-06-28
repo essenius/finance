@@ -25,6 +25,7 @@ from finance.common.model import (
     Series,
     SeriesPoint,
 )
+from finance.common.time_utils import normalize_db_time
 
 logger = AppLogger()
 
@@ -185,7 +186,7 @@ class TimescaleBackend:
         Data-driven batch insertion for all SeriesPoint subclasses.
         """
 
-        sql_template = "INSERT INTO {table} (series_id, time{extra_fields}) VALUES (%s, %s{placeholders})"
+        sql_template = "INSERT INTO {table} (series_id, time{extra_fields}) VALUES (%s, %s{placeholders}) ON CONFLICT (series_id, time) DO NOTHING"
 
 
         # Define the batch types
@@ -221,7 +222,7 @@ class TimescaleBackend:
             placeholders = "".join(", %s" for _ in fields)
 
             sql_stmt = sql.SQL(sql_template.format(table=table, extra_fields=extra_fields, placeholders=placeholders))
-            values = [(e.series_id, e.timestamp, *extractor(e)) for e in batch]
+            values = [(e.series_id, e.time, *extractor(e)) for e in batch]
 
             result = self._execute_many(sql_stmt, values, context)
             if not result.ok:
@@ -269,8 +270,8 @@ class TimescaleBackend:
             order = sql.SQL("ASC") if ascending else sql.SQL("DESC")
 
             stmt = sql.SQL("""
-                SELECT series_id, ts, open, high, low, close, volume, price FROM {table}
-                WHERE series_id = %s ORDER BY ts {order} LIMIT 1
+                SELECT series_id, time, open, high, low, close, volume FROM {table}
+                WHERE series_id = %s ORDER BY time {order} LIMIT 1
             """).format(
                 table=sql.Identifier(table),
                 order=order,
@@ -285,10 +286,10 @@ class TimescaleBackend:
                 # following row layout
 
                 if is_intraday:
-                    sid, timestamp, value = row
-                    return Result.ok_payload(IntradayPoint(series_id=sid, timestamp=timestamp, value=value))
+                    sid, time, value = row
+                    return Result.ok_payload(IntradayPoint(series_id=sid, time=normalize_db_time(time), value=value))
 
-                sid, timestamp, open, high, low, close, volume = row
+                sid, time, open, high, low, close, volume = row
 
                 # Daily table: candle or daily-value. Guess the real type based on content
                 # open can be None if we used synthetic data from metadata
@@ -296,7 +297,7 @@ class TimescaleBackend:
                     return Result.ok_payload(
                         CandlePoint(
                             series_id=sid,
-                            timestamp=timestamp,
+                            time=normalize_db_time(time),
                             open=open,
                             high=high,
                             low=low,
@@ -306,7 +307,7 @@ class TimescaleBackend:
                     )
 
                 # Daily value (close-only)
-                return Result.ok_payload(DailyValuePoint(series_id=sid, timestamp=timestamp, value=close))
+                return Result.ok_payload(DailyValuePoint(series_id=sid, time=normalize_db_time(time), value=close))
 
         return self._database_operation(operation, context)
 

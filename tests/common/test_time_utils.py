@@ -7,7 +7,7 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
-from finance.common.time_utils import parse_duration, to_utc_midnight
+from finance.common.time_utils import normalize_db_time, parse_duration, to_utc_midnight
 
 # ---------------
 # Parse duration
@@ -45,20 +45,20 @@ def test_to_utc_midnight_chicago_summer():
     tz = ZoneInfo("America/Chicago")
     local_dt = datetime(2024, 5, 9, 0, 0, tzinfo=tz)
 
-    ts = to_utc_midnight(local_dt)
+    time = to_utc_midnight(local_dt)
 
     # 2024-05-09 00:00 CDT = 2024-05-09 05:00 UTC → snapped to 00:00 UTC
-    assert ts == int(datetime(2024, 5, 10, 0, 0, tzinfo=UTC).timestamp())
+    assert time == datetime(2024, 5, 10, 0, 0, tzinfo=UTC)
 
 
 def test_to_utc_midnight_chicago_winter():
     tz = ZoneInfo("America/Chicago")
     local_dt = datetime(2024, 1, 15, 0, 0, tzinfo=tz)
 
-    ts = to_utc_midnight(local_dt)
+    time = to_utc_midnight(local_dt)
 
     # 2024-01-15 00:00 CST = 2024-01-15 06:00 UTC → snapped to 00:00 UTC
-    assert ts == int(datetime(2024, 1, 16, 0, 0, tzinfo=UTC).timestamp())
+    assert time == datetime(2024, 1, 16, 0, 0, tzinfo=UTC)
 
 
 def test_to_utc_midnight_chicago_dst_start():
@@ -66,10 +66,10 @@ def test_to_utc_midnight_chicago_dst_start():
     # DST starts March 10, 2024
     local_dt = datetime(2024, 3, 10, 0, 0, tzinfo=tz)
 
-    ts = to_utc_midnight(local_dt)
+    time = to_utc_midnight(local_dt)
 
     # 2024-03-10 00:00 CST = 2024-03-10 06:00 UTC → snapped to 00:00 UTC
-    assert ts == int(datetime(2024, 3, 11, 0, 0, tzinfo=UTC).timestamp())
+    assert time == datetime(2024, 3, 11, 0, 0, tzinfo=UTC)
 
 
 def test_to_utc_midnight_chicago_dst_end():
@@ -77,29 +77,29 @@ def test_to_utc_midnight_chicago_dst_end():
     # DST ends Nov 3, 2024
     local_dt = datetime(2024, 11, 3, 0, 0, tzinfo=tz)
 
-    ts = to_utc_midnight(local_dt)
+    time = to_utc_midnight(local_dt)
 
     # 2024-11-03 00:00 CDT = 2024-11-03 05:00 UTC → snapped to 00:00 UTC
-    assert ts == int(datetime(2024, 11, 4, 0, 0, tzinfo=UTC).timestamp())
+    assert time == datetime(2024, 11, 4, 0, 0, tzinfo=UTC)
 
 
 def test_to_utc_midnight_frankfurt():
     tz = ZoneInfo("Europe/Berlin")
     local_dt = datetime(2024, 5, 9, 0, 0, tzinfo=tz)
 
-    ts = to_utc_midnight(local_dt)
+    time = to_utc_midnight(local_dt)
 
     # 2024-05-09 00:00 CEST = 2024-05-08 22:00 UTC → snapped to 2024-05-09 00:00 UTC
-    assert ts == int(datetime(2024, 5, 9, 0, 0, tzinfo=UTC).timestamp())
+    assert time == datetime(2024, 5, 9, 0, 0, tzinfo=UTC)
 
 
 def test_to_utc_midnight_idempotent_for_utc():
     local_dt = datetime(2024, 5, 9, 12, 34, tzinfo=UTC)
 
-    ts = to_utc_midnight(local_dt)
+    time = to_utc_midnight(local_dt)
 
     # Should snap to 2024-05-09 00:00 UTC
-    assert ts == int(datetime(2024, 5, 9, 0, 0, tzinfo=UTC).timestamp())
+    assert time == datetime(2024, 5, 9, 0, 0, tzinfo=UTC)
 
 
 def test_to_utc_midnight_australia():
@@ -107,11 +107,11 @@ def test_to_utc_midnight_australia():
     # Arbitrary date; Sydney is ahead of UTC
     local_dt = datetime(2024, 5, 9, 0, 0, tzinfo=tz)
 
-    ts = to_utc_midnight(local_dt)
+    time = to_utc_midnight(local_dt)
 
     # Local midnight in Sydney corresponds to previous UTC date
-    expected = int(datetime(2024, 5, 9, 0, 0, tzinfo=UTC).timestamp())
-    assert ts == expected
+    expected = datetime(2024, 5, 9, 0, 0, tzinfo=UTC)
+    assert time == expected
 
 
 def test_to_utc_midnight_hawaii():
@@ -119,8 +119,27 @@ def test_to_utc_midnight_hawaii():
     # Arbitrary date; Sydney is ahead of UTC
     local_dt = datetime(2024, 5, 9, 0, 0, tzinfo=tz)
 
-    ts = to_utc_midnight(local_dt)
+    time = to_utc_midnight(local_dt)
 
     # Local midnight in Sydney corresponds to previous UTC date
-    expected = int(datetime(2024, 5, 10, 0, 0, tzinfo=UTC).timestamp())
-    assert ts == expected
+    expected = datetime(2024, 5, 10, 0, 0, tzinfo=UTC)
+    assert time == expected
+
+
+def test_normalize_db_time_datetime(fixed_now):
+    now = fixed_now()
+    result = normalize_db_time(now)
+    assert result == now
+
+
+def test_normalize_db_time_date(fixed_now):
+    now = fixed_now()
+    today = now.date()
+    result = normalize_db_time(today)
+    assert result == datetime(now.year, now.month, now.day, 0, 0, 0, tzinfo=UTC)
+
+
+def test_normalize_db_time_error():
+    with pytest.raises(TypeError) as exc_info:
+        normalize_db_time("qx")
+    assert str(exc_info.value) == "Unexpected time type: <class 'str'>"

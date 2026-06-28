@@ -7,6 +7,7 @@ from __future__ import annotations
 from abc import abstractmethod
 from collections.abc import Callable
 from dataclasses import dataclass, replace
+from datetime import UTC, datetime
 from enum import StrEnum
 from functools import partial
 from typing import Generic, TypeVar
@@ -76,10 +77,14 @@ class SupportedProviders(StringEnum):
 @dataclass(frozen=True)
 class SeriesPoint:
     series_id: int
-    timestamp: int
+    time: datetime
 
     @abstractmethod
-    def to_dict(self) -> dict: ...
+    def to_dict(self) -> dict:
+        return {
+            "series_id": self.series_id,
+            "time": self.time.astimezone(UTC).isoformat(),
+        }
 
     @staticmethod
     def fields() -> list[str]:
@@ -99,23 +104,32 @@ class SeriesPoint:
 
     @staticmethod
     def from_dict(data: dict) -> SeriesPoint:
+
+        base = SeriesPoint(
+            series_id=data["series_id"],
+            time=datetime.fromisoformat(data["time"]),
+        )
         point_type = data["type"]
         match point_type:
             case "candle":
-                return CandlePoint.from_dict(data)
+                return CandlePoint.from_base(base, data)
             case "daily_value":
-                return DailyValuePoint.from_dict(data)
+                return DailyValuePoint.from_base(base, data)
             case "intraday":
-                return IntradayPoint.from_dict(data)
+                return IntradayPoint.from_base(base, data)
             case _:
                 raise ValueError(f"Unknown point type: {point_type}")
 
     def __repr__(self):
-        return f"{self.__class__.__name__}(id={self.series_id}, ts={self.timestamp})"
+        return f"{self.__class__.__name__}(id={self.series_id}, time={self.time.astimezone(UTC).isoformat()})"
 
 
 @dataclass(frozen=True)
 class CandlePoint(SeriesPoint):
+    """
+    Point for daily candles. The time is the start of the day (UTC) of publication.
+    so e.g. 26-Jun-2026T00:00:00Z means the daily value published June 26
+    """
     close: float
     open: float | None = None
     high: float | None = None
@@ -124,9 +138,8 @@ class CandlePoint(SeriesPoint):
 
     def to_dict(self) -> dict:
         return {
+            **super().to_dict(),
             "type": "candle",
-            "series_id": self.series_id,
-            "timestamp": self.timestamp,
             "open": self.open,
             "high": self.high,
             "low": self.low,
@@ -142,16 +155,16 @@ class CandlePoint(SeriesPoint):
     def map(raw_fields: dict):
         return {k: raw_fields[k] for k in raw_fields if k in Candle.values()}
 
-    @staticmethod
-    def from_dict(d: dict) -> CandlePoint:
-        return CandlePoint(
-            series_id=d["series_id"],
-            timestamp=d["timestamp"],
-            open=d["open"],
-            high=d["high"],
-            low=d["low"],
-            close=d["close"],
-            volume=d["volume"],
+    @classmethod
+    def from_base(cls, base: SeriesPoint, data: dict) -> CandlePoint:
+        return cls(
+            series_id=base.series_id,
+            time=base.time,
+            open=data["open"],
+            high=data["high"],
+            low=data["low"],
+            close=data["close"],
+            volume=data["volume"],
         )
 
     def __repr__(self):
@@ -161,22 +174,25 @@ class CandlePoint(SeriesPoint):
 
 @dataclass(frozen=True)
 class DailyValuePoint(SeriesPoint):
+    """
+    Point for daily values. The time is the start of the day (UTC) of publication.
+    so e.g. 26-Jun-2026T00:00:00Z means the daily value published June 26
+    """
     value: float
 
     def to_dict(self) -> dict:
         return {
+            **super().to_dict(),
             "type": "daily_value",
-            "series_id": self.series_id,
-            "timestamp": self.timestamp,
             "value": self.value,
         }
 
-    @staticmethod
-    def from_dict(d: dict) -> DailyValuePoint:
-        return DailyValuePoint(
-            series_id=d["series_id"],
-            timestamp=d["timestamp"],
-            value=d["value"],
+    @classmethod
+    def from_base(cls, base: SeriesPoint, data: dict) -> DailyValuePoint:
+        return cls(
+            series_id=base.series_id,
+            time=base.time,
+            value=data["value"],
         )
 
     def __repr__(self):
@@ -186,22 +202,24 @@ class DailyValuePoint(SeriesPoint):
 
 @dataclass(frozen=True)
 class IntradayPoint(SeriesPoint):
+    """
+    Point for intraday values. The time is the published time of the value.
+    """
     value: float
 
     def to_dict(self) -> dict:
         return {
+            **super().to_dict(),
             "type": "intraday",
-            "series_id": self.series_id,
-            "timestamp": self.timestamp,
             "value": self.value,
         }
 
-    @staticmethod
-    def from_dict(d: dict) -> IntradayPoint:
-        return IntradayPoint(
-            series_id=d["series_id"],
-            timestamp=d["timestamp"],
-            value=d["value"],
+    @classmethod
+    def from_base(cls, base: SeriesPoint, data: dict) -> IntradayPoint:
+        return cls(
+            series_id=base.series_id,
+            time=base.time,
+            value=data["value"],
         )
 
     def __repr__(self):

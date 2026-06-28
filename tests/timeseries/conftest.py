@@ -55,7 +55,7 @@ def make_backend():
 @pytest.fixture
 def make_entry():
     def _make(id=1, fields=None, resolution=Resolution.DAILY, timestamp=0):
-        return SeriesPoint(series_id=id, timestamp=timestamp, resolution=resolution, fields=fields or {})
+        return SeriesPoint(series_id=id, time=timestamp, resolution=resolution, fields=fields or {})
 
     return _make
 

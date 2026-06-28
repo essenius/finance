@@ -64,30 +64,31 @@ def test_seriespoint_factory(make_series):
     assert daily_factory.func is DailyValuePoint
 
 
-def test_seriespoint_from_to_dict():
-    intraday_point = IntradayPoint(1, 2, 3)
+def test_seriespoint_from_to_dict(fixed_now):
+    now = fixed_now()
+    intraday_point = IntradayPoint(1, now, 3)
     dict1 = intraday_point.to_dict()
     result1 = SeriesPoint.from_dict(dict1)
     assert isinstance(result1, IntradayPoint), "intraday"
     assert result1 == intraday_point
-    assert f"{result1}" == "IntradayPoint(id=1, ts=2, value=3)"
+    assert f"{result1}" == "IntradayPoint(id=1, time=2025-06-15T15:06:40+00:00, value=3)"
 
-    daily_value_point = DailyValuePoint(4, 5, 6)
+    daily_value_point = DailyValuePoint(4, now, 6)
     dict2 = daily_value_point.to_dict()
     result2 = SeriesPoint.from_dict(dict2)
     assert isinstance(result2, DailyValuePoint), "daily"
     assert result2 == daily_value_point
-    assert f"{result2}" == "DailyValuePoint(id=4, ts=5, value=6)"
+    assert f"{result2}" == "DailyValuePoint(id=4, time=2025-06-15T15:06:40+00:00, value=6)"
 
-    candle_point = CandlePoint(1, 2, open=10, high=14, low=8, close=12, volume=100)
+    candle_point = CandlePoint(1, now, open=10, high=14, low=8, close=12, volume=100)
     dict3 = candle_point.to_dict()
     result3 = SeriesPoint.from_dict(dict3)
     assert isinstance(result3, CandlePoint), "candle"
     assert result3 == candle_point
-    assert f"{result3}" == "CandlePoint(id=1, ts=2, open=10, high=14, low=8, close=12, volume=100)"
+    assert f"{result3}" == "CandlePoint(id=1, time=2025-06-15T15:06:40+00:00, open=10, high=14, low=8, close=12, volume=100)"
 
-    dict4 = {"type": "bogus"}
-    with pytest.raises(ValueError) as exc_info:
+    dict4 = {"series_id": 1, "time": "2025-01-01T00:00:00+00:00", "type": "bogus"}
+    with pytest.raises(Exception) as exc_info:
         SeriesPoint.from_dict(dict4)
         assert "Unknown point type: bogus" in exc_info
 

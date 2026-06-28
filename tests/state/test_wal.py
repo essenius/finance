@@ -3,6 +3,7 @@
 # File: tests/state/test_wal.py
 
 import json
+from datetime import UTC, datetime
 
 from pytest import File
 
@@ -10,8 +11,8 @@ from finance.common.model import IntradayPoint, SeriesPoint
 from finance.state.wal import JsonlWAL
 
 
-def make(series_id=1, value=None, timestamp=0):
-    return IntradayPoint(series_id=series_id, value=value, timestamp=timestamp)
+def make(series_id=1, value=None, time=datetime(2026,1,1,0,0,0,tzinfo=UTC)):
+    return IntradayPoint(series_id=series_id, value=value, time=time)
 
 
 def write_series(f: File, series: SeriesPoint):
@@ -332,14 +333,14 @@ def test_wal_remove_indices_drops_empty_and_corrupt_lines(tmp_path):
 # ---------------
 
 
-def test_wal_roundtrip_preserves_all_fields(tmp_path):
+def test_wal_roundtrip_preserves_all_fields(tmp_path, fixed_now):
     wal_path = tmp_path / "wal.jsonl"
     wal = JsonlWAL(wal_path)
 
     entry = make(
         series_id=1,
         value=2,
-        timestamp=123456,
+        time=fixed_now(),
     )
 
     wal.enqueue(entry)

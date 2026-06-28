@@ -3,7 +3,7 @@
 # File: src/finance/common/time_utils.py
 
 import re
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, time, timedelta
 
 DURATION_UNITS = {
     "s": 1,
@@ -15,7 +15,7 @@ DURATION_UNITS = {
 }
 
 
-def to_utc_midnight(local_dt: datetime) -> int:
+def to_utc_midnight(local_dt: datetime) -> datetime:
     """
     Given a timezone-aware datetime representing a *local date label*,
     return the UTC midnight that lies inside the validity interval of that date.
@@ -35,12 +35,12 @@ def to_utc_midnight(local_dt: datetime) -> int:
 
     # If candidate is inside the interval, use it
     if start_utc <= candidate < end_utc:
-        return int(candidate.timestamp())
+        return candidate
 
     # Otherwise the next UTC midnight must be inside the interval:
     # start_utc <= next_midnight < end_utc. Invalid dates can't happen.
     next_midnight = candidate + timedelta(days=1)
-    return int(next_midnight.timestamp())
+    return next_midnight
 
 
 def parse_duration(text: str, context: str | None = None) -> int:
@@ -54,3 +54,11 @@ def parse_duration(text: str, context: str | None = None) -> int:
         raise ValueError(f"Invalid duration '{text}'{context_string}")
     value, unit = match.groups()
     return int(value) * DURATION_UNITS[unit]
+
+
+def normalize_db_time(value):
+    if isinstance(value, datetime):
+        return value.astimezone(UTC)
+    if isinstance(value, date):
+        return datetime.combine(value, time.min, tzinfo=UTC)
+    raise TypeError(f"Unexpected time type: {type(value)}")

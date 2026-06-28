@@ -59,8 +59,8 @@ class FredProvider(MarketDataProvider):
             except Exception:
                 continue
 
-            ts = to_utc_midnight(local_datetime)
+            time = to_utc_midnight(local_datetime)
             value = float(value_str)
-            points.append(DailyValuePoint(series_id=series.id, timestamp=ts, value=value))
+            points.append(DailyValuePoint(series_id=series.id, time=time, value=value))
 
         return FetchResult.ok_payload(series.name, points)

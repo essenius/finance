@@ -95,7 +95,7 @@ def test_process_result_empty_payload():
 
 
 def test_process_result_single_point():
-    fp = DailyValuePoint(series_id=1, timestamp=100, value=1)
+    fp = DailyValuePoint(series_id=1, time=100, value=1)
     r = FetchResult.ok_payload("spx", [fp])
     state = FakeState()
 
@@ -106,12 +106,12 @@ def test_process_result_single_point():
     point: DailyValuePoint = state.calls[0]
     assert point.series_id == 1
     assert point.value == 1
-    assert point.timestamp == 100
+    assert point.time == 100
 
 
 def test_process_result_multiple_points():
-    fp1 = DailyValuePoint(series_id=1, timestamp=10, value=1)
-    fp2 = DailyValuePoint(series_id=2, timestamp=20, value=2)
+    fp1 = DailyValuePoint(series_id=1, time=10, value=1)
+    fp2 = DailyValuePoint(series_id=2, time=20, value=2)
     r = FetchResult.ok_payload("spx", [fp1, fp2])
     state = FakeState()
 
@@ -124,7 +124,7 @@ def test_process_result_multiple_points():
 
 
 def test_process_result_skip():
-    fp = DailyValuePoint(series_id=1, timestamp=100, value=1)
+    fp = DailyValuePoint(series_id=1, time=100, value=1)
     r = FetchResult.ok_payload("spx", [fp])
     state = SkipState()
 
@@ -134,7 +134,7 @@ def test_process_result_skip():
 
 
 def test_process_result_ingest_failure():
-    fp = DailyValuePoint(series_id=1, timestamp=100, value=1)
+    fp = DailyValuePoint(series_id=1, time=100, value=1)
     r = FetchResult.ok_payload("spx", [fp])
     state = FailingState()
 

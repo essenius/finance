@@ -31,7 +31,7 @@ class FakeFetchController:
 
     def fetch_incrementally(self, state) -> Iterable[FetchResult]:
         for id, value, ts in self.outputs:
-            fp = DailyValuePoint(series_id=id, timestamp=ts, value=value)
+            fp = DailyValuePoint(series_id=id, time=ts, value=value)
             yield FetchResult.ok_payload("spx", [fp])
 
 

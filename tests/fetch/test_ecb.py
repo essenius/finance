@@ -3,6 +3,7 @@
 # File: tests/fetch/test_ecb.py
 
 import json
+from datetime import UTC, datetime
 
 import pytest
 
@@ -19,7 +20,7 @@ def test_ecb_fetch_real_fixture(ecb_provider, assert_ok, make_asset, make_series
     # timestamps are for May 8, 2026 in CEST
     result = provider.fetch(series, asset, start_timestamp=1778191200, end_timestamp=1778277599)
     # time stamp must be May 8, 2026 00:00 UTC
-    assert_ok(result, timestamp=1778198400, value=1.1761)
+    assert_ok(result, time=datetime(2026,5,8,0,0,0, tzinfo=UTC), value=1.1761)
 
 
 def test_ecb_fetch_ok(ecb_provider, assert_ok, make_asset, make_series):
@@ -34,7 +35,7 @@ def test_ecb_fetch_ok(ecb_provider, assert_ok, make_asset, make_series):
     series = make_series(asset)
 
     result = provider.fetch(series, asset, start_timestamp=1778191200, end_timestamp=1778277599)
-    assert_ok(result, timestamp=1778198400, value=1.1761)
+    assert_ok(result, time=datetime(2026,5,8,0,0,0, tzinfo=UTC), value=1.1761)
 
 
 @pytest.mark.parametrize(

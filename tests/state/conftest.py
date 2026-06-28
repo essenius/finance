@@ -14,7 +14,7 @@ def make_entry(make_asset, make_series) -> dict:
     def _make(series_id=1, value=1, timestamp=100, name="spx"):
         asset = make_asset(id=series_id, name="spx")
         series = make_series(asset, id=series_id, resolution=Resolution(DAILY))
-        return {"series": series, "point": DailyValuePoint(series_id=series_id, timestamp=timestamp, value=value)}
+        return {"series": series, "point": DailyValuePoint(series_id=series_id, time=timestamp, value=value)}
 
     return _make
 

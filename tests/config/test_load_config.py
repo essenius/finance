@@ -52,7 +52,7 @@ business:
 
     environ = {"TIMESCALEDB_URL": "http://x", "TIMESCALEDB_DB": "db2"}
 
-    loader = ConfigLoader(tmp_path, environ)
+    loader = ConfigLoader(cwd=tmp_path, environ=environ)
     result = loader.load()
 
     cfg = unwrap(result)
@@ -104,7 +104,7 @@ business:
 
 def test_load_config_missing_file(tmp_path, assert_error):
 
-    loader = ConfigLoader(tmp_path)
+    loader = ConfigLoader(cwd=tmp_path)
     result = loader.load()
 
     assert_error(result, "Config file not found", None)
@@ -116,7 +116,7 @@ def test_load_config_dev_mode(monkeypatch, tmp_path, unwrap):
     (tmp_path / "config.yaml").write_text("business:\n  providers: {}\n  assets: {}\n  composites: {}\n")
     (tmp_path / ".env").write_text("TIMESCALEDB_URL=http://x\nTIMESCALEDB_DB=db\n")
 
-    loader = ConfigLoader(tmp_path)
+    loader = ConfigLoader(cwd=tmp_path)
     result = loader.load()
     cfg = unwrap(result)
     expected_params = {
@@ -136,7 +136,7 @@ def test_load_config_dev_mode(monkeypatch, tmp_path, unwrap):
 
 def test_load_config_resolves_paths(tmp_path, unwrap):
 
-    yaml_file = tmp_path / "config.yaml"
+    yaml_file = tmp_path / "my_config.yaml"
     env_file = tmp_path / ".env"
 
     yaml_file.write_text("""
@@ -147,9 +147,9 @@ environment:
     state: "data/mystate.json"
 """)
 
-    env_file.write_text("TIMESCALEDB_URL=http://x\nTIMESCALEDB_DB=db\n")
+    env_file.write_text("TIMESCALEDB_URL=http://x\nTIMESCALEDB_DB=db\nFINANCE_CONFIG=my_config.yaml")
 
-    loader = ConfigLoader(tmp_path)
+    loader = ConfigLoader(cwd=tmp_path)
     result = loader.load()
     cfg = unwrap(result)
 

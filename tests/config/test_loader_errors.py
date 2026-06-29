@@ -40,7 +40,7 @@ environment:
     env_file = tmp_path / ".env"
     env_file.write_text("TIMESCALEDB_URL=x\nTIMESCALEDB_DB=y\n")
 
-    loader = ConfigLoader(tmp_path)
+    loader = ConfigLoader(cwd=tmp_path)
     result = loader.load()
     assert_error(result, "Error parsing assets", "Missing required field 'provider' in asset 'spx'")
 
@@ -64,7 +64,7 @@ business:
     env_file = tmp_path / ".env"
     env_file.write_text("TIMESCALEDB_URL=x\nTIMESCALEDB_DB=y\n")
 
-    loader = ConfigLoader(tmp_path)
+    loader = ConfigLoader(cwd=tmp_path)
     result = loader.load()
     assert_error(result, "Error parsing assets", "Missing required field 'provider' in asset 'spx'")
 
@@ -95,7 +95,7 @@ environment:
 
     env_file = tmp_path / ".env"
     env_file.write_text("TIMESCALEDB_URL=x\nTIMESCALEDB_DB=y\n")
-    loader = ConfigLoader(tmp_path)
+    loader = ConfigLoader(cwd=tmp_path)
     result = loader.load()
     assert_error(
         result, "Error parsing assets", "Invalid Resolution in asset 'spx': 'bogus'. Allowed: ['intraday', 'daily']"
@@ -117,7 +117,7 @@ business:
     env_file = tmp_path / ".env"
     env_file.write_text("TIMESCALEDB_URL=x\nTIMESCALEDB_DB=y\n")
 
-    loader = ConfigLoader(tmp_path)
+    loader = ConfigLoader(cwd=tmp_path)
     result = loader.load()
     assert_error(result, "Error parsing composites", "Missing required field 'expression' in composite 'spread'")
 
@@ -158,6 +158,6 @@ environment:
     env_file = tmp_path / ".env"
     env_file.write_text("TIMESCALEDB_URL=x\nTIMESCALEDB_DB=y\n")
 
-    loader = ConfigLoader(tmp_path)
+    loader = ConfigLoader(cwd=tmp_path)
     result = loader.load()
     assert_error(result, "Could not parse provider 'ecb'", "Invalid timezone 'bogus'")

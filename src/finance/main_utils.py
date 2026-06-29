@@ -2,7 +2,9 @@
 # Licensed under the Apache License, Version 2.0. See the LICENSE file for details.
 # File: src/finance/main_utils.py
 
+import argparse
 from dataclasses import asdict
+from pathlib import Path
 from typing import TypeVar
 
 from finance.common.applogger import AppLogger
@@ -14,6 +16,16 @@ from finance.timeseries.timescale_backend import TimescaleBackend
 logger = AppLogger()
 
 T = TypeVar("T")
+
+
+def parse_args():
+    parser = argparse.ArgumentParser(description="Finance ingestion service")
+    parser.add_argument(
+        "--config",
+        type=Path,
+        help="Path to the YAML configuration file (absolute or relative)"
+    )
+    return parser.parse_args()
 
 
 def unwrap(result: Result[T], throw: bool | None = True) -> T | None:

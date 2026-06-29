@@ -96,7 +96,7 @@ class SeriesPoint:
 
     @classmethod
     def normalize_time(cls, dt: datetime) -> datetime:
-        """Daily timestamps snap to midnight UTC. Must be overridden for intraday"""
+        """Snap to midnight UTC. Good for daily points; must be overridden for intraday"""
         return datetime(dt.year, dt.month, dt.day, 0, 0, tzinfo=UTC)
 
     @staticmethod
@@ -217,8 +217,8 @@ class IntradayPoint(SeriesPoint):
 
     @classmethod
     def normalize_time(cls, dt: datetime) -> datetime:
-        """No change needed for intraday"""
-        return dt
+        """round to seconds"""
+        return datetime.fromtimestamp(round(dt.timestamp()), tz=dt.tzinfo)
 
     def to_dict(self) -> dict:
         return {

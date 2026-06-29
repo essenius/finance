@@ -20,7 +20,7 @@ from .common.applogger import AppLogger
 # from .composites.engine import CompositeEngine
 from .config.loader import ConfigLoader
 from .fetch.controller import FetchController, create_providers
-from .main_utils import process_result, reconcile_registry, unwrap
+from .main_utils import parse_args, process_result, reconcile_registry, unwrap
 from .state.state import State
 from .state.wal import JsonlWAL
 
@@ -47,8 +47,9 @@ def run(
     now: Callable[[], datetime] = None,
 ) -> None:
     try:
+        args = parse_args()
         # these two have arguments, so shouldn't be used in defaults
-        load_config = load_config or ConfigLoader(get_project_root()).load
+        load_config = load_config or ConfigLoader(Path.cwd(), args.config).load
         now = now or (lambda: datetime.now(UTC))
         now_str = now().astimezone().isoformat(timespec="seconds")
         logger.info(f"Finance version: {finance.__version__} started at {now_str}")

@@ -25,33 +25,40 @@ class EmptyConfig:
 
 
 class ConfigLoader:
-    def __init__(self, project_root: Path, environ=os.environ):
-        self.project_root = project_root
-        self.yaml_path = project_root / "config.yaml"
-        self.env_path = project_root / ".env"
+    def __init__(self, *, cwd: Path, config_path: Path | None = None, environ=os.environ):
+        self.cwd = cwd
+        self.env_path = (cwd / ".env").resolve()
         self.environ = environ
+        self.config_path = config_path
 
     def load(self) -> Result[dict]:
 
-        secrets = self.load_env_secrets()
+        env_vars = self.load_env_variables().payload
         # can't fail so no need to check for that
 
-        raw_cfg = load_yaml_config(self.yaml_path)
+        cfg_path = self.config_path
+        if not cfg_path and env_vars.get("config") is not None:
+            cfg_path = env_vars["config"]
+        if not cfg_path:
+            cfg_path = "config.yaml"
+
+        yaml_path = cfg_path if Path(cfg_path).is_absolute() else (self.cwd / cfg_path).resolve()
+        raw_cfg = load_yaml_config(yaml_path)
         if not raw_cfg.ok:
             return raw_cfg
 
         # cannot fail, so not wrapped in result
-        env = load_environment_config(raw_cfg.payload.get("environment", {}), self.project_root)
+        env = load_environment_config(raw_cfg.payload.get("environment", {}), self.cwd)
         biz_result = load_business_config(raw_cfg.payload.get("business", {}))
         if not biz_result.ok:
             return biz_result
 
-        return Result.ok_payload(env | biz_result.payload | secrets.payload)
+        return Result.ok_payload(env | biz_result.payload | env_vars)
 
     # -----------------------------
     # Load secrets from .env
     # -----------------------------
-    def load_env_secrets(self) -> Result[dict]:
+    def load_env_variables(self) -> Result[dict]:
         env_file_values = dotenv_values(self.env_path)
         # .env overrides environ
         merged = {**self.environ, **env_file_values}
@@ -59,6 +66,7 @@ class ConfigLoader:
         api_keys = {}
         # influx = {}
         timescaledb = {}
+        config = None
 
         for key, value in merged.items():
             if key.endswith("_API_KEY"):
@@ -69,8 +77,10 @@ class ConfigLoader:
             #                influx[key[7:].lower()] = value
             elif key.startswith(f"{BACKEND.upper()}_"):
                 timescaledb[key[len(BACKEND) + 1 :].lower()] = value
+            elif key == "FINANCE_CONFIG":
+                config = value
 
-        return Result.ok_payload({"secrets": {BACKEND: timescaledb, "api_keys": api_keys}})
+        return Result.ok_payload({"secrets": {BACKEND: timescaledb, "api_keys": api_keys}, "config": config})
 
 
 # -----------------------------

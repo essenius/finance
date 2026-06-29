@@ -6,18 +6,27 @@
 
 -- Create database if not exists (Postgres doesn't have CREATE DATABASE IF NOT EXISTS)
 
+\set dbname finance
+
 CREATE EXTENSION IF NOT EXISTS dblink;
 
 DO $$
+DECLARE
+    dbname text := ':dbname';
 BEGIN
+   RAISE NOTICE 'Database name is: %', dbname;
    IF NOT EXISTS (
-      SELECT FROM pg_database WHERE datname = 'test'
+      SELECT FROM pg_database WHERE datname = dbname
    ) THEN
-      PERFORM dblink_exec('dbname=postgres', 'CREATE DATABASE test');
-   END IF;
+        EXECUTE format(
+            'SELECT dblink_exec(%L, %L)',
+            'dbname=postgres',
+            'CREATE DATABASE ' || quote_ident(dbname)
+        );
+    END IF;
 END$$;
 
-\connect test;
+\connect :dbname
 
 -- Enable TimescaleDB
 CREATE EXTENSION IF NOT EXISTS timescaledb;

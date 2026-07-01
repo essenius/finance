@@ -39,11 +39,11 @@ class Registry:
 
     def __init__(self):
         # Accumulated inputs
-        self._yaml_assets: dict[str, Asset] = {}
-        self._yaml_series: dict[str, Series] = {}
+        self._yaml_assets: list[Asset] = {}
+        self._yaml_series: list[Series] = {}
 
-        self._db_assets: dict[str, Asset] = {}
-        self._db_series: dict[str, Series] = {}
+        self._db_assets: list[Asset] = {}
+        self._db_series_list: list[Series] = {}
 
         # Final authoritative registry
         self._assets_by_id: dict[int, Asset] = {}
@@ -57,20 +57,16 @@ class Registry:
     # ------------------------------------------------------------
 
     def load_yaml_assets(self, assets: Iterable[Asset]):
-        for a in assets:
-            self._yaml_assets[a.name] = a
+        self._yaml_assets = list(assets)
 
     def load_yaml_series(self, series: Iterable[Series]):
-        for s in series:
-            self._yaml_series[s.name] = s
+        self._yaml_series = list(series)
 
     def load_db_assets(self, assets: Iterable[Asset]):
-        for a in assets:
-            self._db_assets[a.name] = a
+        self._db_assets = list(assets)
 
     def load_db_series(self, series: Iterable[Series]):
-        for s in series:
-            self._db_series[s.name] = s
+        self._db_series_list = list(series)
 
     # ------------------------------------------------------------
     # Reconciliation entry point
@@ -99,14 +95,26 @@ class Registry:
     # ------------------------------------------------------------
 
     def _reconcile_assets(self) -> ReconciledAssets:
-        yaml = self._yaml_assets
-        db = self._db_assets
+        db_by_name = {a.name: a for a in self._db_assets}
+        db_by_code = {(a.provider, a.provider_code): a for a in self._db_assets}
 
         to_persist = []
         final = []
 
-        for key, yaml_asset in yaml.items():
-            db_asset = db.get(key)
+        def find_existing_asset(yaml_asset):
+            # 1. Match by name (YAML identity)
+            db_asset = db_by_name.get(yaml_asset.name)
+            if db_asset:
+                return db_asset
+
+            # 2. Match by provider + provider_code (provider identity)
+            key = (yaml_asset.provider, yaml_asset.provider_code)
+            db_asset = db_by_code.get(key)
+            # can also return None if not found
+            return db_asset
+
+        for yaml_asset in self._yaml_assets:
+            db_asset = find_existing_asset(yaml_asset)
             if db_asset is None:
                 to_persist.append(yaml_asset)
             elif yaml_asset.differs_from(db_asset):
@@ -114,7 +122,12 @@ class Registry:
             else:
                 final.append(db_asset)
 
-        orphans = [a for key, a in db.items() if key not in yaml]
+        orphans = [
+            db_asset
+            for db_asset in self._db_assets
+            if not any(find_existing_asset(yaml_asset) == db_asset
+                       for yaml_asset in self._yaml_assets)
+        ]
 
         return ReconciledAssets(final, to_persist, orphans)
 
@@ -123,18 +136,29 @@ class Registry:
     # ------------------------------------------------------------
 
     def _reconcile_series(self) -> ReconciledSeries:
-        yaml = self._yaml_series
-        db = self._db_series
+        db_by_name = {s.name: s for s in self._db_series_list}
+        db_by_asset_resolution = {(s.asset_id, s.resolution): s for s in self._db_series_list}
+
+        def find_existing_series(yaml_series):
+            # First match by name
+            db_series = db_by_name.get(yaml_series.name)
+            if db_series:
+                return db_series
+
+            # Then match by (asset_id, resolution)
+            key = (yaml_series.asset_id, yaml_series.resolution)
+            return db_by_asset_resolution.get(key)
 
         to_persist = []
         final = []
 
-        for key, yaml_series in yaml.items():
+        for yaml_series in self._yaml_series:
             # get the asset id. Yaml doesn't know about ids
+            # note this requires assets to have been reconciled already.
             if yaml_series.asset_id is None:
                 asset = self.get_asset_by_name(yaml_series.asset_name)
                 yaml_series.asset_id = asset.id
-            db_series = db.get(key)
+            db_series = find_existing_series(yaml_series)
             if db_series is None:
                 to_persist.append(yaml_series)
             elif yaml_series.differs_from(db_series):
@@ -142,7 +166,13 @@ class Registry:
             else:
                 final.append(db_series)
 
-        orphans = [s for key, s in db.items() if key not in yaml]
+
+        orphans = [
+            db_series
+            for db_series in self._db_series_list
+            if not any(find_existing_series(yaml_series) == db_series
+                    for yaml_series in self._yaml_series)
+        ]
 
         return ReconciledSeries(final, to_persist, orphans)
 

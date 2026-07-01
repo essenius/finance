@@ -6,8 +6,16 @@ from collections.abc import Callable, Iterable
 from datetime import datetime, timedelta
 from unittest.mock import Mock
 
-from finance.common.model import INTRADAY, Asset, MeasurementResult, Series, SeriesState, SeriesType
-from finance.common.time_utils import parse_duration
+from finance.common.model import (
+    INTRADAY,
+    Asset,
+    MeasurementResult,
+    ProviderConfig,
+    Series,
+    SeriesState,
+    SeriesType,
+    SupportedProviders,
+)
 from finance.fetch.controller import PROVIDER_REGISTRY, FetchController, create_providers
 from finance.fetch.ecb import EcbProvider
 from finance.fetch.fred import FredProvider
@@ -43,9 +51,9 @@ def make_series_list(asset, interval="10m", history_limit="5d", resolution=INTRA
             asset_name=asset.name,
             series_type=SeriesType.VALUE,
             interval=interval,
-            interval_delta=parse_duration(interval),
+            #interval_delta=parse_duration(interval),
             history_limit=history_limit,
-            history_limit_delta=parse_duration(history_limit),
+            #history_limit_delta=parse_duration(history_limit),
         )
     ]
 
@@ -68,7 +76,6 @@ def make_fetch_controller(
 
     return FetchController(series, get_asset, providers.get, now_provider=now_provider)
 
-
 # ----------------------------------------------------------------------
 # Tests
 # ----------------------------------------------------------------------
@@ -76,18 +83,17 @@ def make_fetch_controller(
 
 def test_create_providers():
     providers_config = {
-        "yahoo": {"timezone": "UTC"},
-        "ecb": {"timezone": "Europe/Berlin"},
-        "fred": {"timezone": "America/Chicago"},
+        SupportedProviders.YAHOO: ProviderConfig(name=SupportedProviders.YAHOO, timezone="UTC"),
+        SupportedProviders.ECB: ProviderConfig(name=SupportedProviders.ECB, timezone="Europe/Berlin"),
+        SupportedProviders.FRED: ProviderConfig(name=SupportedProviders.FRED, timezone="America/Chicago"),
     }
     p = create_providers(providers_config, {})
-    assert isinstance(p["yahoo"], YahooProvider)
-    assert isinstance(p["ecb"], EcbProvider)
-    assert isinstance(p["fred"], FredProvider)
+    assert isinstance(p[SupportedProviders.YAHOO], YahooProvider)
+    assert isinstance(p[SupportedProviders.ECB], EcbProvider)
+    assert isinstance(p[SupportedProviders.FRED], FredProvider)
 
 
 def test_controller_skips_fresh(state, fixed_now, make_asset):
-
     asset = make_asset()
     assets = make_assets([asset])
     series = make_series_list(asset, interval="1h")

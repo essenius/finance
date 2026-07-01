@@ -7,7 +7,7 @@ from datetime import UTC, datetime, timedelta
 
 from finance.fetch.provider import MarketDataProvider
 
-from ..common.model import Asset, FetchResult, Provider, Series
+from ..common.model import Asset, FetchResult, ProviderConfig, Series, SupportedProviders
 from ..state.state import State
 from .ecb import EcbProvider
 from .fred import FredProvider
@@ -15,17 +15,18 @@ from .yahoo import YahooProvider
 
 # make sure this aligns with PROVIDERS in config/loader.py
 PROVIDER_REGISTRY = {
-    "yahoo": YahooProvider,
-    "fred": FredProvider,
-    "ecb": EcbProvider,
+    SupportedProviders.YAHOO: YahooProvider,
+    SupportedProviders.FRED: FredProvider,
+    SupportedProviders.ECB: EcbProvider,
 }
 
 
-def create_providers(providers_config: dict[str, dict], api_keys: dict[str, dict]) -> dict[str, MarketDataProvider]:
-    return {
+def create_providers(providers_config: dict[str, ProviderConfig], api_keys: dict[str, dict]) -> dict[str, MarketDataProvider]:
+    result = {
         name: provider_class(provider_config=providers_config[name], api_key=api_keys.get(name))
         for name, provider_class in PROVIDER_REGISTRY.items()
     }
+    return result
 
 
 class FetchController:
@@ -33,7 +34,7 @@ class FetchController:
         self,
         series: Iterable[Series],
         get_asset_by_id: Callable[[int], Asset],
-        get_provider: Callable[[str], Provider],
+        get_provider: Callable[[str], ProviderConfig],
         **kwargs,
     ):
         self.series_list: Iterable[Series] = series
@@ -80,7 +81,7 @@ class FetchController:
             entry = state.get(series.id)
             first_saved = None if entry is None else entry.first_time
             last_saved = None if entry is None else entry.last_time
-            start, end = self.get_window(first_saved, last_saved, series.history_limit_delta)
+            start, end = self.get_window(first_saved, last_saved, series.history_limit_delta())
 
             result: FetchResult = provider.fetch(series, asset, start, end)
 
@@ -94,7 +95,7 @@ class FetchController:
         for series in self.series_list:
             # Freshness check
             state_entry = state.get(series.id)
-            fresh = state_entry is not None and now - state_entry.last_time < series.interval_delta
+            fresh = state_entry is not None and now - state_entry.last_time < series.interval_delta()
             if fresh:
                 # not an error, just skip
                 continue

@@ -76,8 +76,8 @@ def test_run_happy_path(tmp_path, caplog, fixed_now, state_deps, make_asset, mak
         "timescaledb": {},
     }
 
-    def state_factory(series_store, wal, storage):
-        state = State(series_store, wal, storage)
+    def state_factory(backend, wal, storage):
+        state = State(backend, wal, storage)
         state._rebuild_measurement_state = lambda *_: None
         state_holder["state"] = state
         return state
@@ -147,6 +147,9 @@ def test_run_fetch_failure(tmp_path, caplog, fixed_now, make_asset, make_series)
 
         def save(self):
             self.saved = True
+
+        def load(self):
+            return Result.ok_payload(0)
 
     def fetch_controller_factory(series, get_assets, get_providers):
         return FakeFetchController([(1, 1, 100)])

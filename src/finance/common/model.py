@@ -277,6 +277,9 @@ class Result(Generic[T]):
     def with_measurement(self, measurement: str) -> MeasurementResult[T]:
         return MeasurementResult.from_result(self, measurement)
 
+    def with_meta(self, meta: dict) -> Result:
+        return replace(self, meta=meta)
+
 
 @dataclass
 class MeasurementResult(Result[T]):
@@ -317,17 +320,17 @@ SeriesResult = MeasurementResult[SeriesPoint | None]
 
 
 @dataclass(frozen=True)
-class Provider:
+class ProviderConfig:
     name: str
     timezone: str
 
-    daily_interval: str
-    intraday_interval: str
+    daily_interval: str = "1d"
+    intraday_interval: str = "5m"
 
-    daily_history_limit: str
-    intraday_history_limit: str
+    daily_history_limit: str = "10y"
+    intraday_history_limit: str = "5d"
 
-    daily_series_type: str  # "candle" or "value"
+    daily_series_type: str  = SeriesType.CANDLE
 
 
 @dataclass(frozen=True)
@@ -368,8 +371,13 @@ class Asset:
         return replace(self, id=new_id)
 
     def differs_from(self, other: Asset) -> bool:
+        """
+        if this is classified as the same entity (one of the identity checks passed),
+        check if any properties are different
+        """
         return (
-            self.symbol != other.symbol
+            self.name != other.name
+            or self.symbol != other.symbol
             or self.provider != other.provider
             or self.provider_code != other.provider_code
             or self.display_name != other.display_name
@@ -397,12 +405,17 @@ class Series:
     # meta-data
     series_type: SeriesType
     interval: str | None = None
-    interval_delta: timedelta = timedelta(seconds=0)
     history_limit: str | None = None
-    history_limit_delta: timedelta = timedelta(seconds=0)
 
     # assigned by backend
     id: int | None = None
+
+    def interval_delta(self) -> timedelta:
+        return parse_duration(self.interval, f"interval for {self.name}")
+
+    def history_limit_delta(self) -> timedelta:
+        return parse_duration(self.history_limit, f"history limit for {self.name}")
+
 
     @classmethod
     def create(cls, asset: Asset, resolution: str, config: dict | None = None) -> Series:
@@ -440,20 +453,24 @@ class Series:
             resolution=Resolution(resolution),
             series_type=series_type,
             interval=interval,
-            interval_delta=parse_duration(interval, f"interval for {name}"),
+#            interval_delta=parse_duration(interval, f"interval for {name}"),
             history_limit=history_limit,
-            history_limit_delta=parse_duration(history_limit, f"history limit for {name}"),
+#            history_limit_delta=parse_duration(history_limit, f"history limit for {name}"),
         )
 
     def with_id(self, new_id: id) -> Series:
         return replace(self, id=new_id)
 
     def differs_from(self, other: Series) -> bool:
-        # only include things not in the identity (like resolution and name) or linked
-        # asset_id is here as it is only assigned after storing in the database
-        # asset_name is the asset identity and is therefore also not checked.
+        """
+        if classified as the same entity (i.e. one of the identity checks passed),
+        check if there are differences. Not checked:
+        - asset_name: from the asset identity (via join).
+        - name: assembled from asset_name and resolution
+        """
         return (
             self.asset_id != other.asset_id
+            or self.resolution != other.resolution
             or self.series_type != other.series_type
             or self.interval != other.interval
             or self.history_limit != other.history_limit

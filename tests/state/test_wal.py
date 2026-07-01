@@ -54,20 +54,23 @@ def test_wal_dequeue_removes_first_entry(tmp_path):
     wal.enqueue(make(value=1))
     wal.enqueue(make(value=2))
 
-    removed = wal.dequeue()
-    assert removed == make(value=1)
+    removed = wal.dequeue_multiple(1)
+    assert removed == 1
 
     remaining = list(wal.read_all())
     assert remaining == [make(value=2)]
+    assert not wal.is_empty()
 
 
 def test_wal_empty_behaviour(tmp_path):
     wal_path = tmp_path / "wal.jsonl"
     wal = JsonlWAL(wal_path)
 
+    assert wal.is_empty()
     assert wal.peek() is None
-    assert wal.dequeue() is None
+    assert wal.dequeue_multiple(1) == 0
     assert list(wal.read_all()) == []
+    assert wal.dequeue_multiple(0) == 0
 
 
 def test_wal_ignores_corrupt_trailing_line(tmp_path):
@@ -98,8 +101,8 @@ def test_wal_dequeue_skips_corrupt_lines_before_valid_entry(tmp_path):
 
     wal = JsonlWAL(wal_path)
 
-    removed = wal.dequeue()
-    assert removed == good
+    removed_count = wal.dequeue_multiple(1)
+    assert removed_count == 1
 
     remaining = list(wal.read_all())
     assert remaining == [next]

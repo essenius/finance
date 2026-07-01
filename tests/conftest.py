@@ -35,7 +35,7 @@ def state_deps(tmp_path):
 
     wal.peek.return_value = None
     wal.read_all.return_value = []
-    wal.dequeue.return_value = None
+    wal.dequeue_multiple.side_effect = lambda n: n
     wal.enqueue.return_value = None
 
     return backend, wal, storage
@@ -142,8 +142,8 @@ def make_series(make_asset):
         }
         params = defaults | overrides
         params["name"] = f"{asset.name}_{params['resolution']}"
-        params["interval_delta"] = parse_duration(params["interval"])
-        params["history_limit_delta"] = parse_duration(params["history_limit"])
+        #params["interval_delta"] = parse_duration(params["interval"])
+        #params["history_limit_delta"] = parse_duration(params["history_limit"])
 
         return Series(**params)
 

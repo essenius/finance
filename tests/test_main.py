@@ -15,7 +15,7 @@ def test_main_calls_run_with_correct_defaults(monkeypatch):
     fake_run = Mock()
     monkeypatch.setattr(main_mod, "run", fake_run)
 
-    main_mod.main()
+    main_mod.main([])
 
     assert fake_run.call_count == 1
     kwargs = fake_run.call_args.kwargs

@@ -19,7 +19,7 @@ class WAL(ABC):
     def peek(self) -> SeriesPoint | None: ...
 
     @abstractmethod
-    def dequeue(self) -> SeriesPoint | None: ...
+    def dequeue_multiple(self) -> SeriesPoint | None: ...
 
 
 class JsonlWAL(WAL):
@@ -57,31 +57,34 @@ class JsonlWAL(WAL):
             return entry
         return None
 
-    def dequeue(self) -> SeriesPoint | None:
-        """
-        Remove and return the oldest valid entry.
-        Returns None if no valid entries exist.
-        """
-        temporary_path = self.path.with_suffix(".tmp")
+    def is_empty(self) ->bool:
+        return self.peek() is None
 
-        removed_entry = None
-        removed_entry_found = False
+    def dequeue_multiple(self, count: int) -> int:
+        """
+        Remove the oldest `count` entries.
+        Return the number of valid entries actually removed.
+        """
+        if count == 0:
+            return 0
+        temporary_path = self.path.with_suffix(".tmp")
+        removed = 0
 
         with self.path.open() as source_file, temporary_path.open("w") as destination_file:
             for line in source_file:
                 stripped = line.strip()
 
-                if not removed_entry_found:
+                if removed < count:
                     try:
-                        data = json.loads(stripped)
-                        removed_entry = SeriesPoint.from_dict(data)
-                        removed_entry_found = True
+                        json.loads(stripped)
+                        removed += 1
                         continue  # don't save this item
                     except Exception:
                         # skip corrupt lines before first valid entry
                         continue
 
+                # After removing `count` valid entries, copy the rest
                 destination_file.write(line)
 
         temporary_path.replace(self.path)
-        return removed_entry
+        return removed

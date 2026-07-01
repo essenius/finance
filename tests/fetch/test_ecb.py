@@ -9,7 +9,7 @@ from zoneinfo import ZoneInfo
 import pytest
 
 
-def test_ecb_fetch_real_fixture(ecb_provider, assert_ok, make_asset, make_series, fixed_now):
+def test_ecb_fetch_real_fixture(ecb_provider, assert_ok, make_asset, make_series):
     with open("tests/data/ecb_eurusd.json") as f:
         fake_json = json.load(f)
 

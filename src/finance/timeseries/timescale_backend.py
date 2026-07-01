@@ -132,14 +132,15 @@ class TimescaleBackend:
     # Handling of series points
     # ------------------------------------------------------------
 
-    def add(self, entry: SeriesPoint) -> Result[None]:
-        """Buffer a new price entry and flush based on batch size or age."""
+    def add(self, entry: SeriesPoint) -> Result[int]:
+        """Buffer a new point and flush based on batch size or age. Returns the number of records written to the database, wrapped in a Result.
+        These are always the oldest records in the queue"""
         self._pending.append(entry)
 
         if self._should_flush():
             return self.flush()
 
-        return Result.ok_payload(None)
+        return Result.ok_payload(0)
 
     def _should_flush(self) -> bool:
         now = self.now()
@@ -156,22 +157,23 @@ class TimescaleBackend:
             return True
         return False
 
-    def flush(self) -> Result[None]:
-        """Flush all pending entries to TimescaleDB."""
+    def flush(self) -> Result[int]:
+        """Flush all pending entries to TimescaleDB. Returns the number of entries written, wrapped in a Result"""
 
         if not self._pending:
-            return Result.ok_payload(None)
+            return Result.ok_payload(0)
 
-        # Perform all batch inserts inside a single safe transaction
+        # Perform all batch inserts inside a single safe transaction.
         result = self._insert_batches(self._pending, "Flush")
-        if not result.ok:
-            return result
-
+        # clear the pending items regardless if succeeded or not. THe WAL will need to re-insert after failure.
         self._pending.clear()
-        self._last_flush = self.now()
-        return Result.ok_payload(None)
+        if result.ok:
+            self._last_flush = self.now()
 
-    def close(self) -> Result[None]:
+        # pass on the number of flushed records wrapped in a Result
+        return result
+
+    def close(self) -> Result[int]:
         """Flush pending data and close the DB connection."""
         result = self.flush()
         self._connection.close()
@@ -227,7 +229,7 @@ class TimescaleBackend:
             if not result.ok:
                 return result
 
-        return Result.ok_payload(None)
+        return Result.ok_payload(len(entries))
 
     def _execute_many(self, sql: str, params: list[tuple], context: str) -> Result[None]:
 
@@ -268,10 +270,12 @@ class TimescaleBackend:
             table = "prices_intraday" if is_intraday else "prices_daily"
             order = sql.SQL("ASC") if ascending else sql.SQL("DESC")
 
+            fields = sql.SQL("value") if is_intraday else sql.SQL("open, high, low, close, volume")
             stmt = sql.SQL("""
-                SELECT series_id, time, open, high, low, close, volume FROM {table}
+                SELECT series_id, time, {fields} FROM {table}
                 WHERE series_id = %s ORDER BY time {order} LIMIT 1
             """).format(
+                fields=fields,
                 table=sql.Identifier(table),
                 order=order,
             )
@@ -322,7 +326,7 @@ class TimescaleBackend:
 
         def operation():
             rows = self._execute_read(sql)
-            self._intraday_series_ids = {row.id for row in rows}
+            self._intraday_series_ids = {row[0] for row in rows}
 
         return self._database_operation(operation, "load intraday series ids")
 
@@ -332,7 +336,8 @@ class TimescaleBackend:
         YAML is authoritative, so we upsert on (symbol, provider).
         """
 
-        metadata = (
+        base_fields = (
+            a.name,
             a.symbol,
             a.provider,
             a.provider_code,
@@ -350,18 +355,18 @@ class TimescaleBackend:
                     RETURNING id;
                     """
 
-            params = (a.name, *metadata)
+            params = base_fields
 
         else:
             # UPDATE
             sql = """
                 UPDATE asset
-                SET symbol=%s, provider=%s, provider_code=%s, display_name=%s, instrument=%s, region=%s, exchange=%s, currency=%s, unit=%s
+                SET name=%s, symbol=%s, provider=%s, provider_code=%s, display_name=%s, instrument=%s, region=%s, exchange=%s, currency=%s, unit=%s
                 WHERE id=%s
                 RETURNING id;
             """
 
-            params = (*metadata, a.id)
+            params = (*base_fields, a.id)
 
         result = self._execute_write(sql, params)
 
@@ -460,7 +465,7 @@ class TimescaleBackend:
             with self._connection.cursor() as cursor:
                 cursor.execute(
                     """
-                    SELECT s.id, s.asset_id, a.name as symbol,  a.symbol || '_' || s.resolution AS name,
+                    SELECT s.id, s.asset_id, a.name as asset_name, a.name || '_' || s.resolution AS name,
                            s.resolution, s.series_type, s.interval, s.history_limit FROM series s
                     JOIN asset a ON s.asset_id = a.id
                     ORDER BY s.id;

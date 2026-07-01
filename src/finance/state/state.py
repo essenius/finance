@@ -6,7 +6,7 @@ from collections.abc import Iterable
 from dataclasses import replace
 from datetime import datetime
 
-from ..common.model import Series, SeriesPoint, SeriesResult, SeriesState
+from ..common.model import Result, Series, SeriesPoint, SeriesState
 from ..state.storage import StateStorage
 from ..state.wal import JsonlWAL
 from ..timeseries.timescale_backend import TimescaleBackend
@@ -17,7 +17,11 @@ class State:
         self._backend: TimescaleBackend = backend
         self._wal: JsonlWAL = wal
         self._storage: StateStorage = storage
-        self.series: dict[int, SeriesState] = storage.load()
+        self.series: dict[int, SeriesState] = {}
+
+    def load(self) -> Result[int]:
+        self.series: dict[int, SeriesState] = self._storage.load()
+        return self.flush_wal()
 
     def save(self) -> None:
         self._storage.save(self.series)
@@ -84,40 +88,60 @@ class State:
         if new_first != s.first_time or new_last != s.last_time:
             self.series[series_id] = replace(s, first_time=new_first, last_time=new_last)
 
-    def ingest(self, series: Series, point: SeriesPoint) -> SeriesResult:
+
+    def flush_wal(self) -> Result[int]:
+        flushed_count = 0
+        warnings=[]
+        # We need to create a snapshot, as the process changes the WAL
+        entries = list(self._wal.read_all())
+        for entry in entries:
+            result = self.sync_backend(entry)
+            # no sense continuing if the backend can't handle new points
+            if not result.ok:
+                return result
+            warnings=result.warnings
+            flushed_count += result.payload
+
+        # force the backend to flush to the database
+        self._backend.flush()
+
+        return Result.ok_payload(flushed_count, warnings=warnings)
+
+    def sync_backend(self, point: SeriesPoint) -> Result[int]:
+        """
+        - Ask backend to write a point
+        - receive number of written points
+        - remove that number of points from the wal
+        """
+        warnings = []
+        result = self._backend.add(point)
+
+        if not result.ok:
+            return result
+
+        written_count = result.payload
+        removed_count = self._wal.dequeue_multiple(written_count)
+        if removed_count != written_count:
+            warnings.append(f"Requested to remove {written_count} entries from the WAL but removed {removed_count}")
+
+        return Result.ok_payload(removed_count, warnings=warnings)
+
+    def ingest(self, series: Series, point: SeriesPoint) -> Result[int]:
         """
         Ingest a new metric:
         - check if write is needed, if not bail out
         - append to WAL (ingestion succeeds here)
-        - flush WAL FIFO to timeseries_client
-        - on first write failure, stop and return that result
+        - ask backend to write it
 
         Note: first and last times are not updated, that needs to happen after the batch was done
         """
         policy = self._compute_policy(series.id, point.time)
         if policy["skipped"]:
-            return SeriesResult.ok_payload(series.name, None, meta=policy)
+            return Result.ok_payload(0, meta=policy)
 
-        # Durable accept: enqueue
         self._wal.enqueue(point)
+        return self.sync_backend(point).with_meta(policy)
 
-        # Flush WAL FIFO
-        while True:
-            oldest = self._wal.peek()
-            if oldest is None:
-                break
-
-            result = self._backend.add(oldest)
-
-            if not result.ok:
-                # stop flushing, keep WAL intact. Always give back requested entry even if an older failed
-                # (because that implies the requested entry failed as well)
-                return result
-
-            # successful write → remove from WAL
-            self._wal.dequeue()
-
-        return SeriesResult.ok_payload(series.name, point, meta=policy)
 
     def iter_series_state(self) -> Iterable[tuple[int, SeriesState]]:
         """

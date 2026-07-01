@@ -38,9 +38,9 @@ def test_refresh_intraday_series_ids_loads_ids(make_backend):
     # rows returned by _execute_read
     backend._execute_read = MagicMock(
         return_value=[
-            MagicMock(id=10),
-            MagicMock(id=20),
-            MagicMock(id=30),
+            (10,),
+            (20,),
+            (30,),
         ]
     )
 

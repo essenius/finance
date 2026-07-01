@@ -5,7 +5,7 @@
 import json
 from pathlib import Path
 
-from finance.state.state import SeriesState
+from finance.common.model import SeriesState
 
 
 class StateStorage:

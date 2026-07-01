@@ -8,8 +8,7 @@ from pathlib import Path
 from typing import Any
 
 import finance
-from finance.common.model import BACKEND, Asset, Provider, Result, Series
-from finance.common.paths import get_project_root
+from finance.common.model import BACKEND, Asset, ProviderConfig, Result, Series
 from finance.fetch.provider import MarketDataProvider
 from finance.registry.registry import Registry
 from finance.state.storage import StateStorage
@@ -27,11 +26,13 @@ from .state.wal import JsonlWAL
 logger = AppLogger()
 
 
-def main():
-    return run()
+def main(argv: list[str] | None = None):
+    args = parse_args(argv)
+    return run(args.config)
 
 
 def run(
+    config_path: Path | None = None,
     load_config: Callable[[], Result[dict[str, Any]]] = None,
     registry_factory: Callable[..., Registry] = Registry,
     backend_factory: Callable[[dict[str, Any], Registry], Result[TimescaleBackend]] = TimescaleBackend.from_config,
@@ -39,7 +40,7 @@ def run(
     state_factory: Callable[..., State] = State,
     state_storage_factory: Callable[[str], StateStorage] = StateStorage,
     fetch_controller_factory: Callable[
-        [Iterable[Series], Callable[[int], Asset], Callable[[str], Provider]], FetchController
+        [Iterable[Series], Callable[[int], Asset], Callable[[str], ProviderConfig]], FetchController
     ] = FetchController,
     # composite_engine_builder: Callable[[dict[str, Any], State], Result[CompositeEngine]] = CompositeEngine.build,
     wal_factory: Callable[[Path], JsonlWAL] = JsonlWAL,
@@ -47,9 +48,8 @@ def run(
     now: Callable[[], datetime] = None,
 ) -> None:
     try:
-        args = parse_args()
         # these two have arguments, so shouldn't be used in defaults
-        load_config = load_config or ConfigLoader(Path.cwd(), args.config).load
+        load_config = load_config or ConfigLoader(cwd=Path.cwd(), config_path=config_path).load
         now = now or (lambda: datetime.now(UTC))
         now_str = now().astimezone().isoformat(timespec="seconds")
         logger.info(f"Finance version: {finance.__version__} started at {now_str}")
@@ -64,7 +64,6 @@ def run(
         provider_cfg = config["providers"]
 
         registry = registry_factory()
-        # TODO make assets and series lists instead of dicts ^^^
         registry.load_yaml_assets(asset_list)
         registry.load_yaml_series(series_list)
 
@@ -79,14 +78,17 @@ def run(
 
         wal = wal_factory(paths.get("wal"))
         storage = state_storage_factory(paths.get("state"))
-        state = state_factory(series_store=backend_result.payload, wal=wal, storage=storage)
+        state = state_factory(backend=backend_result.payload, wal=wal, storage=storage)
+        # load the state and load/flush the wal
+        flush_count = unwrap(state.load(), throw=False)
+        logger.debug(f"Flushed {flush_count} items from the WAL")
 
         fetch_failures = 0
 
         # Fetch and save primary asset metrics
 
         providers = provider_factory(api_keys=secrets.get("api_keys"), providers_config=provider_cfg)
-        fetch_controller = fetch_controller_factory(series_list, registry.get_asset_by_id, providers.get)
+        fetch_controller = fetch_controller_factory(registry.all_series(), registry.get_asset_by_id, providers.get)
         for result in fetch_controller.fetch_incrementally(state):
             series = registry.get_series_by_name(result.series_name)
             if not process_result(result, state, series):

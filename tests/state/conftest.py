@@ -12,16 +12,11 @@ from finance.common.model import DAILY, DailyValuePoint, Resolution, Series, Ser
 @pytest.fixture()
 def make_entry(make_asset, make_series) -> dict:
     def _make(series_id=1, value=1, timestamp=100, name="spx"):
-        asset = make_asset(id=series_id, name="spx")
+        asset = make_asset(id=series_id, name=name)
         series = make_series(asset, id=series_id, resolution=Resolution(DAILY))
         return {"series": series, "point": DailyValuePoint(series_id=series_id, time=timestamp, value=value)}
 
     return _make
-
-
-@pytest.fixture
-def wal_sequence():
-    return lambda wal, seq: setattr(wal.peek, "side_effect", seq)
 
 
 @pytest.fixture

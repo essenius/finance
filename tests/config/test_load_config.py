@@ -4,7 +4,7 @@
 
 from datetime import timedelta
 
-from finance.common.model import Asset, Provider, Resolution, Series, SeriesType
+from finance.common.model import Asset, ProviderConfig, Resolution, Series, SeriesType
 from finance.config.loader import ConfigLoader, load_yaml_config
 
 
@@ -80,9 +80,9 @@ business:
     assert series.asset_id is None
     assert series.asset_name == "spx"
     assert series.history_limit == "10y"
-    assert series.history_limit_delta == timedelta(days=3652.5)
+    assert series.history_limit_delta() == timedelta(days=3652.5)
     assert series.interval == "1d"
-    assert series.interval_delta == timedelta(days=1)
+    assert series.interval_delta() == timedelta(days=1)
     assert series.resolution == Resolution.DAILY
     assert series.series_type == SeriesType.CANDLE
     assert series.id is None
@@ -123,14 +123,14 @@ def test_load_config_dev_mode(monkeypatch, tmp_path, unwrap):
         "timezone": "UTC",
         "intraday_history_limit": "5d",
         "daily_history_limit": "10y",
-        "intraday_interval": "10m",
+        "intraday_interval": "5m",
         "daily_interval": "1d",
         "daily_series_type": "candle",
     }
     assert cfg["providers"] == {
-        "yahoo": Provider(name="yahoo", **expected_params),
-        "ecb": Provider(name="ecb", **expected_params),
-        "fred": Provider(name="fred", **expected_params),
+        "yahoo": ProviderConfig(name="yahoo", **expected_params),
+        "ecb": ProviderConfig(name="ecb", **expected_params),
+        "fred": ProviderConfig(name="fred", **expected_params),
     }
 
 

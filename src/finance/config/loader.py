@@ -15,7 +15,7 @@ from finance.common.time_utils import parse_duration
 
 from ..common.applogger import LOG_LEVELS
 from ..common.introspection import here
-from ..common.model import BACKEND, RESOLUTION, Asset, Provider, Result, Series, SeriesType, SupportedProviders
+from ..common.model import BACKEND, RESOLUTION, Asset, ProviderConfig, Result, Series, SeriesType, SupportedProviders
 from ..common.paths import resolve_config_path
 
 
@@ -123,14 +123,15 @@ def apply_logging_config(config: dict) -> None:
 # ---------------------------------
 
 
-def check_duration(content, name, default):
+def check_duration(content: dict, name: str, default: str|None = None):
     raw_duration = content.get(name, default)
     # validate that the duration is correct
-    parse_duration(raw_duration, name)
+    if raw_duration is not None:
+        parse_duration(raw_duration, name)
     return raw_duration
 
 
-def normalize_providers(raw_providers: dict) -> Result[dict[str, Provider]]:
+def normalize_providers(raw_providers: dict) -> Result[dict[str, ProviderConfig]]:
 
     providers = {}
     for provider in SupportedProviders.values():
@@ -141,16 +142,23 @@ def normalize_providers(raw_providers: dict) -> Result[dict[str, Provider]]:
         except Exception:
             return Result.fail(f"Could not parse provider '{provider}'", f"Invalid timezone '{tz_name}'")
 
+        # only define parameters that have values. For the rest, let the constructor use its defaults
         try:
-            output = Provider(
-                name=provider,
-                timezone=tz_name,
-                daily_interval=check_duration(content, "daily_interval", "1d"),
-                intraday_interval=check_duration(content, "intraday_interval", "10m"),
-                daily_history_limit=check_duration(content, "daily_history_limit", "10y"),
-                intraday_history_limit=check_duration(content, "intraday_history_limit", "5d"),
-                daily_series_type=SeriesType.validate(content.get("daily_series_type", "candle")),
-            )
+            kwargs = {
+                "name": provider,
+                "timezone": tz_name,
+            }
+
+            daily_series_type = content.get("daily_series_type")
+            if daily_series_type is not None:
+                kwargs["daily_series_type"] = SeriesType.validate(daily_series_type)
+
+            for field in ["daily_interval", "intraday_interval", "daily_history_limit", "intraday_history_limit"]:
+                value = check_duration(content, field)
+                if value is not None:
+                    kwargs[field] = value
+
+            output = ProviderConfig(**kwargs)
         except ValueError as ve:
             return Result.fail(f"Could not parse provider '{provider}'", ve)
 
@@ -191,7 +199,7 @@ def check_field_set(field_set: list[str], name: str):
 # Normalize asset definitions
 # -----------------------------
 def normalize_assets_and_series(
-    raw_assets: dict, providers: dict[str, Provider]
+    raw_assets: dict, providers: dict[str, ProviderConfig]
 ) -> Result[tuple[list[Asset], list[Series]]]:
     """
     Expand YAML asset blocks with 'resolution' into asset and series definitions.

@@ -138,9 +138,9 @@ def test_series_create_with_id_differs(make_asset):
     assert series.resolution == Resolution.DAILY
     assert series.series_type == SeriesType.CANDLE
     assert series.interval == "1d"
-    assert series.interval_delta == timedelta(days=1)
+    assert series.interval_delta() == timedelta(days=1)
     assert series.history_limit == "10y"
-    assert series.history_limit_delta == timedelta(days=3652.5)
+    assert series.history_limit_delta() == timedelta(days=3652.5)
 
     series2 = series.with_id(10)
     assert (

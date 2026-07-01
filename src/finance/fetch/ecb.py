@@ -95,7 +95,7 @@ class EcbProvider(MarketDataProvider):
 
         # was ?format=jsondata&lastNObservations=1&detail=dataonly"
 
-        response = self.session.get(url, params=params, timeout=10)
+        response = self.session.get(url, params=params, timeout=self.provider_config.timeout_delta().seconds)
         response.raise_for_status()
         data = response.json()
 

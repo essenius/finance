@@ -19,16 +19,19 @@ environment:
 business:
   providers:
     yahoo:
+      timeout: 10s
       timezone: UTC
       intraday_history_limit: 5d
       daily_history_limit: 10y
       daily_series_type: candle
     
     ecb:
+      timeout: 20s
       timezone: Europe/Berlin
       daily_series_type: value
     
     fred:
+      timeout: 10s
       timezone: America/Chicago
       daily_series_type: value
 

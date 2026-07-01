@@ -324,6 +324,8 @@ class ProviderConfig:
     name: str
     timezone: str
 
+    timeout: str = "10s"
+
     daily_interval: str = "1d"
     intraday_interval: str = "5m"
 
@@ -331,6 +333,9 @@ class ProviderConfig:
     intraday_history_limit: str = "5d"
 
     daily_series_type: str = SeriesType.CANDLE
+
+    def timeout_delta(self) -> timedelta:
+        return parse_duration(self.timeout, f"timeout for {self.name}")
 
 
 @dataclass(frozen=True)

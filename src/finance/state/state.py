@@ -4,7 +4,7 @@
 
 from collections.abc import Iterable
 from dataclasses import replace
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from ..common.model import Result, Series, SeriesPoint, SeriesState
 from ..state.storage import StateStorage
@@ -49,8 +49,17 @@ class State:
         else:
             self.series[series_id] = replace(old, last_try=now)
 
-    def _compute_policy(self, series_id: int, time: datetime) -> dict:
-        entry = self.get(series_id)
+    def _compute_policy(self, series: Series, time: datetime) -> dict:
+
+        def is_aligned(ts: datetime, interval: timedelta) -> bool:
+            """Yahoo's last candle isn't aligned"""
+            seconds = int(interval.total_seconds())
+            return int(ts.timestamp()) % seconds == 0
+
+        if not is_aligned(time, series.interval_delta()):
+            return {"skipped": True, "reason": "misaligned-interval"}
+
+        entry = self.get(series.id)
 
         # No state or no time → first ever point, must write
         if entry is None or entry.first_time is None or entry.last_time is None:
@@ -134,7 +143,7 @@ class State:
 
         Note: first and last times are not updated, that needs to happen after the batch was done
         """
-        policy = self._compute_policy(series.id, point.time)
+        policy = self._compute_policy(series, point.time)
         if policy["skipped"]:
             return Result.ok_payload(0, meta=policy)
 

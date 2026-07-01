@@ -32,6 +32,7 @@ def unwrap(result: Result[T], throw: bool | None = True) -> T | None:
     - optionally throw ValueError on failure
     """
     result_dict = asdict(result)
+    result_dict.pop("payload")
     if not result.ok:
         logger.error(**result_dict)
         if throw:
@@ -40,8 +41,6 @@ def unwrap(result: Result[T], throw: bool | None = True) -> T | None:
     # we can have warnings with ok, they still have results
     if result.warnings:
         logger.warning(**result_dict)
-    else:
-        logger.debug(**result_dict)
     return result.payload
 
 

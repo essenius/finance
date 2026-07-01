@@ -153,7 +153,13 @@ def normalize_providers(raw_providers: dict) -> Result[dict[str, ProviderConfig]
             if daily_series_type is not None:
                 kwargs["daily_series_type"] = SeriesType.validate(daily_series_type)
 
-            for field in ["daily_interval", "intraday_interval", "daily_history_limit", "intraday_history_limit"]:
+            for field in [
+                "daily_interval",
+                "intraday_interval",
+                "daily_history_limit",
+                "intraday_history_limit",
+                "timeout",
+            ]:
                 value = check_duration(content, field)
                 if value is not None:
                     kwargs[field] = value

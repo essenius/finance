@@ -11,6 +11,7 @@ def test_normalize_providers_basic(unwrap):
         "timezone": "Europe/Berlin",
         "daily_history_limit": "20y",
         "intraday_history_limit": "10d",
+        "timeout": "20s",
         "nonsense": "ignored",
     }
 
@@ -25,14 +26,23 @@ def test_normalize_providers_basic(unwrap):
         "intraday_interval": "5m",
         "daily_interval": "1d",
         "daily_series_type": "candle",
+        "timeout": "10s",
     }
 
-    assert providers["yahoo"] == ProviderConfig(name="yahoo", **default_params)
+    assert providers["yahoo"] == ProviderConfig(name="yahoo", **default_params), "Yahoo"
     assert providers["ecb"] == ProviderConfig(
         name="ecb",
-        **default_params | {"timezone": "Europe/Berlin", "intraday_history_limit": "10d", "daily_history_limit": "20y"},
-    )
-    assert providers["fred"] == ProviderConfig(name="fred", **(default_params | {"daily_series_type": "value"}))
+        **default_params
+        | {
+            "timezone": "Europe/Berlin",
+            "intraday_history_limit": "10d",
+            "daily_history_limit": "20y",
+            "timeout": "20s",
+        },
+    ), "ECB"
+    assert providers["fred"] == ProviderConfig(
+        name="fred", **(default_params | {"timeout": "10s", "daily_series_type": "value"})
+    ), "FRED"
 
 
 def test_normalize_providers_wrong_timezone(assert_error):

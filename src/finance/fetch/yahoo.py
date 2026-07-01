@@ -54,7 +54,7 @@ class YahooProvider(MarketDataProvider):
     def _fetch_impl(self, url, name) -> MeasurementResult[dict]:
         """fetch the response from the provider. Is called from a _safe_call wrapper so can throw"""
         headers = {"User-Agent": "Mozilla/5.0"}
-        response = self.session.get(url, headers=headers, timeout=10)
+        response = self.session.get(url, headers=headers, timeout=self.provider_config.timeout_delta().seconds)
         response.raise_for_status()
         data = response.json()
 

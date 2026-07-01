@@ -33,7 +33,7 @@ class FredProvider(MarketDataProvider):
 
     def _fetch(self, series: Series, params: dict) -> FetchResult:
 
-        response = self.session.get(BASE_URL, params=params, timeout=10)
+        response = self.session.get(BASE_URL, params=params, timeout=self.provider_config.timeout_delta().seconds)
         response.raise_for_status()
 
         data = response.json()

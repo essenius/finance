@@ -3,8 +3,13 @@
 # File: tests/state/test_ingest.py
 
 from dataclasses import replace
+from datetime import UTC, datetime
 
 from finance.common.model import Result, SeriesState
+
+
+def make_series_state(start: int = 0, end: int = 1200) -> SeriesState:
+    return SeriesState(first_time=datetime.fromtimestamp(start, tz=UTC), last_time=datetime.fromtimestamp(end, tz=UTC))
 
 
 def test_ingest_enqueues_and_does_not_update_state(state_env, make_entry):
@@ -58,10 +63,10 @@ def test_load_stops_on_first_failure(state_env, two_wal_entries, assert_error):
 
     wal.read_all.return_value = two_wal_entries()
 
-    backend.add.return_value = Result.fail(reason="down", error="x", meta={"failed_timestamp": 100})
+    backend.add.return_value = Result.fail(reason="down", error="x", meta={"failed_timestamp": 600})
     result = state.load()
     assert_error(result, "down", "x")
-    assert result.meta["failed_timestamp"] == 100
+    assert result.meta["failed_timestamp"] == 600
     wal.dequeue_multiple.assert_not_called()
 
 
@@ -69,7 +74,7 @@ def test_ingest_first_time(state_env, make_entry, unwrap):
     state, backend, wal, _ = state_env
     backend.add.return_value = Result.ok_payload(0)
 
-    args = make_entry(timestamp=1000)
+    args = make_entry(timestamp=1200)
     write = replace(args["point"], value=1.11)
 
     result = state.ingest(args["series"], write)
@@ -84,8 +89,8 @@ def test_ingest_no_first_timestamp(state_env, make_entry):
     state, backend, wal, _ = state_env
     backend.add.return_value = Result.ok_payload(0)
     # inconsistent state, should treat last as None
-    state.series[1] = SeriesState(last_time=1000)
-    args = make_entry(timestamp=1000)
+    state.series[1] = SeriesState(last_time=1200)
+    args = make_entry(timestamp=1200)
     write = replace(args["point"], value=1.11)
 
     result = state.ingest(args["series"], write)
@@ -117,9 +122,9 @@ def test_ingest_new_write_with_flush(state_env, make_entry):
     state, backend, wal, _ = state_env
     backend.add.return_value = Result.ok_payload(1)
 
-    state.series[1] = SeriesState(first_time=0, last_time=1000)
+    state.series[1] = make_series_state()
 
-    args = make_entry(timestamp=2000)
+    args = make_entry(timestamp=1800)
     write = replace(args["point"], value=1.11)
     result = state.ingest(args["series"], write)
 
@@ -131,9 +136,9 @@ def test_ingest_new_write_with_flush(state_env, make_entry):
 
 def test_ingest_skip_unchanged(state_env, make_entry):
     state, _, wal, _ = state_env
-    state.series[1] = SeriesState(first_time=0, last_time=1000)
+    state.series[1] = make_series_state()
 
-    args = make_entry(timestamp=1000)
+    args = make_entry(timestamp=1200)
     write = replace(args["point"], value=1.10)
 
     result = state.ingest(args["series"], write)
@@ -146,9 +151,9 @@ def test_ingest_skip_unchanged(state_env, make_entry):
 
 def test_ingest_skip_in_range(state_env, make_entry):
     state, _, wal, _ = state_env
-    state.series[1] = SeriesState(first_time=0, last_time=2000)
+    state.series[1] = make_series_state(start=0, end=1800)
 
-    args = make_entry(timestamp=1000)
+    args = make_entry(timestamp=1200)
     write = replace(args["point"], value=1.09)
 
     result = state.ingest(args["series"], write)
@@ -162,9 +167,9 @@ def test_ingest_skip_in_range(state_env, make_entry):
 def test_ingest_before_range(state_env, make_entry):
     state, backend, wal, _ = state_env
     backend.add.return_value = Result.ok_payload(1)
-    state.series[1] = SeriesState(first_time=1000, last_time=2000)
+    state.series[1] = make_series_state(start=1200, end=1800)
 
-    args = make_entry(timestamp=500)
+    args = make_entry(timestamp=600)
     write = replace(args["point"], value=1.09)
 
     result = state.ingest(args["series"], write)
@@ -175,12 +180,28 @@ def test_ingest_before_range(state_env, make_entry):
     wal.enqueue.assert_called_once()
 
 
+def test_ingest_misaligned_timestamp(state_env, make_entry):
+    state, backend, wal, _ = state_env
+    backend.add.return_value = Result.ok_payload(1)
+    state.series[1] = make_series_state(start=1200, end=1800)
+
+    # interval is 10m, i.e. 600s
+    args = make_entry(timestamp=500)
+    write = replace(args["point"], value=1.09)
+    result = state.ingest(args["series"], write)
+
+    assert result.ok is True
+    assert result.payload == 0
+    assert result.meta == {"skipped": True, "reason": "misaligned-interval"}
+    wal.enqueue.assert_not_called()
+
+
 def test_sync_backend_different_counts(state_env, make_entry, unwrap):
     state, backend, wal, _ = state_env
     backend.add.return_value = Result.ok_payload(1)
     wal.dequeue_multiple.side_effect = None
     wal.dequeue_multiple.return_value = 0
-    args = make_entry(timestamp=1000)
+    args = make_entry(timestamp=1200)
     write = replace(args["point"], value=1.11)
 
     result = state.ingest(args["series"], write)

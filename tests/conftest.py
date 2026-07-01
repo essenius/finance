@@ -9,7 +9,6 @@ from unittest.mock import Mock
 import pytest
 
 from finance.common.model import INTRADAY, Asset, Result, Series, SeriesType
-from finance.common.time_utils import parse_duration
 from finance.state.state import State
 from finance.state.storage import StateStorage
 from finance.state.wal import JsonlWAL
@@ -142,8 +141,8 @@ def make_series(make_asset):
         }
         params = defaults | overrides
         params["name"] = f"{asset.name}_{params['resolution']}"
-        #params["interval_delta"] = parse_duration(params["interval"])
-        #params["history_limit_delta"] = parse_duration(params["history_limit"])
+        # params["interval_delta"] = parse_duration(params["interval"])
+        # params["history_limit_delta"] = parse_duration(params["history_limit"])
 
         return Series(**params)
 

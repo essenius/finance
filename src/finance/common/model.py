@@ -330,7 +330,7 @@ class ProviderConfig:
     daily_history_limit: str = "10y"
     intraday_history_limit: str = "5d"
 
-    daily_series_type: str  = SeriesType.CANDLE
+    daily_series_type: str = SeriesType.CANDLE
 
 
 @dataclass(frozen=True)
@@ -416,7 +416,6 @@ class Series:
     def history_limit_delta(self) -> timedelta:
         return parse_duration(self.history_limit, f"history limit for {self.name}")
 
-
     @classmethod
     def create(cls, asset: Asset, resolution: str, config: dict | None = None) -> Series:
         """Create a new Series instance. Checks values and can raise ValueError"""
@@ -453,9 +452,9 @@ class Series:
             resolution=Resolution(resolution),
             series_type=series_type,
             interval=interval,
-#            interval_delta=parse_duration(interval, f"interval for {name}"),
+            #            interval_delta=parse_duration(interval, f"interval for {name}"),
             history_limit=history_limit,
-#            history_limit_delta=parse_duration(history_limit, f"history limit for {name}"),
+            #            history_limit_delta=parse_duration(history_limit, f"history limit for {name}"),
         )
 
     def with_id(self, new_id: id) -> Series:

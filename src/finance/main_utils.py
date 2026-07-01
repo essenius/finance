@@ -20,11 +20,7 @@ T = TypeVar("T")
 
 def parse_args(argv: list[str] | None = None):
     parser = argparse.ArgumentParser(description="Finance ingestion service")
-    parser.add_argument(
-        "--config",
-        type=Path,
-        help="Path to the YAML configuration file (absolute or relative)"
-    )
+    parser.add_argument("--config", type=Path, help="Path to the YAML configuration file (absolute or relative)")
     return parser.parse_args(argv)
 
 

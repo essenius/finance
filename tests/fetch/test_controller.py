@@ -51,9 +51,9 @@ def make_series_list(asset, interval="10m", history_limit="5d", resolution=INTRA
             asset_name=asset.name,
             series_type=SeriesType.VALUE,
             interval=interval,
-            #interval_delta=parse_duration(interval),
+            # interval_delta=parse_duration(interval),
             history_limit=history_limit,
-            #history_limit_delta=parse_duration(history_limit),
+            # history_limit_delta=parse_duration(history_limit),
         )
     ]
 
@@ -75,6 +75,7 @@ def make_fetch_controller(
     providers = {name: fake_provider for name in PROVIDER_REGISTRY}
 
     return FetchController(series, get_asset, providers.get, now_provider=now_provider)
+
 
 # ----------------------------------------------------------------------
 # Tests

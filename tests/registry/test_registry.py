@@ -88,6 +88,7 @@ def test_reconcile_assets_orphans(make_asset):
     assert result.orphans == [asset_db]
     assert result.final == []
 
+
 def test_reconcile_assets_match_provider(make_asset):
     registry = Registry()
 
@@ -102,6 +103,7 @@ def test_reconcile_assets_match_provider(make_asset):
     assert result.to_persist == [asset_yaml.with_id(2)]
     assert result.orphans == []
     assert result.final == []
+
 
 # ------------------------------------------------------------
 # Series reconciliation
@@ -160,6 +162,7 @@ def test_reconcile_series_orphans(make_asset, make_series):
     assert result.orphans == [series_db]
     assert result.final == []
 
+
 def test_reconcile_series_match_asset_resolution(make_asset, make_series):
     registry = Registry()
 
@@ -182,6 +185,7 @@ def test_reconcile_series_match_asset_resolution(make_asset, make_series):
     assert result.to_persist == [series_yaml.with_id(10)]
     assert result.orphans == []
     assert result.final == []
+
 
 # ------------------------------------------------------------
 # Reconciliation entry point

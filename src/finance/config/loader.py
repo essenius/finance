@@ -123,7 +123,7 @@ def apply_logging_config(config: dict) -> None:
 # ---------------------------------
 
 
-def check_duration(content: dict, name: str, default: str|None = None):
+def check_duration(content: dict, name: str, default: str | None = None):
     raw_duration = content.get(name, default)
     # validate that the duration is correct
     if raw_duration is not None:

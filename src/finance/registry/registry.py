@@ -125,8 +125,7 @@ class Registry:
         orphans = [
             db_asset
             for db_asset in self._db_assets
-            if not any(find_existing_asset(yaml_asset) == db_asset
-                       for yaml_asset in self._yaml_assets)
+            if not any(find_existing_asset(yaml_asset) == db_asset for yaml_asset in self._yaml_assets)
         ]
 
         return ReconciledAssets(final, to_persist, orphans)
@@ -166,12 +165,10 @@ class Registry:
             else:
                 final.append(db_series)
 
-
         orphans = [
             db_series
             for db_series in self._db_series_list
-            if not any(find_existing_series(yaml_series) == db_series
-                    for yaml_series in self._yaml_series)
+            if not any(find_existing_series(yaml_series) == db_series for yaml_series in self._yaml_series)
         ]
 
         return ReconciledSeries(final, to_persist, orphans)

@@ -23,6 +23,7 @@ def test_ingest_enqueues_and_does_not_update_state(state_env, make_entry):
     # this should not write timestamps, happens separately after ingesting the batch
     assert state.series.get(1) is None
 
+
 def test_ingest_enqueues_and_removes_wal_entry(state_env, make_entry):
     state, backend, wal, _ = state_env
 
@@ -55,7 +56,7 @@ def test_load_flushes_fifo_until_empty(state_env, two_wal_entries, unwrap):
 def test_load_stops_on_first_failure(state_env, two_wal_entries, assert_error):
     state, backend, wal, _ = state_env
 
-    wal.read_all.return_value=two_wal_entries()
+    wal.read_all.return_value = two_wal_entries()
 
     backend.add.return_value = Result.fail(reason="down", error="x", meta={"failed_timestamp": 100})
     result = state.load()
@@ -63,48 +64,6 @@ def test_load_stops_on_first_failure(state_env, two_wal_entries, assert_error):
     assert result.meta["failed_timestamp"] == 100
     wal.dequeue_multiple.assert_not_called()
 
-'''
-def test_ingest_keeps_state_updated_even_on_failure(state_env, make_entry, wal_sequence, two_wal_entries):
-    state, ts, wal, _ = state_env
-
-    # WAL contains an older entry that will fail to flush
-    wal_sequence(wal, two_wal_entries())
-
-    ts.add.return_value = SeriesResult.fail(series_name="x", reason="error", error="down")
-
-    result = state.ingest(**make_entry(2, 10, 100))
-
-    assert state.series == {}
-    assert not result.ok
-    wal.enqueue.assert_called_once()
-
-
-def test_ingest_flushes_remaining_after_recovery(state_env, make_entry, wal_sequence, two_wal_entries_with_none):
-    state, backend, wal, _ = state_env
-
-    entries = two_wal_entries_with_none()
-    wal_sequence(wal, entries)
-    w1, w2, _ = entries
-    backend.add.side_effect = [
-        SeriesResult.fail(w1["series"].name, "down"),  # first attempt fails
-        SeriesResult.ok_payload(w1["series"].name, 0),  # retry succeeds, but nothing written
-        SeriesResult.ok_payload(w2["series"].name, 2),  # next entry succeeds, two written
-    ]
-
-    entry = make_entry(value=3, timestamp=30)
-    # First ingest fails
-    result1 = state.ingest(**entry)
-    assert not result1.ok
-    assert wal.dequeue_multiple.call_count == 0
-
-    # Second ingest should flush everything
-    wal_sequence(wal, entries)
-
-    entry2 = make_entry(value=4, timestamp=40)
-    result2 = state.ingest(**entry2)
-    assert result2.ok
-    assert wal.dequeue_multiple.call_count == 2
-'''
 
 def test_ingest_first_time(state_env, make_entry, unwrap):
     state, backend, wal, _ = state_env

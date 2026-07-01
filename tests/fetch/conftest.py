@@ -71,7 +71,10 @@ def fake_session():
 def ecb_provider(fixed_now, fake_session):
     def _make():
         return EcbProvider(
-            api_key=None, provider_config=ProviderConfig(name=SupportedProviders.ECB, timezone="Europe/Berlin"), now_provider=fixed_now, session=fake_session()
+            api_key=None,
+            provider_config=ProviderConfig(name=SupportedProviders.ECB, timezone="Europe/Berlin"),
+            now_provider=fixed_now,
+            session=fake_session(),
         )
 
     return _make

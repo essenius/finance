@@ -21,7 +21,9 @@ PROVIDER_REGISTRY = {
 }
 
 
-def create_providers(providers_config: dict[str, ProviderConfig], api_keys: dict[str, dict]) -> dict[str, MarketDataProvider]:
+def create_providers(
+    providers_config: dict[str, ProviderConfig], api_keys: dict[str, dict]
+) -> dict[str, MarketDataProvider]:
     result = {
         name: provider_class(provider_config=providers_config[name], api_key=api_keys.get(name))
         for name, provider_class in PROVIDER_REGISTRY.items()

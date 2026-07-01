@@ -88,10 +88,9 @@ class State:
         if new_first != s.first_time or new_last != s.last_time:
             self.series[series_id] = replace(s, first_time=new_first, last_time=new_last)
 
-
     def flush_wal(self) -> Result[int]:
         flushed_count = 0
-        warnings=[]
+        warnings = []
         # We need to create a snapshot, as the process changes the WAL
         entries = list(self._wal.read_all())
         for entry in entries:
@@ -99,7 +98,7 @@ class State:
             # no sense continuing if the backend can't handle new points
             if not result.ok:
                 return result
-            warnings=result.warnings
+            warnings = result.warnings
             flushed_count += result.payload
 
         # force the backend to flush to the database
@@ -141,7 +140,6 @@ class State:
 
         self._wal.enqueue(point)
         return self.sync_backend(point).with_meta(policy)
-
 
     def iter_series_state(self) -> Iterable[tuple[int, SeriesState]]:
         """

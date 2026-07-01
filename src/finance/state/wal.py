@@ -57,7 +57,7 @@ class JsonlWAL(WAL):
             return entry
         return None
 
-    def is_empty(self) ->bool:
+    def is_empty(self) -> bool:
         return self.peek() is None
 
     def dequeue_multiple(self, count: int) -> int:

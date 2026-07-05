@@ -10,7 +10,7 @@ environment:
     wal: wal.jsonl
     state: state.json
   timescaledb:
-    host: pironman5
+    host: localhost
     port: 5432
     ssl_mode: verify-ca
     db: test
@@ -20,33 +20,60 @@ environment:
 business:
   providers:
     yahoo:
+      timeout: 10s
       timezone: UTC
-      intraday_history_limit: 5d
-      daily_history_limit: 10y
-      daily_series_type: candle
+      constraints:
+        history_limits:
+          default: 60d
+          1m: 7d
+          1h: 730d
+          1d: null
     
     ecb:
+      timeout: 20s
       timezone: Europe/Berlin
-      daily_series_type: value
+      constraints: {}
     
-    fred:
-      timezone: America/Chicago
-      daily_series_type: value
+  series_templates:
+    daily_value:
+      interval: 1d
+      series_type: value
+
+    daily_candle:
+      interval: 1d
+
+    intraday_value:
+      interval: 5m
+      series_type: value
+
+    intraday_candle:
+      interval: 5m
 
   assets:
-
-    eurusd:
-      provider: yahoo
-      provider_code: EURUSD=X
-      display_name: Euro-USD rate
+    eurusd_yahoo:
+      provider: 
+        name: yahoo
+        code: EURUSD=X
+      symbol: EURUSD
       tags:
         instrument: forex
         exchange: FOREX
         region: GLOBAL
         currency: USD
         unit: ratio
-      resolution:
-        daily: {
-          series_type: value
-        }
-        intraday: {}
+      series:
+        intraday: intraday_candle
+        daily: daily_candle
+
+    eurusd_ecb:
+      provider: ecb
+      provider_code: USD_EUR
+      symbol: EURUSD
+      tags:
+        instrument: forex
+        exchange: FOREX
+        region: EU
+        currency: USD
+        unit: ratio
+      series:
+        daily: daily_value

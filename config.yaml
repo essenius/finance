@@ -280,6 +280,7 @@ business:
 
   # -------------------------
   # COMPOSITES
+  # note: disabled in V1
   # -------------------------
   composites:
     10Y_REAL:

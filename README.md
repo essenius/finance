@@ -1,5 +1,5 @@
 # **Finance Data Pipeline**  
-A modular Python pipeline that fetches financial and macro‑economic data from multiple public sources (Yahoo Finance, FRED, ECB, etc.) and writes normalized time‑series metrics into InfluxDB.  The system supports both base metrics (direct API fetches) and composite metrics (Python expressions computed from other metrics).
+A modular Python pipeline that fetches financial and macro‑economic data from multiple public sources (Yahoo Finance, FRED, ECB, etc.) and writes normalized time‑series metrics into TimescaleDB.  The system supports both base metrics (direct API fetches) and composite metrics (Python expressions computed from other metrics).
 
 The goal is a **deterministic, reliable, and extensible ingestion layer** for dashboards such as Grafana.
 
@@ -10,70 +10,106 @@ There are two files involve in configuration:
 - [config.yaml](config.yaml) contains the non-sensitive configuration data
 - [.env](.env.example) contains environment variable definitions for secrets. You can also choose to store these variables in your environment.
 
-### Secrets
+### Environment variables and secrets
 As secrets are not to be shared, the repo only has an example .env file, which you can use as example. 
+
 Supported entries
 - `FRED_API_KEY`: the API key for FRED (mandatory). 
 - `YAHOO_API_KEY`: the API key for Yahoo (optional).
-- `INFLUX_URL`: the base URL for InfluxDB, e.g. `https://localhost:8086`  (mandatory).
-- `INFLUX_SSL_CERT`: the location of the CA certificate to be used (optional). If omitted, the standard CA cert storage will be used. This is primarily useful if the Influx server is in a local network but still using SSL
-- `INFLUX_SSL_VERIFY`: the SSL verification mode. If not specified and SSL is used, True will be assumed.
-    - True: standard verification
-    - False: no verification (not recommended for production)
-    - Legacy: verification with relaxed requirements on CA Certificates
-    - Pinned: using a pinned cert (in INFLUX_SSL_CERT)
+- `TIMESCALEDB_HOST`: the TimescaleDB host e.g. `localhost`.
+- `TIMESCALEDB_DB`: the database for Timescale, e.g. `finance`.
+- `TIMESCALEDB_USER`: the user id
+- `TIMESCALEDB_PASSWORD`: the corresponding password
+- `TIMESCALEDB_SSL_MODE`: the SSL mode in PostgreSQL format. Default is `verify-full`. You can use `disable` to use plain TCP instead of TLS, or `require` to use TLS but not validate the certs. You can also use `verify-ca` to verify the CA cert but not the hostname. 
+- `TIMESCALEDB_SSL_ROOT_CERT`: the location of the CA certificate to be used. If omitted, the standard CA cert storage will be used. 
 
-#### Influx V2
-- `INFLUX_ORG`: the org to be used
-- `INFLUX_WRITE_TOKEN`: the token for writing
-- `INFLUX_READ_TOKEN`: the token for reading
-- `INFLUX_TOKEN`: the fallback token for read or write. Only used if `INFLUX_READ_TOKEN` or `INFLUX_WRITE_TOKEN` is not specified.
-It is mandatory to specify org and tokens.
-
-#### Influx V1
-- `INFLUX_DB`: the database to be used 
-- `INFLUX_USER`: the user ID
-- `INFLUX_PASSWORD`: the password
-
-The existence of `INFLUX_ORG` or `INFLUX_DB` is used to determine which Influx version is used. V2 is preferred.
+Everything but the secrets (API keys, credentials) can also be specified in the Environment configuration section of `config.yaml`.
 
 ### Environment Configuration
 
-This section contains settings that determine the technical setup and operation, such as like logging level, paths, influx settings and buckets
+This section contains settings that determine the technical setup and operation, such as like logging level, paths, and TimescaleDB settings.
 
-The term `bucket` maps to an InfluxDB bucket, but means more. Conceptually the system recognizes two: `daily` and `intraday`.
-This was done because they have different retention policies: daily has 10y or none, and intraday usually 5 days. 
-You need to define two buckets in the `buckets` subsection, and they always need two entries (one for `daily` and one for `intraday`).
-They define the names of the InfluxDB buckets to be used.
-
-If you don't consider the `url`, `org`, `db`, `ssl_cert` or `ssl_verify` locations sensitive, you can also store these in `config.yaml`, under the `influx` section.
+If you don't consider the `url`, `db`, `ssl_mode` or `ssl_root_cert` sensitive, you can also store these in `config.yaml`, under the `environment`-`timescaledb`.
 If settings are in both locations, the one in `config.yaml` is taken.
 
 ### Business Configuration
 
-This section contains the definitions of `providers` (providing the series), `assets` (series definitions) and `composites` (calculations on series), and supporting structures (`field_sets`)
+This section contains the definitions of `providers` (providing the series), `assets` (series definitions) and `composites` (calculations on series), and supporting structures (`field_sets`). Composites have been disabled for the first release.
 
 #### Providers
 Three providers are currently supported: Yahoo (chart API), Fred and ECB. 
-Every provider can define a default daily and intraday history limit in `daily_history_limit` and `intraday_history_limit`. The first time an asset is fetched, it will try and fetch that limit of data. Make sure that is at most the limit that the provider allows.
+The config looks as follows:
+```
+business:
+  providers:
+    yahoo:
+      timeout: 10s
+      timezone: UTC
+      constraints:
+        history_limits:
+          default: 60d
+          1m: 7d
+          60m: 730d
+          1d: null
+```
+Read this as follows: for the provider Yahoo, the request timeout is 10 seconds, and the default timezone is UTC.
+It has a default of 60 days for the history limit, but for one minute it is 7 days, and for 1 day there is no limit
 
-#### Field sets
+#### Series templates
 
-Daily values use the standard candle of [`open`, `high`, `low`, `close`, `volume`].
-If you want to use a subset of the candle instead, you can define a new field set with e.g. only [`close`, `volume`], and the others won't be fetched for the series using that field set.
+We distinguish assets and series. Asset is a specific financial instrument, such as a share of a company, an currency exchange rate or an published interest rate.
+Every asset can have one or more (usually max 2) series, a longer term one (interval 1 day or more) and a short term one with interval less than a day (intraday).
 
-Intraday values use the field `price`.
+You define as them follows:
 
-The fields themselves cannot be changed.
+business:
+  series_templates:
+    intraday_candle:
+      interval: 5m
+      series_type: candle
+      retention: short_lived
+      bootstrap_history: 30d
+
+This means we define a re-usable series template named `intraday_candle` which defines an interval of 5 minutes, a candle type [`open`, `high`, `low`, `close`, `volume`], and stored in the short lived table. On first fetch, it will try and fetch 30 days of history. 
+For series type, you can also use `value`. In that case, only the `close` field will be populated. This is useful for instruments that don't have the full candle like the ECB USD/EUR rate, and the FRED interest rates. All except the interval can be defaulted. For series type, the default is `candle`. The other two have defaults that depend on the interval. If the interval is less than a day, the default retention is `short_lived`, else `long_lived`. For bootstrap_history it's `30d` (30 days) and `10y` (10 years), respectively.
+
+The `interval` amd `bootstrap_history` are durations. They are specified by a number and a letter, where allowed values are `m` (minutes), `h` (hours)or `d` (days) `w` (weeks) or `y` (years of 365.25 days).
 
 #### Assets
 
-Every asset has a unique user-defined key. It contains a `provider` (link to provider key), a `symbol` (the identifier with which the provider allows you to fetch it), `tags` (metadata stored in Influx allowing for querying), and `timeseries` (with sections `intraday` or `daily`), specifying the `interval`. That is specified by a number and a letter, where allowed values are `m` (minutes), `h` (hours)or `d` (days) `w` (weeks) or `y` (years of 365.25 days). For daily timeseries, you can define fields as a list `['close', 'volume']` or a field set reference (`candle`). If you don't specify anything, `candle` is assumed.
+The asset entries specify the assets in scope along with their series.
+
+Example:
+
+```
+business:
+  assets:
+    gold:
+      provider:
+        name: yahoo
+        code: GC=F
+      symbol: GOLD
+      tags:
+        instrument: commodity
+        exchange: COMMODITY
+        region: GLOBAL
+        currency: USD
+        unit: troy_ounce
+      series:
+        intraday: intraday_candle
+        daily: daily_candle
+```
+
+In this example, `gold` is the asset key, which must be unique and should not be changed after it has been ingested into the database. 
+The `provider` section specifies which provider to use  and which provider code to use for fetching. The symbol here is `GOLD`. You can also omit it, and then the key (in this case `gold`) will be used instead. The tags are metadata that you can use for querying. The series section defines the series, using the series templates as defined earlier. You can also make this a section with the same entries as the template instead of a reference. 
+
+
 
 #### Composites
 
-You can define composite data using base data or even other composites. They also have a unique user defined identifier, and always have an `expression` referring to the other 
-identifiers. For single value series, you do not need to use the field name, for multi valued ones you do. so `fred_10y_nominal - fred_10y_breakeven` is correct assuming both
+Composites have been disabled for V1. They will be re-introduced later.
+
+Intent is to define composite data using base data or even other composites. They also have a unique user defined identifier, and always have an `expression` referring to the other identifiers. For single value series, you do not need to use the field name, for multi valued ones you do. so `fred_10y_nominal - fred_10y_breakeven` is correct assuming both
 identifiers exist in asset definitions. For multi-value assets, use `asset.field` as in e.g. `gold_daily.high - gold_daily.low`. Composites can also have InfluxDB `tags` and `timeseries` (daily or intraday). You can use arithmetical functions like `+`, `-`, `*`, `/`, `min`, `max`, `math.sqrt` and others. Dependencies are taken into account, and cycles will be rejected. 
 
 
@@ -83,7 +119,14 @@ identifiers exist in asset definitions. For multi-value assets, use `asset.field
 
 The repository layout is as follows
 ```
-finance/
+db/ 
+    # the SQL scripts to create the database and its tables
+ops/
+    # system test scripts
+scripts/
+    # bash scripts used by makefile
+src/
+  finance/
     common/
         # shared logic
     composites/
@@ -92,14 +135,14 @@ finance/
         # loader for config.yaml and .env, flattening structure
     fetch/
         # fetching data from the providers and transforming to standard format
+    registry/
+        # the asset and series registry
     state/
-        # capturing last values and timestamps per asset, caching
+        # capturing last values and timestamps per asset as well as a write ahead logger (WAL)
     timeseries/
-        # reading from and writing to InfluxDB
+        # reading from and writing to TimescaleDB
     main_utils.py    # utilities for main
     main.py          # the main application
-scripts/
-    # bash scripts used by makefile
 systemd/
     # definitions to use the application as a timed service
 tests/
@@ -141,7 +184,7 @@ edit `config.yaml` and get it to fetch/store the assets you want.
 ## **Running the Pipeline**
 
 ```bash
-python -m finance.finance_data_to_influx
+python -m finance
 ```
 
 You can schedule it via cron, systemd timers, or any scheduler.
@@ -157,10 +200,10 @@ Run all tests:
 pytest
 ```
 
-Run a specific file:
+Run a specific subsystem:
 
 ```bash
-pytest tests/test_write_influx.py
+pytest tests/config
 ```
 
 Ensure the package is on the Python path if needed:
@@ -171,24 +214,14 @@ PYTHONPATH=. pytest
 
 ---
 
-## **Configuration**
-
-The pipeline reads settings from:  
-- `config.ini` — metric definitions, intervals, InfluxDB settings  
-- `.env` — secrets and API keys  
-
-Config is in source control, .env is not. There is .env.example that can be taken as reference. 
-
----
-
 ## **Contributing**
 
-When extending the pipeline:  
-- Add unit tests for new modules or behaviors  
+When extending the pipeline:
+- Keep the code clean.  
+- Favor clarity over cleverness.  
+- Ensure over 99% code coverage  
 - Keep composite expressions deterministic  
 - Avoid unnecessary API calls  
-- Ensure state updates follow the unified model  
-
   
 ---
 

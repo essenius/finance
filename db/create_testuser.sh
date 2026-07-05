@@ -9,9 +9,9 @@ CONTAINER="timescaledb"
 DB="test"
 USER="testuser"
 
-PASS="${TIMESCALEDB_TESTPASS}"
+PASS="${TIMESCALEDB_PASSWORD}"
 if [ -z "$PASS" ]; then
-  echo "ERROR: TIMESCALEDB_TESTPASS is not set"
+  echo "ERROR: TIMESCALEDB_PASSWORD is not set"
   exit 1
 fi
 

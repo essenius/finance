@@ -16,7 +16,7 @@ def main():
     project_root = Path(__file__).resolve().parent
 
     print("Loading config...")
-    loader = ConfigLoader(project_root)
+    loader = ConfigLoader(cwd=project_root, config_path="config.yaml")
     cfg_result = loader.load()
     if not cfg_result.ok:
         print("Config load failed:", cfg_result.reason, cfg_result.error)
@@ -42,7 +42,11 @@ def main():
     print(f"environment config: {env_cfg}")
     print("creating backend")
 
-    backend_result = TimescaleBackend.from_config(secrets | env_cfg)
+    registry = Registry()
+    registry.load_yaml_assets(asset_list)
+    registry.load_yaml_series(series_list)
+
+    backend_result = TimescaleBackend.from_config(config=secrets | env_cfg, series_by_id=registry.get_series_by_id)
     if not backend_result.ok:
         print("Backend creation failed:", backend_result.reason, backend_result.error)
         return
@@ -50,9 +54,6 @@ def main():
     backend = backend_result.payload
 
     print("reconciling registry")
-    registry = Registry()
-    registry.load_yaml_assets(asset_list)
-    registry.load_yaml_series(series_list)
     reconcile_registry(registry, backend)
 
     print("registry assets")

@@ -23,7 +23,7 @@ def test_ecb_fetch_real_fixture(ecb_provider, assert_ok, make_asset, make_series
     result = provider.fetch(series, asset, start_time=start_time, end_time=end_time)
 
     # time must be May 8, 2026 00:00 UTC
-    assert_ok(result, time=datetime(2026, 5, 8, 0, 0, 0, tzinfo=UTC), value=1.1761)
+    assert_ok(result, time=datetime(2026, 5, 8, 0, 0, 0, tzinfo=UTC), close=1.1761)
 
 
 def test_ecb_fetch_ok(ecb_provider, assert_ok, make_asset, make_series):
@@ -40,7 +40,7 @@ def test_ecb_fetch_ok(ecb_provider, assert_ok, make_asset, make_series):
     start_time = datetime(2026, 5, 8, tzinfo=ZoneInfo("Europe/Berlin"))
     end_time = datetime(2026, 5, 8, 23, 59, 59, tzinfo=ZoneInfo("Europe/Berlin"))
     result = provider.fetch(series, asset, start_time=start_time, end_time=end_time)
-    assert_ok(result, time=datetime(2026, 5, 8, 0, 0, 0, tzinfo=UTC), value=1.1761)
+    assert_ok(result, time=datetime(2026, 5, 8, 0, 0, 0, tzinfo=UTC), close=1.1761)
 
 
 @pytest.mark.parametrize(
@@ -74,7 +74,7 @@ def test_ecb_fetch_non_200(ecb_provider, assert_error, make_asset, make_series, 
     asset = make_asset(provider_code="EUR_USD")
     series = make_series(asset)
     result = provider.fetch(series, asset, now, now)
-    assert_error(result, "Exception during ECB fetch of eur_usd_intraday", "Internal Server Error")
+    assert_error(result, "Exception during ECB fetch of eur_usd:dummy", "Internal Server Error")
 
 
 MALFORMED_CASES = [
@@ -155,5 +155,5 @@ def test_ecb_fetch_multiple_points_skip_invalid(unwrap, ecb_provider, make_serie
     points = unwrap(provider.fetch(series, asset, now, now))
 
     assert len(points) == 2
-    assert points[0].value == 1.10
-    assert points[1].value == 1.12
+    assert points[0].close == 1.10
+    assert points[1].close == 1.12

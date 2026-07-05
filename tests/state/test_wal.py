@@ -7,12 +7,12 @@ from datetime import UTC, datetime
 
 from pytest import File
 
-from finance.common.model import IntradayPoint, SeriesPoint
+from finance.common.model import SeriesPoint
 from finance.state.wal import JsonlWAL
 
 
 def make(series_id=1, value=None, time=datetime(2026, 1, 1, 0, 0, 0, tzinfo=UTC)):
-    return IntradayPoint(series_id=series_id, value=value, time=time)
+    return SeriesPoint(series_id=series_id, time=time, close=value)
 
 
 def write_series(f: File, series: SeriesPoint):

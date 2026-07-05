@@ -5,6 +5,7 @@
 from collections.abc import Callable, Iterable
 from datetime import UTC, datetime, timedelta
 
+from finance.common.time_utils import parse_duration
 from finance.fetch.provider import MarketDataProvider
 
 from ..common.model import Asset, FetchResult, ProviderConfig, Series, SupportedProviders
@@ -36,12 +37,12 @@ class FetchController:
         self,
         series: Iterable[Series],
         get_asset_by_id: Callable[[int], Asset],
-        get_provider: Callable[[str], ProviderConfig],
+        get_provider: Callable[[str], MarketDataProvider],
         **kwargs,
     ):
         self.series_list: Iterable[Series] = series
         self.get_asset_by_id = get_asset_by_id
-        self.get_providers = get_provider
+        self.get_provider = get_provider
         self.now = kwargs.pop("now_provider", lambda: datetime.now(UTC))
 
     def get_window(
@@ -76,14 +77,22 @@ class FetchController:
                 f"Skipped series '{series.name}'",
             )
 
-        provider = self.get_providers(asset.provider)
+        provider = self.get_provider(asset.provider)
         if provider is None:
             result = FetchResult.fail(series.name, f"no provider '{asset.provider}'", f"Skipped series '{series.name}'")
         else:
             entry = state.get(series.id)
             first_saved = None if entry is None else entry.first_time
             last_saved = None if entry is None else entry.last_time
-            start, end = self.get_window(first_saved, last_saved, series.history_limit_delta())
+            provider_limit = provider.provider_config.history_limits.get(
+                series.interval, provider.history_limits.get(None)
+            )
+            delta = series.bootstrap_history_delta()
+
+            if provider_limit is not None:
+                limit_delta = parse_duration(provider_limit)
+                delta = min(delta, limit_delta)
+            start, end = self.get_window(first_saved, last_saved, delta)
 
             result: FetchResult = provider.fetch(series, asset, start, end)
 

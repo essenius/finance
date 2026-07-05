@@ -6,7 +6,7 @@ from unittest.mock import MagicMock, Mock
 
 import pytest
 
-from finance.common.model import DailyValuePoint, FetchResult, Resolution, Result, Series, SeriesPoint, SeriesResult
+from finance.common.model import FetchResult, Result, Retention, Series, SeriesPoint, SeriesResult
 from finance.main_utils import process_result, reconcile_registry, unwrap
 from finance.registry.registry import Registry
 
@@ -95,7 +95,7 @@ def test_process_result_empty_payload():
 
 
 def test_process_result_single_point():
-    fp = DailyValuePoint(series_id=1, time=100, value=1)
+    fp = SeriesPoint(series_id=1, time=100, close=1)
     r = FetchResult.ok_payload("spx", [fp])
     state = FakeState()
 
@@ -103,15 +103,15 @@ def test_process_result_single_point():
     assert ok is True
 
     assert len(state.calls) == 1
-    point: DailyValuePoint = state.calls[0]
+    point: SeriesPoint = state.calls[0]
     assert point.series_id == 1
-    assert point.value == 1
+    assert point.close == 1
     assert point.time == 100
 
 
 def test_process_result_multiple_points():
-    fp1 = DailyValuePoint(series_id=1, time=10, value=1)
-    fp2 = DailyValuePoint(series_id=2, time=20, value=2)
+    fp1 = SeriesPoint(series_id=1, time=10, close=1)
+    fp2 = SeriesPoint(series_id=2, time=20, close=2)
     r = FetchResult.ok_payload("spx", [fp1, fp2])
     state = FakeState()
 
@@ -119,12 +119,12 @@ def test_process_result_multiple_points():
     assert ok is True
     assert len(state.calls) == 2
 
-    assert state.calls[0].value == 1
-    assert state.calls[1].value == 2
+    assert state.calls[0].close == 1
+    assert state.calls[1].close == 2
 
 
 def test_process_result_skip():
-    fp = DailyValuePoint(series_id=1, time=100, value=1)
+    fp = SeriesPoint(series_id=1, time=100, close=1)
     r = FetchResult.ok_payload("spx", [fp])
     state = SkipState()
 
@@ -134,7 +134,7 @@ def test_process_result_skip():
 
 
 def test_process_result_ingest_failure():
-    fp = DailyValuePoint(series_id=1, time=100, value=1)
+    fp = SeriesPoint(series_id=1, time=100, close=1)
     r = FetchResult.ok_payload("spx", [fp])
     state = FailingState()
 
@@ -147,12 +147,12 @@ def test_reconcile_registry(make_asset, make_series):
     registry = Registry()
     asset = make_asset("SPX", id=None, instrument="stock")
     registry.load_yaml_assets([asset])
-    series = make_series(asset, resolution=Resolution.INTRADAY, id=None, interval="1h")
+    series = make_series(asset, retention=Retention.SHORT_LIVED, id=None, interval="1h")
     registry.load_yaml_series([series])
     backend = MagicMock()
 
     old_asset = make_asset("SPX", id=1, instrument="forex")
-    old_series = make_series(asset, resolution=Resolution.INTRADAY, id=2, interval="2h")
+    old_series = make_series(asset, retention=Retention.SHORT_LIVED, id=2, interval="2h")
 
     new_asset = asset.with_id(1)
     new_series = series.with_id(2)
@@ -161,10 +161,10 @@ def test_reconcile_registry(make_asset, make_series):
     backend.get_series.return_value = Result.ok_payload([old_series])
     backend.store_asset.return_value = Result.ok_payload(new_asset)
     backend.store_series.return_value = Result.ok_payload(new_series)
-    backend.refresh_intraday_series_ids.return_value = None
+    backend.refresh_short_lived_series_ids.return_value = None
 
     reconcile_registry(registry, backend)
 
     assert registry.all_assets() == [new_asset]
     assert registry.all_series() == [new_series]
-    assert backend.refresh_intraday_series_ids.call_count == 1
+    assert backend.refresh_short_lived_series_ids.call_count == 1

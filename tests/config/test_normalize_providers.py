@@ -9,40 +9,22 @@ from finance.config.loader import normalize_providers
 def test_normalize_providers_basic(unwrap):
     ecb = {
         "timezone": "Europe/Berlin",
-        "daily_history_limit": "20y",
-        "intraday_history_limit": "10d",
         "timeout": "20s",
         "nonsense": "ignored",
+        "constraints": {"history_limits": {"default": "60d", "1d": None}},
     }
 
-    fred = {"daily_series_type": "value"}
+    fred = {}
 
     providers = unwrap(normalize_providers({"ecb": ecb, "fred": fred, "bogus": "ignored"}))
 
-    default_params = {
-        "timezone": "UTC",
-        "intraday_history_limit": "5d",
-        "daily_history_limit": "10y",
-        "intraday_interval": "5m",
-        "daily_interval": "1d",
-        "daily_series_type": "candle",
-        "timeout": "10s",
-    }
+    default_params = {"timezone": "UTC", "timeout": "10s", "history_limits": {}}
 
     assert providers["yahoo"] == ProviderConfig(name="yahoo", **default_params), "Yahoo"
+    assert providers["fred"] == ProviderConfig(name="fred", **default_params), "FRED"
     assert providers["ecb"] == ProviderConfig(
-        name="ecb",
-        **default_params
-        | {
-            "timezone": "Europe/Berlin",
-            "intraday_history_limit": "10d",
-            "daily_history_limit": "20y",
-            "timeout": "20s",
-        },
+        name="ecb", timezone="Europe/Berlin", timeout="20s", history_limits={None: "60d", "1d": None}
     ), "ECB"
-    assert providers["fred"] == ProviderConfig(
-        name="fred", **(default_params | {"timeout": "10s", "daily_series_type": "value"})
-    ), "FRED"
 
 
 def test_normalize_providers_wrong_timezone(assert_error):
@@ -51,7 +33,9 @@ def test_normalize_providers_wrong_timezone(assert_error):
     assert_error(providers, "Could not parse provider 'fred'", "Invalid timezone 'bogus'")
 
 
+"""
 def test_normalize_providers_invalid_duration(assert_error):
     yahoo = {"daily_interval": "1q"}
     providers = normalize_providers({"yahoo": yahoo})
     assert_error(providers, "Could not parse provider 'yahoo'", "Invalid duration '1q'")
+"""

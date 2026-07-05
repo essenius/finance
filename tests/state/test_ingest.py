@@ -75,7 +75,7 @@ def test_ingest_first_time(state_env, make_entry, unwrap):
     backend.add.return_value = Result.ok_payload(0)
 
     args = make_entry(timestamp=1200)
-    write = replace(args["point"], value=1.11)
+    write = replace(args["point"], close=1.11)
 
     result = state.ingest(args["series"], write)
 
@@ -91,7 +91,7 @@ def test_ingest_no_first_timestamp(state_env, make_entry):
     # inconsistent state, should treat last as None
     state.series[1] = SeriesState(last_time=1200)
     args = make_entry(timestamp=1200)
-    write = replace(args["point"], value=1.11)
+    write = replace(args["point"], close=1.11)
 
     result = state.ingest(args["series"], write)
 
@@ -108,7 +108,7 @@ def test_ingest_no_last_timestamp(state_env, make_entry):
     state.series[1] = SeriesState(first_time=0)
 
     args = make_entry(timestamp=0)
-    write = replace(args["point"], value=1.11)
+    write = replace(args["point"], close=1.11)
 
     result = state.ingest(args["series"], write)
 
@@ -125,7 +125,7 @@ def test_ingest_new_write_with_flush(state_env, make_entry):
     state.series[1] = make_series_state()
 
     args = make_entry(timestamp=1800)
-    write = replace(args["point"], value=1.11)
+    write = replace(args["point"], close=1.11)
     result = state.ingest(args["series"], write)
 
     assert result.ok is True
@@ -139,7 +139,7 @@ def test_ingest_skip_unchanged(state_env, make_entry):
     state.series[1] = make_series_state()
 
     args = make_entry(timestamp=1200)
-    write = replace(args["point"], value=1.10)
+    write = replace(args["point"], close=1.10)
 
     result = state.ingest(args["series"], write)
 
@@ -154,7 +154,7 @@ def test_ingest_skip_in_range(state_env, make_entry):
     state.series[1] = make_series_state(start=0, end=1800)
 
     args = make_entry(timestamp=1200)
-    write = replace(args["point"], value=1.09)
+    write = replace(args["point"], close=1.09)
 
     result = state.ingest(args["series"], write)
 
@@ -170,7 +170,7 @@ def test_ingest_before_range(state_env, make_entry):
     state.series[1] = make_series_state(start=1200, end=1800)
 
     args = make_entry(timestamp=600)
-    write = replace(args["point"], value=1.09)
+    write = replace(args["point"], close=1.09)
 
     result = state.ingest(args["series"], write)
 
@@ -187,7 +187,7 @@ def test_ingest_misaligned_timestamp(state_env, make_entry):
 
     # interval is 10m, i.e. 600s
     args = make_entry(timestamp=500)
-    write = replace(args["point"], value=1.09)
+    write = replace(args["point"], close=1.09)
     result = state.ingest(args["series"], write)
 
     assert result.ok is True
@@ -202,7 +202,7 @@ def test_sync_backend_different_counts(state_env, make_entry, unwrap):
     wal.dequeue_multiple.side_effect = None
     wal.dequeue_multiple.return_value = 0
     args = make_entry(timestamp=1200)
-    write = replace(args["point"], value=1.11)
+    write = replace(args["point"], close=1.11)
 
     result = state.ingest(args["series"], write)
 

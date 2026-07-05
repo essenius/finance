@@ -3,7 +3,7 @@
 # File: src/finance/fetch/provider.py
 
 from collections.abc import Callable
-from datetime import UTC, datetime
+from datetime import UTC, datetime, time, timedelta
 from zoneinfo import ZoneInfo
 
 import requests
@@ -52,3 +52,14 @@ class MarketDataProvider:
         Fetch data points for the given asset definition between start_time and end_time.
         """
         return FetchResult.fail(series.name, "fetch not implemented")
+
+    @staticmethod
+    def normalize_timestamp(timestamp: int, interval: timedelta, zone_info: ZoneInfo) -> datetime:
+        # if we have intraday values, this is a point in time. Convert to UTC
+        if interval < timedelta(days=1):
+            return datetime.fromtimestamp(timestamp, tz=UTC)
+
+        # if we have lower frequency data, treat it as a day label, by convention at midnight UTC
+        # (even if the UTC date of the timestamp could be different, as e.g. in Japan)
+        local = datetime.fromtimestamp(timestamp, tz=zone_info)
+        return datetime.combine(local.date(), time.min, tzinfo=UTC)

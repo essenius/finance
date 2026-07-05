@@ -35,7 +35,9 @@ def run(
     config_path: Path | None = None,
     load_config: Callable[[], Result[dict[str, Any]]] = None,
     registry_factory: Callable[..., Registry] = Registry,
-    backend_factory: Callable[[dict[str, Any], Registry], Result[TimescaleBackend]] = TimescaleBackend.from_config,
+    backend_factory: Callable[
+        [dict[str, Any], Callable[[int], Series]], Result[TimescaleBackend]
+    ] = TimescaleBackend.from_config,
     provider_factory: Callable[[dict[str, Any], dict[str, Any]], dict[str, MarketDataProvider]] = create_providers,
     state_factory: Callable[..., State] = State,
     state_storage_factory: Callable[[str], StateStorage] = StateStorage,
@@ -67,7 +69,7 @@ def run(
         registry.load_yaml_assets(asset_list)
         registry.load_yaml_series(series_list)
 
-        backend_result = backend_factory(secrets[BACKEND] | config[BACKEND])
+        backend_result = backend_factory(secrets[BACKEND] | config[BACKEND], registry.get_series_by_id)
         if not backend_result.ok:
             logger.error(reason=backend_result.reason, error=backend_result.error)
             raise SystemExit(1)

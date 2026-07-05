@@ -28,6 +28,16 @@ def parse_duration(text: str, context: str | None = None) -> timedelta:
     return timedelta(seconds=int(value) * DURATION_UNITS[unit])
 
 
+def check_duration_in(content: dict, name: str, default: str | None = None) -> str:
+    """check if the dict content contains a valid duration in the entry with key 'name'.
+    If there is no such key, use the default. Raises an error if the duration is not valid."""
+    raw_duration = content.get(name, default)
+    # validate that the duration is correct
+    if raw_duration is not None:
+        parse_duration(raw_duration, name)
+    return raw_duration
+
+
 def normalize_db_time(value):
     if isinstance(value, datetime):
         return value.astimezone(UTC)

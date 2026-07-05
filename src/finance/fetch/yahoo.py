@@ -3,10 +3,12 @@
 # File: src/finance/fetch/yahoo.py
 
 from collections.abc import Callable
-from datetime import UTC, datetime
+from datetime import datetime
+from functools import partial
 from urllib.parse import quote, urlencode
+from zoneinfo import ZoneInfo
 
-from ..common.model import Asset, FetchResult, MeasurementResult, Result, Series, SeriesPoint
+from ..common.model import Asset, Candle, FetchResult, MeasurementResult, Result, Series, SeriesPoint
 from .provider import MarketDataProvider
 
 
@@ -27,14 +29,28 @@ class YahooProvider(MarketDataProvider):
         if not result.ok:
             return result
 
-        candles = self._extract_candles(series, result.payload)
+        def bind_normalizer(interval, timezone: str):
+            zone_info = ZoneInfo(timezone)
+            return partial(self.normalize_timestamp, interval=interval, zone_info=zone_info)
+
+        meta = result.payload.get("meta", {})
+        timezone = meta.get("exchangeTimezoneName")
+        if timezone is None:
+            return FetchResult.fail(
+                {series.name},
+                f"Could not parse series '{series.name}' in Yahoo fetch result",
+                "missing exchangeTimeZoneName in meta",
+            )
+
+        normalize = bind_normalizer(series.interval_delta(), timezone)
+        return self._extract_candles(series, normalize, result.payload)
 
         # Fallback to metadata if no candles
-        if not candles.payload:
-            meta = result.payload.get("meta", {})
-            return self._get_from_meta(series, meta, start_time, end_time)
+        # TODO delete
+        # if not candles.payload:
+        #    return self._get_from_meta(series, meta, start_time, end_time)
 
-        return candles
+        # return candles
 
     # -----------
     # Fetch data
@@ -81,7 +97,7 @@ class YahooProvider(MarketDataProvider):
     # Extract candles with helpers
     # -----------------------------
 
-    def _extract_arrays(self, payload: dict, selected_fields: list[str]) -> Result[tuple[list[int], dict[str, list]]]:
+    def _extract_arrays(self, payload: dict) -> Result[tuple[list[int], dict[str, list]]]:
 
         timestamps = payload.get("timestamp")
         if not timestamps:
@@ -92,12 +108,12 @@ class YahooProvider(MarketDataProvider):
             return Result.fail("unexpected quote structure", quote_result.reason)
 
         quote = quote_result.payload
-        arrays = {f: quote.get(f) or [] for f in selected_fields}
+        arrays = {f: quote.get(f) or [] for f in Candle.values()}
         return Result.ok_payload((timestamps, arrays))
 
     def _build_candles(
-        self, timestamps, arrays, point_factory: Callable[..., SeriesPoint]
-    ) -> tuple[list[SeriesPoint], int]:
+        self, timestamps, arrays, point_factory: Callable[..., SeriesPoint], normalize
+    ) -> tuple[list[SeriesPoint], list[str]]:
         """
         Grab the candle values from the input arrays, optimizing the number of fields read.
         The callable is a partially resolved constructor for a SeriesPoint subclass, which also delivers the required candle fields,
@@ -105,46 +121,50 @@ class YahooProvider(MarketDataProvider):
         """
         candles = []
         invalid_count = 0
+        incomplete_count = 0
 
-        factory_class = point_factory.func
         for i, ts in enumerate(timestamps):
+            if len(arrays["close"]) <= i or arrays["close"][i] is None:
+                invalid_count += 1
+                continue
             values = {}
-            raw_dt = datetime.fromtimestamp(ts, tz=UTC)
-            time = factory_class.normalize_time(raw_dt)
+            time = normalize(ts)
 
-            for field in factory_class.fields():
+            incomplete = False
+            for field in Candle.values():
                 arr = arrays[field]
                 v = arr[i] if i < len(arr) else None
                 if v is None:
-                    invalid_count += 1
-                    break
+                    incomplete = True
+                    continue
                 values[field] = v
 
-            else:
-                mapped = factory_class.map(values)
-                point = point_factory(time=time, **mapped)
-                candles.append(point)
+            if incomplete:
+                incomplete_count += 1
+            point = point_factory(time=time, **values)
+            candles.append(point)
 
-        return candles, invalid_count
+        warnings = []
+        if invalid_count > 0:
+            warnings.append(f"Skipped {invalid_count} candles without close value")
+        if incomplete_count > 0:
+            warnings.append(f"{incomplete_count} incomplete candles")
+        return candles, warnings
 
-    def _extract_candles(self, series: Series, payload: dict | None = None) -> FetchResult:
+    def _extract_candles(self, series: Series, normalize, payload: dict | None = None) -> FetchResult:
         name = series.name
-        point_factory = SeriesPoint.factory(series)
-        fields = point_factory.func.fields()
-
-        arrays_result = self._extract_arrays(payload, fields)
+        point_factory = partial(SeriesPoint, series_id=series.id)
+        arrays_result = self._extract_arrays(payload)
         if not arrays_result.ok:
             return FetchResult.from_result(arrays_result, name)
 
         timestamps, arrays = arrays_result.payload
-        candles, invalid_count = self._build_candles(timestamps, arrays, point_factory)
-
-        warnings = []
-        if invalid_count:
-            warnings.append(f"Skipped {invalid_count} invalid candles")
+        candles, warnings = self._build_candles(timestamps, arrays, point_factory, normalize)
 
         return FetchResult.ok_payload(name, candles, warnings)
 
+    """
+    TODO delete
     # --------------
     # Get from meta
     # --------------
@@ -194,3 +214,4 @@ class YahooProvider(MarketDataProvider):
 
         mapped = factory.func.map(synthetic)
         return FetchResult.ok_payload(name, [factory(time=time, **mapped)], warnings)
+    """

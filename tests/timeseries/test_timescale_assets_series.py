@@ -28,11 +28,11 @@ def make_cursor(fetchone=None, fetchall=None):
 
 
 # ------------------------------------------------------------
-# refresh_intraday_series_ids
+# refresh_short_lived_series_ids
 # ------------------------------------------------------------
 
 
-def test_refresh_intraday_series_ids_loads_ids(make_backend):
+def test_refresh_short_lived_series_ids_loads_ids(make_backend):
     backend = make_backend()
     backend._connection.closed = False
     # rows returned by _execute_read
@@ -44,22 +44,22 @@ def test_refresh_intraday_series_ids_loads_ids(make_backend):
         ]
     )
 
-    backend.refresh_intraday_series_ids()
+    backend.refresh_short_lived_series_ids()
 
-    assert backend._intraday_series_ids == {10, 20, 30}
+    assert backend._short_lived_series_ids == {10, 20, 30}
     backend._execute_read.assert_called_once()
-    assert "intraday" in backend._execute_read.call_args[0][0]
+    assert "short_lived" in backend._execute_read.call_args[0][0]
 
 
-def test_refresh_intraday_series_ids_handles_empty(make_backend):
+def test_refresh_short_lived_series_ids_handles_empty(make_backend):
     backend = make_backend()
     backend._connection.closed = False
 
     backend._execute_read = MagicMock(return_value=[])
 
-    backend.refresh_intraday_series_ids()
+    backend.refresh_short_lived_series_ids()
 
-    assert backend._intraday_series_ids == set()
+    assert backend._short_lived_series_ids == set()
 
 
 # ------------------------------------------------------------
@@ -140,8 +140,8 @@ def test_store_series_insert(make_backend, make_asset, make_series):
     backend._execute_write.assert_called_once()
     sql, params = backend._execute_write.call_args[0]
     assert "INSERT INTO series" in sql
-    assert params[0] == 5
-    assert params[1] == "intraday"
+    assert params[0] == "dummy"
+    assert params[1] == 5
 
 
 def test_store_series_update(make_backend, make_asset, make_series):
@@ -230,8 +230,8 @@ def test_get_series_returns_series_list(make_backend):
     backend._connection.closed = False
 
     rows = [
-        (10, 1, "SPX", "SPX_intraday", "intraday", "value", "1m", "1d"),
-        (11, 1, "SPX", "SPX_daily", "daily", "candle", "1d", "1y"),
+        (10, "intraday", 1, "SPX", "SPX:intraday", "1m", "value", "short_lived", "30d"),
+        (11, "daily", 1, "SPX", "SPX:daily", "1d", "candle", "long_lived", "1y"),
     ]
 
     cursor_cm = make_cursor(fetchall=rows)
@@ -242,7 +242,7 @@ def test_get_series_returns_series_list(make_backend):
     assert result.ok
     series = result.payload
     assert len(series) == 2
-    assert series[0].resolution == "intraday"
+    assert series[0].retention == "short_lived"
     assert series[1].series_type == "candle"
 
 

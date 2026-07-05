@@ -4,15 +4,12 @@
 
 from __future__ import annotations
 
-from abc import abstractmethod
-from collections.abc import Callable
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime, timedelta
 from enum import StrEnum
-from functools import partial
 from typing import Generic, TypeVar
 
-from finance.common.time_utils import parse_duration
+from finance.common.time_utils import check_duration_in, parse_duration
 
 BACKEND = "timescaledb"
 BACKEND_UPPER = BACKEND.upper()
@@ -39,6 +36,7 @@ class StringEnum(StrEnum):
             raise ValueError(f"Invalid {cls.__name__}{context}: {value!r}. Allowed: {cls.values()}") from None
 
 
+"""
 class Resolution(StringEnum):
     INTRADAY = "intraday"
     DAILY = "daily"
@@ -46,6 +44,7 @@ class Resolution(StringEnum):
 
 INTRADAY = Resolution.INTRADAY
 DAILY = Resolution.DAILY
+"""
 
 
 class Candle(StringEnum):
@@ -63,7 +62,14 @@ class Candle(StringEnum):
 PRICE = ["price"]
 
 
+class Retention(StringEnum):
+    # note: defined in setup.sql too
+    SHORT_LIVED = "short_lived"
+    LONG_LIVED = "long_lived"
+
+
 class SeriesType(StringEnum):
+    # note: defined in setup.sql too
     CANDLE = "candle"
     VALUE = "value"
 
@@ -79,56 +85,66 @@ class SeriesPoint:
     series_id: int
     time: datetime
 
-    @abstractmethod
+    close: float
+    open: float | None = None
+    high: float | None = None
+    low: float | None = None
+    volume: float | None = None
+
     def to_dict(self) -> dict:
-        return {
+        result = {
             "series_id": self.series_id,
             "time": self.time.astimezone(UTC).isoformat(timespec="seconds"),
         }
 
-    @staticmethod
-    def fields() -> list[str]:
-        return [Candle.CLOSE]
+        for field_name in Candle:
+            value = getattr(self, field_name.value)
+            if value is not None:
+                result[field_name.value] = value
 
-    @staticmethod
-    def map(raw_fields: dict):
-        return {"value": raw_fields.get(Candle.CLOSE)}
+        return result
 
-    @classmethod
-    def normalize_time(cls, dt: datetime) -> datetime:
-        """Snap to midnight UTC. Good for daily points; must be overridden for intraday"""
-        return datetime(dt.year, dt.month, dt.day, 0, 0, tzinfo=UTC)
+    # @staticmethod
+    # def fields() -> list[str]:
+    #    return [Candle.CLOSE]
 
-    @staticmethod
-    def factory(series: Series) -> Callable[..., SeriesPoint]:
-        if series.resolution == Resolution.INTRADAY:
-            return partial(IntradayPoint, series_id=series.id)
-        if series.series_type == SeriesType.CANDLE:
-            return partial(CandlePoint, series_id=series.id)
-        return partial(DailyValuePoint, series_id=series.id)
+    # @staticmethod
+    # def map(raw_fields: dict):
+    #    return {"value": raw_fields.get(Candle.CLOSE)}
+
+    # @classmethod
+    # def normalize_time(cls, dt: datetime) -> datetime:
+    #    """Snap to midnight UTC. Good for daily points; must be overridden for intraday"""
+    #    return datetime(dt.year, dt.month, dt.day, 0, 0, tzinfo=UTC)
+
+    # @staticmethod
+    # def factory(series: Series) -> Callable[..., SeriesPoint]:
+    #    return partial(SeriesPoint, series_id=series.id)
 
     @staticmethod
     def from_dict(data: dict) -> SeriesPoint:
 
-        base = SeriesPoint(
+        return SeriesPoint(
             series_id=data["series_id"],
             time=datetime.fromisoformat(data["time"]),
+            open=data.get("open"),
+            high=data.get("high"),
+            low=data.get("low"),
+            close=data.get("close"),
+            volume=data.get("volume"),
         )
-        point_type = data["type"]
-        match point_type:
-            case "candle":
-                return CandlePoint.from_base(base, data)
-            case "daily_value":
-                return DailyValuePoint.from_base(base, data)
-            case "intraday":
-                return IntradayPoint.from_base(base, data)
-            case _:
-                raise ValueError(f"Unknown point type: {point_type}")
 
     def __repr__(self):
-        return f"{self.__class__.__name__}(id={self.series_id}, time={self.time.astimezone(UTC).isoformat(timespec='seconds')})"
+        result = f"{self.__class__.__name__}(id={self.series_id}, time={self.time.astimezone(UTC).isoformat(timespec='seconds')}"
+        for field_name in Candle:
+            value = getattr(self, field_name.value)
+            if value is not None:
+                result += f", {field_name.value}={value}"
+        result += ")"
+        return result
 
 
+'''
 @dataclass(frozen=True)
 class CandlePoint(SeriesPoint):
     """
@@ -239,7 +255,7 @@ class IntradayPoint(SeriesPoint):
         parent = super().__repr__()
         return f"{parent[:-1]}, value={self.value})"
 
-
+'''
 T = TypeVar("T")
 
 
@@ -323,19 +339,32 @@ SeriesResult = MeasurementResult[SeriesPoint | None]
 class ProviderConfig:
     name: str
     timezone: str
-
     timeout: str = "10s"
-
-    daily_interval: str = "1d"
-    intraday_interval: str = "5m"
-
-    daily_history_limit: str = "10y"
-    intraday_history_limit: str = "5d"
-
-    daily_series_type: str = SeriesType.CANDLE
+    history_limits: dict[str | None, str | None] = field(default_factory=dict)
 
     def timeout_delta(self) -> timedelta:
         return parse_duration(self.timeout, f"timeout for {self.name}")
+
+    @classmethod
+    def create(cls, content: dict) -> ProviderConfig:
+        raw_history_limits = content.get("constraints", {}).get("history_limits", {})
+        history_limits: dict[str | None, str | None] = {}
+
+        # we need a check duration without a dict lookup, so can't use check_duration_in
+        def check_duration(key: str, context: str):
+            parse_duration(key, f"{context} in history limits")
+            return key
+
+        for key, limit in raw_history_limits.items():
+            limit_key = None if key == "default" else check_duration(key, "key")
+            limit_value = None if limit is None else check_duration(limit, f"value of key '{key}'")
+            history_limits[limit_key] = limit_value
+        return cls(
+            name=content["name"],
+            timeout=check_duration_in(content, "timeout", "10s"),
+            timezone=content.get("timezone", "UTC"),
+            history_limits=history_limits,
+        )
 
 
 @dataclass(frozen=True)
@@ -358,12 +387,13 @@ class Asset:
     id: int | None = None
 
     @classmethod
-    def create(cls, name: str, symbol: str, config: dict, tags: dict) -> Asset:
+    def create(cls, name: str, config: dict, tags: dict) -> Asset:
+        provider_config = config.get("provider", {})
         return cls(
             name=name,
-            symbol=symbol,
-            provider=config.get("provider"),
-            provider_code=config.get("provider_code", symbol),
+            symbol=config.get("symbol", name),
+            provider=provider_config["name"],
+            provider_code=provider_config["code"],
             display_name=config.get("display_name", name),
             instrument=tags.get("instrument"),
             region=tags.get("region"),
@@ -375,6 +405,10 @@ class Asset:
     def with_id(self, new_id: id) -> Asset:
         return replace(self, id=new_id)
 
+    def same_semantics(self, other: Asset) -> bool:
+        """check if two assets are semantically the same (e.g. indicating a rename)"""
+        return self.provider == other.provider and self.provider_code == other.provider_code
+
     def differs_from(self, other: Asset) -> bool:
         """
         if this is classified as the same entity (one of the identity checks passed),
@@ -383,8 +417,7 @@ class Asset:
         return (
             self.name != other.name
             or self.symbol != other.symbol
-            or self.provider != other.provider
-            or self.provider_code != other.provider_code
+            or not self.same_semantics(other)
             or self.display_name != other.display_name
             or self.instrument != other.instrument
             or self.region != other.region
@@ -401,16 +434,17 @@ class Asset:
 class Series:
     # identity
     asset_id: int
-    resolution: Resolution
+    code: str
 
     # derivative
-    name: str
-    asset_name: str
+    asset_name: str  # taken from asset.name
+    name: str  # = asset_name:code
 
     # meta-data
+    interval: str
+    retention: Retention
     series_type: SeriesType
-    interval: str | None = None
-    history_limit: str | None = None
+    bootstrap_history: str
 
     # assigned by backend
     id: int | None = None
@@ -418,70 +452,64 @@ class Series:
     def interval_delta(self) -> timedelta:
         return parse_duration(self.interval, f"interval for {self.name}")
 
-    def history_limit_delta(self) -> timedelta:
-        return parse_duration(self.history_limit, f"history limit for {self.name}")
+    def bootstrap_history_delta(self) -> timedelta:
+        return parse_duration(self.bootstrap_history, f"bootstrap history for {self.name}")
 
     @classmethod
-    def create(cls, asset: Asset, resolution: str, config: dict | None = None) -> Series:
+    def create(cls, asset: Asset, code: str, config: dict) -> Series:
         """Create a new Series instance. Checks values and can raise ValueError"""
-        Resolution.validate(resolution, f"asset '{asset.name}'")
 
-        name = f"{asset.name}_{resolution}"
-        # composites don't have a resolution config section, just a key
-        if config is None:
-            return cls(
-                name=name,
-                asset_id=asset.id,
-                asset_name=asset.name,
-                resolution=Resolution(resolution),
-                series_type=SeriesType.VALUE,
-            )
+        name = f"{asset.name}:{code}"
 
-        # provider_config is normalized, so values are always there (merged in)
+        def context():
+            return f"asset:series '{name}'"
 
-        if resolution == Resolution.INTRADAY:
-            # intraday is always VALUE, other settings ignored
-            series_type = SeriesType.VALUE
+        # the caller must take care of validating this exists
+        interval = parse_duration(config["interval"], context())
+        retention = config.get("retention")
+        # if no retention was specified, then we use long lived if the interval is a day or more
+        if retention is None:
+            retention = Retention.SHORT_LIVED if interval < timedelta(days=1) else Retention.LONG_LIVED
         else:
-            series_type = SeriesType.validate(
-                config.get("series_type", config.get("daily_series_type")), f"series '{name}'"
-            )
-
-        interval = config.get("interval", config.get(f"{resolution}_interval"))
-        history_limit = config.get("history_limit", config.get(f"{resolution}_history_limit"))
-
+            retention = Retention.validate(retention)
+        bootstrap_history = check_duration_in(config, "bootstrap_history")
+        if bootstrap_history is None:
+            bootstrap_history = "10y" if retention == Retention.LONG_LIVED else "30d"
         return cls(
             name=name,
+            code=code,
             asset_id=asset.id,
             asset_name=asset.name,
-            resolution=Resolution(resolution),
-            series_type=series_type,
-            interval=interval,
-            #            interval_delta=parse_duration(interval, f"interval for {name}"),
-            history_limit=history_limit,
-            #            history_limit_delta=parse_duration(history_limit, f"history limit for {name}"),
+            interval=config["interval"],
+            series_type=SeriesType.validate(config.get("series_type", SeriesType.CANDLE), context()),
+            retention=retention,
+            bootstrap_history=bootstrap_history,
         )
 
     def with_id(self, new_id: id) -> Series:
         return replace(self, id=new_id)
+
+    def same_semantics(self, other: Series) -> bool:
+        """check if two series are semantically the same (e.g. indicating a rename of the code)"""
+        return (
+            self.asset_id == other.asset_id
+            and self.retention == other.retention
+            and self.series_type == other.series_type
+            and self.interval == other.interval
+            and self.bootstrap_history == other.bootstrap_history
+        )
 
     def differs_from(self, other: Series) -> bool:
         """
         if classified as the same entity (i.e. one of the identity checks passed),
         check if there are differences. Not checked:
         - asset_name: from the asset identity (via join).
-        - name: assembled from asset_name and resolution
+        - name: assembled from asset_name and code
         """
-        return (
-            self.asset_id != other.asset_id
-            or self.resolution != other.resolution
-            or self.series_type != other.series_type
-            or self.interval != other.interval
-            or self.history_limit != other.history_limit
-        )
+        return self.code != other.code or not self.same_semantics(other)
 
     def __repr__(self):
-        return f"Series(id={self.id}, name={self.name}, asset_name={self.asset_name}, asset_id={self.asset_id}, resolution={self.resolution}, series_type={self.series_type})"
+        return f"Series(id={self.id}, name={self.name}, asset_id={self.asset_id}, retention={self.retention}, series_type={self.series_type}, interval={self.interval})"
 
 
 @dataclass

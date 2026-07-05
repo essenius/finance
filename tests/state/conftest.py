@@ -6,7 +6,7 @@ from datetime import UTC, datetime
 
 import pytest
 
-from finance.common.model import DAILY, DailyValuePoint, Resolution, Series, SeriesPoint
+from finance.common.model import Series, SeriesPoint
 
 # state_env is defined in the parent folder's conftest.py
 
@@ -16,8 +16,8 @@ def make_entry(make_asset, make_series) -> dict:
     def _make(series_id=1, value=1, timestamp: int = 600, name="spx"):
         time = datetime.fromtimestamp(timestamp, tz=UTC)
         asset = make_asset(id=series_id, name=name)
-        series = make_series(asset, id=series_id, resolution=Resolution(DAILY))
-        return {"series": series, "point": DailyValuePoint(series_id=series_id, time=time, value=value)}
+        series = make_series(asset, id=series_id)
+        return {"series": series, "point": SeriesPoint(series_id=series_id, time=time, close=value)}
 
     return _make
 

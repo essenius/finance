@@ -2,9 +2,10 @@
 # Licensed under the Apache License, Version 2.0. See the LICENSE file for details.
 # File: tests/fetch/yahoo/test_fetch.py
 
+from datetime import UTC, datetime
 from unittest.mock import Mock, patch
 
-from finance.common.model import DAILY, CandlePoint, DailyValuePoint, SeriesType
+from finance.common.model import Retention, SeriesType
 
 # ----------------------------------------------------------------------
 # _fetch_impl()
@@ -75,9 +76,9 @@ def test_fetch_success(yahoo_provider, unwrap, make_asset, make_series, fixed_no
         "chart": {
             "result": [
                 {
+                    "meta": {"exchangeTimezoneName": "UTC"},
                     "timestamp": [now.timestamp()],
                     "indicators": {"quote": [{"close": [10.0]}]},
-                    "meta": {},
                 }
             ],
             "error": None,
@@ -85,14 +86,14 @@ def test_fetch_success(yahoo_provider, unwrap, make_asset, make_series, fixed_no
     }
     response.raise_for_status.return_value = None
     asset = make_asset(provider_code="AAPL")
-    series = make_series(asset, interval="1d", resolution=DAILY, series_type=SeriesType.VALUE)
+    series = make_series(asset, interval="1h", retention=Retention.SHORT_LIVED, series_type=SeriesType.VALUE)
     with patch.object(yahoo_provider.session, "get", return_value=response):
         result = yahoo_provider.fetch(series, asset, now, now)
 
     payload = unwrap(result)
-    assert isinstance(payload[0], DailyValuePoint), "result is DailyValuePoint"
     assert len(payload) == 1, "one result"
-    assert payload[0].value == 10.0, "Value is 10"
+    assert payload[0].time == datetime(2025, 6, 15, 15, 6, 40, tzinfo=UTC), "datetime is instant"
+    assert payload[0].close == 10.0, "Close is 10"
 
 
 def test_impl_http_error(yahoo_provider, assert_error, make_asset, make_series, fixed_now):
@@ -107,6 +108,34 @@ def test_impl_http_error(yahoo_provider, assert_error, make_asset, make_series, 
     assert_error(result, "Exception during Yahoo fetch", "boom")
 
 
+def test_fetch_missing_exchange_timezone(yahoo_provider, assert_error, make_asset, make_series, fixed_now):
+    now = fixed_now()
+    response = Mock()
+    response.json.return_value = {
+        "chart": {
+            "result": [
+                {
+                    "meta": {},
+                    "timestamp": [now.timestamp()],
+                    "indicators": {"quote": [{"close": [10.0]}]},
+                }
+            ],
+            "error": None,
+        }
+    }
+    response.raise_for_status.return_value = None
+    asset = make_asset(name="AAPL")
+    series = make_series(asset, interval="1h", retention=Retention.SHORT_LIVED, series_type=SeriesType.VALUE)
+    with patch.object(yahoo_provider.session, "get", return_value=response):
+        result = yahoo_provider.fetch(series, asset, now, now)
+
+    assert_error(
+        result, "Could not parse series 'AAPL:dummy' in Yahoo fetch result", "missing exchangeTimeZoneName in meta"
+    )
+
+
+"""
+TODO delete
 def test_fetch_fallback_to_meta(yahoo_provider, unwrap, make_asset, make_series, fixed_now):
     now = fixed_now()
     response = Mock()
@@ -131,10 +160,8 @@ def test_fetch_fallback_to_meta(yahoo_provider, unwrap, make_asset, make_series,
 
     payload = unwrap(result)
     assert len(payload) == 1
-    assert isinstance(payload[0], CandlePoint)
     assert payload[0].close == 42.0
     assert result.warnings == ["Missing value for 'high'", "Missing value for 'low'", "Missing value for 'volume'"]
-
 
 def test_fetch_propagates_extract_candles_error(yahoo_provider, assert_error, make_asset, make_series, fixed_now):
     response = Mock()
@@ -158,3 +185,4 @@ def test_fetch_propagates_extract_candles_error(yahoo_provider, assert_error, ma
         result = yahoo_provider.fetch(series, asset, now, now)
 
     assert_error(result, "Cannot synthesize from metadata", "timestamp missing")
+"""

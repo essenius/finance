@@ -6,7 +6,7 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from finance.common.time_utils import normalize_db_time, parse_duration
+from finance.common.time_utils import check_duration_in, normalize_db_time, parse_duration
 
 # ---------------
 # Parse duration
@@ -34,6 +34,15 @@ def test_parse_duration_accepts_no_context():
     with pytest.raises(ValueError) as exc_info:
         parse_duration("qx")
     assert str(exc_info.value) == "Invalid duration 'qx'"
+
+
+def test_check_duration_in():
+    input = {"test1": "1d", "test3": "qx"}
+    assert check_duration_in(input, "test1") == "1d"
+    assert check_duration_in(input, "test2") is None
+    with pytest.raises(ValueError) as exc_info:
+        check_duration_in(input, "test3")
+    assert str(exc_info.value) == "Invalid duration 'qx' in test3"
 
 
 # ----------------

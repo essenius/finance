@@ -16,11 +16,11 @@ from finance.fetch.yahoo import YahooProvider
 
 @pytest.fixture
 def assert_ok():
-    def _assert_ok(result: FetchResult, time: datetime, value: float):
+    def _assert_ok(result: FetchResult, time: datetime, close: float):
         assert result.ok
         point = result.payload[0]
         assert point.time == time
-        assert point.value == value
+        assert point.close == close
 
     return _assert_ok
 

@@ -2,7 +2,7 @@
 # Licensed under the Apache License, Version 2.0. See the LICENSE file for details.
 # File: tests/state/test_rebuild.py
 
-from finance.common.model import DailyValuePoint, SeriesPoint, SeriesResult, SeriesState
+from finance.common.model import SeriesPoint, SeriesResult, SeriesState
 from finance.state.state import State
 
 # --------
@@ -42,7 +42,7 @@ class FakeStorage:
 
 
 def make_backend_result(timestamp, value):
-    return SeriesResult.ok_payload("spx", DailyValuePoint(series_id=1, time=timestamp, value=value))
+    return SeriesResult.ok_payload("spx", SeriesPoint(series_id=1, time=timestamp, close=value))
 
 
 def make_backend_fail_result():
@@ -50,7 +50,7 @@ def make_backend_fail_result():
 
 
 def make_wal_result(timestamp, value) -> SeriesPoint:
-    return DailyValuePoint(series_id=1, time=timestamp, value=value)
+    return SeriesPoint(series_id=1, time=timestamp, close=value)
 
 
 def make_state(*, wal_entries=None, first=None, last=None, initial_state=None) -> State:

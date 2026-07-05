@@ -4,7 +4,7 @@
 
 import pytest
 
-from finance.common.model import Resolution
+from finance.common.model import Retention
 from finance.registry.registry import Registry
 
 # ------------------------------------------------------------
@@ -22,7 +22,7 @@ def test_load_yaml_assets(make_asset):
 def test_load_yaml_series(make_asset, make_series):
     registry = Registry()
     asset = make_asset("SPX")
-    series = make_series(asset, resolution=Resolution.DAILY)
+    series = make_series(asset, retention=Retention.LONG_LIVED)
     registry.load_yaml_series([series])
     assert registry._yaml_series[0] is series
 
@@ -203,9 +203,9 @@ def test_reconcile_same(make_asset, make_series):
     assert reconciled_assets.to_persist == [], "no asset to persist"
     assert reconciled_assets.final == [asset2], "final assets filled"
 
-    series = make_series(asset, resolution=Resolution.DAILY, id=None)
+    series = make_series(asset, retention=Retention.LONG_LIVED, id=None)
     registry.load_yaml_series([series])
-    series2 = make_series(asset2, resolution=Resolution.DAILY, id=2)
+    series2 = make_series(asset2, retention=Retention.LONG_LIVED, id=2)
     registry.load_db_series([series2])
 
     reconciled_series = registry.reconcile_series()
@@ -255,7 +255,7 @@ def test_register_final_series_success(make_asset, make_series):
     registry.register_final_series(series)
 
     assert registry._series_by_id[10] is series
-    assert registry._series_by_name["SPX_intraday"] is series
+    assert registry._series_by_name["SPX:dummy"] is series
 
 
 # ------------------------------------------------------------
@@ -275,7 +275,7 @@ def test_lookup_assets_and_series(make_asset, make_series):
     assert registry.get_asset_by_id(1) is asset
     assert registry.get_asset_by_name("SPX") is asset
     assert registry.get_series_by_id(10) is series
-    assert registry.get_series_by_name("SPX_intraday") is series
+    assert registry.get_series_by_name("SPX:dummy") is series
 
     assert list(registry.all_assets()) == [asset]
     assert list(registry.all_series()) == [series]

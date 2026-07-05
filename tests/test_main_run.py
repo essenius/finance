@@ -9,7 +9,7 @@ from unittest.mock import MagicMock, Mock
 
 import pytest
 
-from finance.common.model import DailyValuePoint, FetchResult, Result, Series, SeriesPoint, SeriesResult, SeriesState
+from finance.common.model import FetchResult, Result, Series, SeriesPoint, SeriesResult, SeriesState
 from finance.main import run
 from finance.state.state import State
 
@@ -31,7 +31,7 @@ class FakeFetchController:
 
     def fetch_incrementally(self, state) -> Iterable[FetchResult]:
         for id, value, time in self.outputs:
-            fp = DailyValuePoint(series_id=id, time=time, value=value)
+            fp = SeriesPoint(series_id=id, time=time, close=value)
             yield FetchResult.ok_payload("spx", [fp])
 
 

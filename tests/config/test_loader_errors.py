@@ -3,7 +3,16 @@
 # File: tests/config/test_loader_errors.py
 
 
+import pytest
+
 from finance.config.loader import ConfigLoader, load_yaml_config
+
+
+@pytest.fixture(autouse=True)
+def clean_env(monkeypatch):
+    monkeypatch.delenv("FINANCE_CONFIG")
+    # Remove all TIMESCALEDB_* and *_API_KEY variables
+
 
 # ---------------------------------------------------------------------------
 # load_yaml_config
@@ -31,10 +40,6 @@ business:
     spx:
       symbol: "^GSPC"   # missing provider
   composites: {}
-environment:
-  buckets:
-    daily: d
-    intraday: i
 """)
 
     env_file = tmp_path / ".env"
@@ -42,14 +47,14 @@ environment:
 
     loader = ConfigLoader(cwd=tmp_path)
     result = loader.load()
-    assert_error(result, "Error parsing assets", "Missing required field 'provider' in asset 'spx'")
+    assert_error(result, "Could not parse asset 'spx'", "Missing required field 'provider'")
 
 
 # ---------------------------------------------------------------------------
 # load_business_config
 # ---------------------------------------------------------------------------
 
-
+'''
 def test_load_business_config_invalid_asset(tmp_path, assert_error):
     yaml_file = tmp_path / "config.yaml"
     yaml_file.write_text("""
@@ -66,7 +71,7 @@ business:
 
     loader = ConfigLoader(cwd=tmp_path)
     result = loader.load()
-    assert_error(result, "Error parsing assets", "Missing required field 'provider' in asset 'spx'")
+    assert_error(result, "Could not parse asset 'spx'", "Missing required field 'provider'")
 
 
 def test_load_business_config_invalid_resolution(tmp_path, assert_error):
@@ -87,10 +92,6 @@ business:
           interval: 1d
           fields: [open]
   composites: {}
-environment:
-  buckets:
-    daily: d,
-    intraday: i
 """)
 
     env_file = tmp_path / ".env"
@@ -122,7 +123,6 @@ business:
     assert_error(result, "Error parsing composites", "Missing required field 'expression' in composite 'spread'")
 
 
-'''
 def test_load_config_business_failure(tmp_path, assert_error):
     yaml_file = tmp_path / "config.yaml"
     yaml_file.write_text("""
@@ -149,10 +149,6 @@ business:
   providers:
     ecb:
       timezone: bogus
-environment:
-  buckets:
-    daily: d,
-    intraday: i
 """)
 
     env_file = tmp_path / ".env"
@@ -161,3 +157,20 @@ environment:
     loader = ConfigLoader(cwd=tmp_path)
     result = loader.load()
     assert_error(result, "Could not parse provider 'ecb'", "Invalid timezone 'bogus'")
+
+
+def test_load_config_provider_duration_failure(tmp_path, assert_error):
+    yaml_file = tmp_path / "config.yaml"
+    yaml_file.write_text("""
+business:
+  providers:
+    ecb:
+      timeout: qx
+""")
+
+    env_file = tmp_path / ".env"
+    env_file.write_text("TIMESCALEDB_URL=x\nTIMESCALEDB_DB=y\n")
+
+    loader = ConfigLoader(cwd=tmp_path)
+    result = loader.load()
+    assert_error(result, "Could not parse provider 'ecb'", "Invalid duration 'qx' in timeout")

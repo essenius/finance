@@ -2,13 +2,14 @@
 # Licensed under the Apache License, Version 2.0. See the LICENSE file for details.
 # File: tests/fetch/test_provider.py
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from zoneinfo import ZoneInfo
 
 import pytest
 import requests
 
 from finance.common.model import MeasurementResult
+from finance.fetch.provider import MarketDataProvider
 
 
 def test_init_defaults(dummy_provider):
@@ -91,3 +92,21 @@ def test_fetch_not_implemented(dummy_provider, make_series, make_asset_dict, fix
     result = dummy_provider().fetch(make_series(assets["eur_usd"]), assets, start_time=now, end_time=now)
     assert not result.ok
     assert result.reason == "fetch not implemented"
+
+
+# -------------------------
+# Normalize timestamp test
+# -------------------------
+
+
+def test_normalize_timestamp(fixed_now):
+    now = fixed_now()
+    timestamp = now.timestamp()
+    # for daily or more, we have daily labels.
+    # Note the date is different. Tokyo is 9 hours ahead of UTC, so the timestamp in local time is already in the next day.
+    assert MarketDataProvider.normalize_timestamp(timestamp, timedelta(days=1), ZoneInfo("Asia/Tokyo")) == datetime(
+        2025, 6, 16, 0, 0, 0, tzinfo=UTC
+    )
+
+    # for intraday, we keep the timestamp in UTC
+    assert MarketDataProvider.normalize_timestamp(timestamp, timedelta(minutes=5), ZoneInfo("Asia/Tokyo")) == now

@@ -4,7 +4,7 @@
 
 from datetime import UTC, datetime
 
-from ..common.model import Asset, DailyValuePoint, FetchResult, Series
+from ..common.model import Asset, FetchResult, Series, SeriesPoint
 from .provider import MarketDataProvider
 
 BASE_URL = "https://api.stlouisfed.org/fred/series/observations"
@@ -41,7 +41,7 @@ class FredProvider(MarketDataProvider):
         if not observations:
             return FetchResult.fail(series.name, "no 'observations' in response")
 
-        points: list[DailyValuePoint] = []
+        points: list[SeriesPoint] = []
 
         for observation in observations:
             value_str = observation.get("value")
@@ -60,6 +60,6 @@ class FredProvider(MarketDataProvider):
                 continue
 
             value = float(value_str)
-            points.append(DailyValuePoint(series_id=series.id, time=time, value=value))
+            points.append(SeriesPoint(series_id=series.id, time=time, open=value, close=value))
 
         return FetchResult.ok_payload(series.name, points)

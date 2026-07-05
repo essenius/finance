@@ -7,7 +7,7 @@ from unittest.mock import MagicMock, Mock
 
 import pytest
 
-from finance.common.model import Resolution, SeriesPoint
+from finance.common.model import Retention, SeriesPoint
 from finance.timeseries.timescale_backend import TimescaleBackend, TimescaleConfig
 
 
@@ -42,7 +42,11 @@ def make_backend():
             max_batch_size=max_batch_size,
             max_batch_age=timedelta(seconds=max_batch_age_seconds),
         )
-        backend = TimescaleBackend(cfg, FakeClock())
+
+        def series_by_id(id: int):
+            return None
+
+        backend = TimescaleBackend(cfg, series_by_id, now=FakeClock())
         backend._connection = MagicMock()
         # make it connected
         backend._connection.closed = False
@@ -54,8 +58,8 @@ def make_backend():
 
 @pytest.fixture
 def make_entry():
-    def _make(id=1, fields=None, resolution=Resolution.DAILY, timestamp=0):
-        return SeriesPoint(series_id=id, time=timestamp, resolution=resolution, fields=fields or {})
+    def _make(id=1, fields=None, retention=Retention.DAILY, timestamp=0):
+        return SeriesPoint(series_id=id, time=timestamp, retention=retention, fields=fields or {})
 
     return _make
 

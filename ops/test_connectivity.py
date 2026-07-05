@@ -5,7 +5,7 @@
 from datetime import UTC, datetime
 from pathlib import Path
 
-from finance.common.model import IntradayPoint
+from finance.common.model import SeriesPoint
 from finance.config.loader import ConfigLoader
 from finance.main_utils import reconcile_registry, unwrap
 from finance.registry.registry import Registry
@@ -76,7 +76,7 @@ def main():
     now = datetime.now(tz=UTC)
     print(f"writing point at {now}")
     id = registry.all_series()[0].id
-    point = IntradayPoint(id, now, 123.48)
+    point = SeriesPoint(id, now, close=123.48)
     result = backend.add(point)
     if not result.ok:
         print(f"Write failed: {result.reason}, {result.error}")

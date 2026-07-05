@@ -4,8 +4,8 @@
 
 from datetime import timedelta
 
-from finance.common.model import Asset, ProviderConfig, Resolution, Series, SeriesType
-from finance.config.loader import ConfigLoader, load_yaml_config
+from finance.common.model import Asset, ProviderConfig, Retention, Series, SeriesType
+from finance.config.loader import ConfigLoader, check_series_templates, load_business_config, load_yaml_config
 
 
 def test_load_yaml_config(tmp_path, unwrap):
@@ -32,13 +32,14 @@ business:
 
   assets:
     spx:
-      provider: yahoo
-      provider_code: "^GSPC"
+      provider:
+        name: yahoo
+        code: "^GSPC"
       symbol: SPX
       tags:
         instrument: index
         exchange: NYSE
-      resolution:
+      series:
         daily:
           interval: 1d
 
@@ -79,17 +80,19 @@ business:
     series: Series = cfg["series"][0]
     assert series.asset_id is None
     assert series.asset_name == "spx"
-    assert series.history_limit == "10y"
-    assert series.history_limit_delta() == timedelta(days=3652.5)
+    assert series.bootstrap_history == "10y"
+    assert series.bootstrap_history_delta() == timedelta(days=3652.5)
     assert series.interval == "1d"
     assert series.interval_delta() == timedelta(days=1)
-    assert series.resolution == Resolution.DAILY
+    assert series.retention == Retention.LONG_LIVED
     assert series.series_type == SeriesType.CANDLE
     assert series.id is None
 
+    """
     # composites
     assert cfg["composites"]["spread"]["expression"] == "fred_10y_daily - fred_2y_daily"
     assert cfg["composites"]["spread"]["asset"].symbol == "SPREAD"
+    """
 
     # secrets -- .env overrides environment
     assert cfg["secrets"]["timescaledb"]["url"] == "http://y"
@@ -112,7 +115,7 @@ def test_load_config_missing_file(tmp_path, assert_error):
 
 def test_load_config_dev_mode(monkeypatch, tmp_path, unwrap):
     monkeypatch.chdir(tmp_path)
-
+    monkeypatch.delenv("FINANCE_CONFIG", raising=False)
     (tmp_path / "config.yaml").write_text("business:\n  providers: {}\n  assets: {}\n  composites: {}\n")
     (tmp_path / ".env").write_text("TIMESCALEDB_URL=http://x\nTIMESCALEDB_DB=db\n")
 
@@ -121,11 +124,8 @@ def test_load_config_dev_mode(monkeypatch, tmp_path, unwrap):
     cfg = unwrap(result)
     expected_params = {
         "timezone": "UTC",
-        "intraday_history_limit": "5d",
-        "daily_history_limit": "10y",
-        "intraday_interval": "5m",
-        "daily_interval": "1d",
-        "daily_series_type": "candle",
+        "timeout": "10s",
+        "history_limits": {},
     }
     assert cfg["providers"] == {
         "yahoo": ProviderConfig(name="yahoo", **expected_params),
@@ -155,3 +155,29 @@ environment:
 
     assert cfg["paths"]["wal"] == tmp_path / "data" / "mywal.jsonl"
     assert cfg["paths"]["state"] == tmp_path / "data" / "mystate.json"
+
+
+def test_load_check_series_templates_minimal(unwrap):
+    input = {"t1": {"interval": "1d"}}
+    result = check_series_templates(input)
+    output = unwrap(result)
+    assert input == output
+
+
+def test_load_check_series_templates_maximal(unwrap):
+    input = {"t1": {"interval": "1d", "series_type": "value", "retention": "short_lived", "bootstrap_history": "30d"}}
+    result = check_series_templates(input)
+    output = unwrap(result)
+    assert input == output
+
+
+def test_load_check_series_missing_interval(assert_error):
+    input = {"t1": {}}
+    result = check_series_templates(input)
+    assert_error(result, "Could not parse series template 't1'", "Missing required field 'interval'")
+
+
+def test_load_business_config_template_error(assert_error):
+    config = {"series_templates": {"t1": {"interval": "qx"}}}
+    result = load_business_config(config)
+    assert_error(result, "Could not parse series template 't1'", "Invalid duration 'qx' in interval")

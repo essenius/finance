@@ -96,22 +96,23 @@ class Registry:
 
     def _reconcile_assets(self) -> ReconciledAssets:
         db_by_name = {a.name: a for a in self._db_assets}
-        db_by_code = {(a.provider, a.provider_code): a for a in self._db_assets}
 
         to_persist = []
         final = []
 
         def find_existing_asset(yaml_asset):
-            # 1. Match by name (YAML identity)
+            # First match by name (YAML identity)
             db_asset = db_by_name.get(yaml_asset.name)
             if db_asset:
                 return db_asset
 
-            # 2. Match by provider + provider_code (provider identity)
-            key = (yaml_asset.provider, yaml_asset.provider_code)
-            db_asset = db_by_code.get(key)
-            # can also return None if not found
-            return db_asset
+            # Then check if there is any record that is the same semantically.
+            # This indicates a rename. Not likely to happen often, so using an
+            # index cache isn't worth the overhead (other than with name).
+            return next(
+                (s for s in self._db_assets if s.same_semantics(yaml_asset)),
+                None,
+            )
 
         for yaml_asset in self._yaml_assets:
             db_asset = find_existing_asset(yaml_asset)
@@ -136,7 +137,6 @@ class Registry:
 
     def _reconcile_series(self) -> ReconciledSeries:
         db_by_name = {s.name: s for s in self._db_series_list}
-        db_by_asset_resolution = {(s.asset_id, s.resolution): s for s in self._db_series_list}
 
         def find_existing_series(yaml_series):
             # First match by name
@@ -144,9 +144,12 @@ class Registry:
             if db_series:
                 return db_series
 
-            # Then match by (asset_id, resolution)
-            key = (yaml_series.asset_id, yaml_series.resolution)
-            return db_by_asset_resolution.get(key)
+            # Then look for a semantic match. If found, the series was
+            # likely renamed in the YAML (code changed, definition unchanged).
+            return next(
+                (s for s in self._db_series_list if s.same_semantics(yaml_series)),
+                None,
+            )
 
         to_persist = []
         final = []

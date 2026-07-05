@@ -16,37 +16,60 @@ environment:
     max_batch_size: 1000
     max_batch_age_seconds: 2.0
 
-#  influx:
-#    url: https://localhost:8086
-#    org: rik
-#    ssl_verify: true
-#    max_batch_size: 20
-#    max_batch_age_seconds: 2.0
-
 business:
   providers:
     yahoo:
+      timeout: 10s
       timezone: UTC
-      intraday_history_limit: 5d
-      daily_history_limit: 10y
-      daily_series_type: candle
+      constraints:
+        history_limits:
+          default: 60d
+          1m: 7d
+          60m: 730d
+          1d: null
     
     ecb:
+      timeout: 20s
       timezone: Europe/Berlin
-      daily_series_type: value
+      constraints: {}
     
     fred:
+      timeout: 10s
       timezone: America/Chicago
-      daily_series_type: value
+      constraints: 
+        rate_limit:
+          # not used as way beyond usage, just capturing 
+          requests_per_minute: 120
 
+  series_templates:
+    daily_value:
+      interval: 1d
+      series_type: value
+      # for >=1d, default retention is long lived, bootstrap_history 10y
+      # long lived means stored in table without retention policy
+
+    daily_candle:
+      interval: 1d
+      # default series_type is candle
+
+    intraday_value:
+      interval: 5m
+      series_type: value
+      # for <1d, default retention is short lived, bootstrap_history 30d
+      # short lived means stored in table with retention policy
+
+    intraday_candle:
+      interval: 5m
+  
   assets:
 
     # -------------------------
     # FOREX: EURUSD (Yahoo)
     # -------------------------
     eurusd_yahoo:
-      provider: yahoo
-      provider_code: EURUSD=X
+      provider: 
+        name: yahoo
+        code: EURUSD=X
       symbol: EURUSD
       tags:
         instrument: forex
@@ -54,9 +77,8 @@ business:
         region: GLOBAL
         currency: USD
         unit: ratio
-      resolution:
-        intraday: {}
-        daily: {}
+      series:
+        daily: daily_value
 
     # -------------------------
     # FOREX: EURUSD (ECB)
@@ -71,170 +93,177 @@ business:
         region: EU
         currency: USD
         unit: ratio
-      resolution:
-        daily: {}
+      series:
+        daily: daily_value
 
     # -------------------------
     # COMMODITIES
     # -------------------------
     gold:
-      provider: yahoo
-      provider_code: GC=F
+      provider:
+        name: yahoo
+        code: GC=F
       symbol: GOLD
       tags:
         instrument: commodity
         exchange: COMMODITY
         region: GLOBAL
         currency: USD
-        unit: ounce
-      resolution:
-        intraday: {}
-        daily: {}
+        unit: troy_ounce
+      series:
+        intraday: intraday_candle
+        daily: daily_candle
 
     wti:
-      provider: yahoo
-      provider_code: CL=F
+      provider:
+        name: yahoo
+        code: CL=F
       symbol: WTI
       tags:
         instrument: commodity
         exchange: COMMODITY
         region: GLOBAL
         currency: USD
-        unit: USD
-      resolution:
-        intraday:
-          interval: 10m
-        daily:
-          interval: 1d
+        unit: barrel
+      series:
+        intraday: intraday_candle
+        daily: daily_candle
 
     brent:
-      provider: yahoo
-      provider_code: BZ=F
+      provider:
+        name: yahoo
+        code: BZ=F
       symbol: BRENT
       tags:
         instrument: commodity
         exchange: COMMODITY
         region: GLOBAL
         currency: USD
-        unit: USD
-      resolution:
-        intraday: {}
-        daily: {}
+        unit: barrel
+      series:
+        intraday: intraday_candle
+        daily: daily_candle
 
     # -------------------------
     # EQUITIES
     # -------------------------
     shell:
-      provider: yahoo
-      provider_code: SHEL
       symbol: SHEL
+      provider:
+        name: yahoo
+        code: SHEL
       tags:
         instrument: equity
         exchange: NYSE
         region: GLOBAL
         currency: USD
-        unit: USD
-      resolution:
-        daily: {}
-        intraday: {}
+        unit: share
+      series:
+        intraday: intraday_candle
+        daily: daily_candle
 
     shell_as:
-      provider: yahoo
-      provider_code: SHELL.AS
+      provider:
+        name: yahoo
+        code: SHELL.AS
       symbol: SHELL.AS
       tags:
         instrument: equity
         exchange: EURONEXT
         region: GLOBAL
         currency: EUR
-        unit: EUR
-      resolution:
-        daily: {}
-        intraday: {}
+        unit: share
+      series:
+        intraday: intraday_candle
+        daily: daily_candle
 
     # -------------------------
     # INDEXES
     # -------------------------
     spx:
-      provider: yahoo
-      provider_code: ^GSPC
+      provider:
+        name: yahoo
+        code: ^GSPC
       symbol: SPX
       tags:
         instrument: index
         exchange: NYSE
         region: US
         currency: USD
-        unit: index
-      resolution:
-        daily: {}
+        unit: index_point
+      series:
+        daily: daily_candle
 
     vix:
-      provider: yahoo
-      provider_code: ^VIX
+      provider:
+        name: yahoo
+        code: ^VIX
       symbol: VIX
       tags:
         instrument: index
         exchange: CBOE
         region: US
         currency: USD
-        unit: index
-      resolution:
-        daily: {}
+        unit: index_point
+      series:
+        daily: daily_candle
 
     # -------------------------
     # CRYPTO
     # -------------------------
     bitcoin:
-      provider: yahoo
-      provider_code: "BTC-USD"
+      provider:
+        name: yahoo
+        code: "BTC-USD"
       symbol: BTCUSD
       tags:
         instrument: crypto
         exchange: CRYPTO
         region: GLOBAL
         currency: USD
-        unit: USD
-      resolution:
-        intraday: {}
-        daily: {}
+        unit: coin
+      series:
+        intraday: intraday_candle
+        daily: daily_candle
 
     # -------------------------
     # MACRO (FRED + Treasury)
     # -------------------------
     fred_10y_nominal:
-      provider: fred
-      provider_code: DGS10
+      provider: 
+        name: fred
+        code: DGS10
       symbol: 10Y_NOMINAL
       tags:
         instrument: macro
         region: US
         unit: percent
-      resolution:
-        daily: {}
+      series:
+        daily: daily_value
 
     fred_10y_breakeven:
-      provider: fred
-      provider_code: T10YIE
+      provider:
+        name: fred
+        code: T10YIE
       symbol: 10Y_BREAKEVEN
       tags:
         instrument: macro
         region: US
         unit: percent
-        provider: fred
-      resolution:
-        daily: {}
+      series:
+        daily: daily_value
 
     fed_balance_sheet:
-      provider: fred
-      provider_code: WALCL
+      provider:
+        name: fred
+        code: WALCL
       symbol: BALANCE_SHEET
       tags:
         instrument: macro
         region: US
         unit: billions_usd
-        provider: fred
-      resolution:
-        daily: {}
+      series:
+        daily: daily_value
 
    # treasury_avg:
    #   provider: treasury
@@ -245,7 +274,7 @@ business:
    #     region: US
    #     unit: percent
    #     provider: treasury
-   #   resolution:
+   #   series:
    #     daily:
    #       interval: 1d
 
@@ -256,7 +285,7 @@ business:
     10Y_REAL:
       expression: "fred_10y_nominal - fred_10y_breakeven"
       symbol: 10Y_REAL
-      resolution: daily
+      series: daily
       tags:
         instrument: macro
         region: US
@@ -265,7 +294,7 @@ business:
     GOLD_DAILY_RANGE:
       expression: "gold.high - gold.low"
       symbol: GOLD_DAILY_RANGE
-      resolution: daily
+      series: daily
       tags:
         instrument: commodity
         region: GLOBAL

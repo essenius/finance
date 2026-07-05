@@ -4,7 +4,7 @@
 
 from datetime import UTC, datetime
 
-from ..common.model import Asset, DailyValuePoint, FetchResult, MeasurementResult, Series
+from ..common.model import Asset, FetchResult, MeasurementResult, Series, SeriesPoint
 from .provider import MarketDataProvider
 
 BASE_URL = "https://data-api.ecb.europa.eu/service/data"
@@ -60,8 +60,8 @@ class EcbProvider(MarketDataProvider):
 
         return MeasurementResult.ok_payload(name, date_values_result.payload)
 
-    def _parse_points(self, series: Series, observations: dict, date_values: list) -> list[DailyValuePoint]:
-        points = []
+    def _parse_points(self, series: Series, observations: dict, date_values: list) -> list[SeriesPoint]:
+        points: list[SeriesPoint] = []
 
         for obs_index, obs_value in observations.items():
             try:
@@ -79,7 +79,7 @@ class EcbProvider(MarketDataProvider):
             except Exception:
                 continue
 
-            points.append(DailyValuePoint(series_id=series.id, time=time, value=value))
+            points.append(SeriesPoint(series_id=series.id, time=time, close=value))
 
         return points
 

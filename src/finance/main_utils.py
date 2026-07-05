@@ -62,7 +62,7 @@ def reconcile_registry(registry: Registry, backend: TimescaleBackend):
         stored = unwrap(backend.store_series(series))
         registry.register_final_series(stored)
 
-    backend.refresh_intraday_series_ids()
+    backend.refresh_short_lived_series_ids()
 
 
 def process_result(result: FetchResult, state: State, series: Series) -> bool:

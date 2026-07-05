@@ -18,14 +18,11 @@ from finance.common.applogger import AppLogger
 from finance.common.model import (
     BACKEND,
     Asset,
-    CandlePoint,
-    DailyValuePoint,
-    IntradayPoint,
     Result,
+    Retention,
     Series,
     SeriesPoint,
 )
-from finance.common.time_utils import normalize_db_time
 
 logger = AppLogger()
 
@@ -50,16 +47,21 @@ class TimescaleConfig:
 
 
 class TimescaleBackend:
-    def __init__(self, config: TimescaleConfig, now: Callable[[], datetime] = None) -> None:
+    def __init__(
+        self, config: TimescaleConfig, series_by_id: Callable[[int], Series], now: Callable[[], datetime] = None
+    ) -> None:
         self._config: TimescaleConfig = config
+        self._series_by_id = series_by_id
         self._connection = None
         self._pending: list[SeriesPoint] = []
         self._last_flush: datetime | None = None
         self.now = now or (lambda: datetime.now(UTC))
-        self._intraday_series_ids: set[int] = set()
+        self._short_lived_series_ids: set[int] = set()
 
     @classmethod
-    def from_config(cls, config: dict, now: Callable[[], datetime] = None) -> Result[TimescaleBackend]:
+    def from_config(
+        cls, config: dict, series_by_id: Callable[[int], Series], now: Callable[[], datetime] = None
+    ) -> Result[TimescaleBackend]:
         try:
             ts_config = TimescaleConfig(
                 host=config["host"],
@@ -79,8 +81,8 @@ class TimescaleBackend:
                     f"verify-ca requires path in {BACKEND.upper()}_SSL_ROOT_CERT in .env or ssl_root_cert in yaml",
                 )
 
-            backend = cls(ts_config, now)
-            backend.refresh_intraday_series_ids()
+            backend = cls(ts_config, series_by_id, now)
+            backend.refresh_short_lived_series_ids()
             return Result.ok_payload(backend)
 
         except KeyError as ke:
@@ -187,43 +189,20 @@ class TimescaleBackend:
         """
         Data-driven batch insertion for all SeriesPoint subclasses.
         """
+        fields = "series_id, time, open, high, low, close, volume"
+        values = "%s, %s, %s, %s, %s, %s, %s"
+        sql_template = f"INSERT INTO {{table}} ({fields}) VALUES ({values}) ON CONFLICT (series_id, time) DO NOTHING"
 
-        sql_template = "INSERT INTO {table} (series_id, time{extra_fields}) VALUES (%s, %s{placeholders}) ON CONFLICT (series_id, time) DO NOTHING"
-
-        # Define the batch types
-        batch_specs = [
-            (
-                CandlePoint,
-                "prices_daily",
-                ["open", "high", "low", "close", "volume"],
-                lambda e: (e.open, e.high, e.low, e.close, e.volume),
-            ),
-            (DailyValuePoint, "prices_daily", ["close"], lambda e: (e.value,)),
-            (IntradayPoint, "prices_intraday", ["value"], lambda e: (e.value,)),
-        ]
-
-        # Group entries by type
-        grouped: dict[type, list] = {spec[0]: [] for spec in batch_specs}
-
-        for p in entries:
-            for cls, _, _, _ in batch_specs:
-                if isinstance(p, cls):
-                    grouped[cls].append(p)
-                    break
-            else:
-                return Result.fail("Flush failed", f"Unsupported SeriesPoint subtype: {type(p).__name__}")
+        points: dict[str, list] = {"hot": [], "cold": []}
+        for point in entries:
+            label = "hot" if point.series_id in self._short_lived_series_ids else "cold"
+            points[label].append(point)
 
         # Execute batches
-        for cls, table, fields, extractor in batch_specs:
-            batch = grouped[cls]
-            if not batch:
-                continue
-
-            extra_fields = "".join(f", {f}" for f in fields)
-            placeholders = "".join(", %s" for _ in fields)
-
-            sql_stmt = sql.SQL(sql_template.format(table=table, extra_fields=extra_fields, placeholders=placeholders))
-            values = [(e.series_id, e.time, *extractor(e)) for e in batch]
+        for label, point_list in points.items():
+            table = f"series_data_{label}"
+            sql_stmt = sql.SQL(sql_template.format(table=table))
+            values = [(e.series_id, e.time, e.open, e.high, e.low, e.close, e.volume) for e in point_list]
 
             result = self._execute_many(sql_stmt, values, context)
             if not result.ok:
@@ -266,16 +245,14 @@ class TimescaleBackend:
             if series_id is None:
                 return Result.fail(f"Series id not set for {context}")
 
-            is_intraday = series_id in self._intraday_series_ids
-            table = "prices_intraday" if is_intraday else "prices_daily"
+            label = "hot" if series_id in self._short_lived_series_ids else "cold"
+            table = f"series_data_{label}"
             order = sql.SQL("ASC") if ascending else sql.SQL("DESC")
 
-            fields = sql.SQL("value") if is_intraday else sql.SQL("open, high, low, close, volume")
             stmt = sql.SQL("""
-                SELECT series_id, time, {fields} FROM {table}
+                SELECT series_id, time, open, high, low, close, volume FROM {table}
                 WHERE series_id = %s ORDER BY time {order} LIMIT 1
             """).format(
-                fields=fields,
                 table=sql.Identifier(table),
                 order=order,
             )
@@ -286,31 +263,19 @@ class TimescaleBackend:
                 if not row:
                     return Result.ok_payload(None)
 
-                # following row layout
-
-                if is_intraday:
-                    sid, time, value = row
-                    return Result.ok_payload(IntradayPoint(series_id=sid, time=normalize_db_time(time), value=value))
-
                 sid, time, open, high, low, close, volume = row
 
-                # Daily table: candle or daily-value. Guess the real type based on content
-                # open can be None if we used synthetic data from metadata
-                if volume is not None or high is not None or low is not None:
-                    return Result.ok_payload(
-                        CandlePoint(
-                            series_id=sid,
-                            time=normalize_db_time(time),
-                            open=open,
-                            high=high,
-                            low=low,
-                            close=close,
-                            volume=volume,
-                        )
+                return Result.ok_payload(
+                    SeriesPoint(
+                        series_id=sid,
+                        time=time,
+                        open=open,
+                        high=high,
+                        low=low,
+                        close=close,
+                        volume=volume,
                     )
-
-                # Daily value (close-only)
-                return Result.ok_payload(DailyValuePoint(series_id=sid, time=normalize_db_time(time), value=close))
+                )
 
         return self._database_operation(operation, context)
 
@@ -318,37 +283,37 @@ class TimescaleBackend:
     # Persisting assets and series
     # ------------------------------------------------------------
 
-    def refresh_intraday_series_ids(self) -> None:
+    def refresh_short_lived_series_ids(self) -> None:
         """
-        Load all intraday series IDs into a set for fast lookup during state rebuild.
+        Load all short lived series IDs wi into a set for fast lookup during state rebuild.
         """
-        sql = "SELECT id FROM series WHERE resolution = 'intraday';"
+        sql = f"SELECT id FROM series WHERE retention = '{Retention.SHORT_LIVED}';"
 
         def operation():
             rows = self._execute_read(sql)
-            self._intraday_series_ids = {row[0] for row in rows}
+            self._short_lived_series_ids = {row[0] for row in rows}
 
-        return self._database_operation(operation, "load intraday series ids")
+        return self._database_operation(operation, "load short lived series ids")
 
-    def store_asset(self, a: Asset) -> Result[Asset]:
+    def store_asset(self, asset: Asset) -> Result[Asset]:
         """
         Insert or update an asset row.
         YAML is authoritative, so we upsert on (symbol, provider).
         """
 
         base_fields = (
-            a.name,
-            a.symbol,
-            a.provider,
-            a.provider_code,
-            a.display_name,
-            a.instrument,
-            a.region,
-            a.exchange,
-            a.currency,
-            a.unit,
+            asset.name,
+            asset.symbol,
+            asset.provider,
+            asset.provider_code,
+            asset.display_name,
+            asset.instrument,
+            asset.region,
+            asset.exchange,
+            asset.currency,
+            asset.unit,
         )
-        if a.id is None:
+        if asset.id is None:
             sql = """
                     INSERT INTO asset (name, symbol, provider, provider_code, display_name, instrument, region, exchange, currency, unit)
                     VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
@@ -366,13 +331,13 @@ class TimescaleBackend:
                 RETURNING id;
             """
 
-            params = (*base_fields, a.id)
+            params = (*base_fields, asset.id)
 
         result = self._execute_write(sql, params)
 
         if not result.ok:
             return result
-        return Result.ok_payload(a if a.id is not None else a.with_id(result.payload))
+        return Result.ok_payload(asset if asset.id is not None else asset.with_id(result.payload))
 
     def store_series(self, series: Series) -> Result[Series]:
         """
@@ -382,24 +347,31 @@ class TimescaleBackend:
         if series.asset_id is None:
             return Result.fail("Store series failed", "asset_id was not set")
 
-        metadata = (series.series_type, series.interval, series.history_limit)
+        base_fields = (
+            series.code,
+            series.asset_id,
+            series.interval,
+            series.series_type,
+            series.retention,
+            series.bootstrap_history,
+        )
 
         if series.id is None:
             # INSERT
             sql = """
-                INSERT INTO series (asset_id, resolution, series_type, interval, history_limit)
-                VALUES (%s, %s, %s, %s, %s)
+                INSERT INTO series (code, asset_id, interval, series_type, retention, bootstrap_history)
+                VALUES (%s, %s, %s, %s, %s, %s)
                 RETURNING id;
             """
-            params = (series.asset_id, series.resolution, *metadata)
+            params = base_fields
 
         else:
             # UPDATE
             sql = """
-                UPDATE series SET series_type=%s, interval=%s, history_limit=%s WHERE id=%s RETURNING id;
+                UPDATE series SET code=%s, asset_id=%s, interval=%s, series_type=%s, retention=%s, bootstrap_history=%s WHERE id=%s RETURNING id;
             """
 
-            params = (*metadata, series.id)
+            params = (*base_fields, series.id)
 
         result = self._execute_write(sql, params)
         if not result.ok:
@@ -465,8 +437,8 @@ class TimescaleBackend:
             with self._connection.cursor() as cursor:
                 cursor.execute(
                     """
-                    SELECT s.id, s.asset_id, a.name as asset_name, a.name || '_' || s.resolution AS name,
-                           s.resolution, s.series_type, s.interval, s.history_limit FROM series s
+                    SELECT s.id, s.code, s.asset_id, a.name as asset_name, a.name || ':' || s.code AS name,
+                           s.interval, s.series_type, s.retention, s.bootstrap_history FROM series s
                     JOIN asset a ON s.asset_id = a.id
                     ORDER BY s.id;
                     """
@@ -477,13 +449,14 @@ class TimescaleBackend:
                 [
                     Series(
                         id=row[0],
-                        asset_id=row[1],
-                        asset_name=row[2],
-                        name=row[3],
-                        resolution=row[4],
-                        series_type=row[5],
-                        interval=row[6],
-                        history_limit=row[7],
+                        code=row[1],
+                        asset_id=row[2],
+                        asset_name=row[3],
+                        name=row[4],
+                        interval=row[5],
+                        series_type=row[6],
+                        retention=row[7],
+                        bootstrap_history=row[8],
                     )
                     for row in rows
                 ]

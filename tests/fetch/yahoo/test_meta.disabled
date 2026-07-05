@@ -5,7 +5,7 @@
 
 from datetime import timedelta
 
-from finance.common.model import DAILY, CandlePoint, DailyValuePoint, SeriesType
+from finance.common.model import DAILY, SeriesPoint, SeriesType
 
 
 def test_get_from_meta_full_success(yahoo_provider, unwrap, make_asset, make_series, fixed_now):
@@ -26,10 +26,7 @@ def test_get_from_meta_full_success(yahoo_provider, unwrap, make_asset, make_ser
     payload = unwrap(result)
 
     assert len(payload) == 1
-    assert isinstance(payload[0], CandlePoint)
-    assert payload[0] == CandlePoint(
-        series_id=series.id, time=now, open=None, high=12.0, low=8.0, close=10.0, volume=999
-    )
+    assert payload[0] == SeriesPoint(series_id=series.id, time=now, open=None, high=12.0, low=8.0, close=10.0, volume=999)
 
 
 def test_get_from_meta_partial_success(yahoo_provider, unwrap, make_asset, make_series, fixed_now):
@@ -50,9 +47,7 @@ def test_get_from_meta_partial_success(yahoo_provider, unwrap, make_asset, make_
     payload = unwrap(result)
 
     assert len(payload) == 1
-    assert payload[0] == CandlePoint(
-        series_id=series.id, time=now, open=None, high=None, low=8.0, close=10.0, volume=None
-    )
+    assert payload[0] == SeriesPoint(series_id=series.id, time=now, open=None, high=None, low=8.0, close=10.0, volume=None)
     assert result.warnings == ["Missing value for 'high'", "Missing value for 'volume'"]
 
 

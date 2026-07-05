@@ -8,7 +8,7 @@ from unittest.mock import Mock
 
 import pytest
 
-from finance.common.model import INTRADAY, Asset, Result, Series, SeriesType
+from finance.common.model import Asset, Result, Retention, Series, SeriesType
 from finance.state.state import State
 from finance.state.storage import StateStorage
 from finance.state.wal import JsonlWAL
@@ -94,7 +94,7 @@ def assert_warning():
         if warning is None:
             assert result.warnings is None
         else:
-            assert any(warning in w for w in result.warnings)
+            assert any(warning in w for w in result.warnings), f"warning '{warning}' not found"
         assert result.reason is None
         return result.payload
 
@@ -132,17 +132,16 @@ def make_series(make_asset):
 
         defaults = {
             "id": asset.id,
-            "resolution": INTRADAY,
+            "code": "dummy",
             "asset_id": asset.id,
             "asset_name": asset.name,
-            "series_type": SeriesType.VALUE,
             "interval": "10m",
-            "history_limit": "5d",
+            "series_type": SeriesType.VALUE,
+            "retention": Retention.SHORT_LIVED,
+            "bootstrap_history": "5d",
         }
         params = defaults | overrides
-        params["name"] = f"{asset.name}_{params['resolution']}"
-        # params["interval_delta"] = parse_duration(params["interval"])
-        # params["history_limit_delta"] = parse_duration(params["history_limit"])
+        params["name"] = f"{asset.name}:{params['code']}"
 
         return Series(**params)
 

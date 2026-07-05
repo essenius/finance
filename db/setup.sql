@@ -45,7 +45,7 @@ CREATE TABLE IF NOT EXISTS asset (
     symbol        TEXT NOT NULL,
     provider      TEXT NOT NULL,
     provider_code TEXT NOT NULL,
-
+    
     -- metadata
     display_name  TEXT,
     instrument    TEXT,
@@ -77,59 +77,36 @@ END$$;
 
 DO $$
 BEGIN
-    IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'series_resolution') THEN
-        CREATE TYPE series_resolution AS ENUM ('daily', 'intraday');
+    IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'series_retention') THEN
+        CREATE TYPE series_retention AS ENUM ('short_lived', 'long_lived');
     END IF;
 END$$;
 
 
 CREATE TABLE IF NOT EXISTS series (
     id SERIAL PRIMARY KEY,
+    code TEXT NOT NULL,
     asset_id INTEGER NOT NULL REFERENCES asset(id),
-    resolution series_resolution NOT NULL,
-    series_type series_type NOT NULL,
     interval TEXT NOT NULL,
-    history_limit TEXT NOT NULL,
+    series_type series_type NOT NULL,
+    retention series_retention NOT NULL,
+    bootstrap_history TEXT NOT NULL,
 
-    UNIQUE(asset_id, resolution)
+    UNIQUE(asset_id, code)
 );
 
 CREATE INDEX IF NOT EXISTS series_asset_id_idx ON series (asset_id);
-CREATE INDEX IF NOT EXISTS series_resolution_type_idx ON series (resolution, series_type);
-CREATE INDEX IF NOT EXISTS series_type_idx ON series (series_type);
+CREATE INDEX IF NOT EXISTS series_retention_idx ON series (retention);
+
 -- ============================
--- Intraday hypertable
+-- Hypertables
 -- ============================
 
-CREATE TABLE IF NOT EXISTS prices_intraday (
+-- Cold (long-lived)
+
+CREATE TABLE IF NOT EXISTS series_data_cold (
     series_id   INT NOT NULL REFERENCES series(id),
     time        TIMESTAMPTZ NOT NULL,
-    value       DOUBLE PRECISION NOT NULL,
-    PRIMARY KEY (series_id, time)
-);
-
-SELECT create_hypertable('prices_intraday', 'time', if_not_exists => TRUE);
-
-ALTER TABLE prices_intraday SET (
-    timescaledb.compress,
-    timescaledb.compress_segmentby = 'series_id',
-    timescaledb.compress_orderby = 'time DESC'
-);
-
-SELECT add_compression_policy('prices_intraday', INTERVAL '3 days', if_not_exists => TRUE);
-
--- Retention: 30 days
-SELECT add_retention_policy('prices_intraday', INTERVAL '30 days', if_not_exists => TRUE);
-
--- Compression: after 3 days
-
--- ============================
--- Daily hypertable
--- ============================
-
-CREATE TABLE IF NOT EXISTS prices_daily (
-    series_id   INT NOT NULL REFERENCES series(id),
-    time        DATE NOT NULL,
     open        DOUBLE PRECISION,
     high        DOUBLE PRECISION,
     low         DOUBLE PRECISION,
@@ -138,15 +115,32 @@ CREATE TABLE IF NOT EXISTS prices_daily (
     PRIMARY KEY (series_id, time)
 );
 
-SELECT create_hypertable('prices_daily', 'time', if_not_exists => TRUE);
+SELECT create_hypertable('series_data_cold', 'time', if_not_exists => TRUE);
 
-ALTER TABLE prices_daily SET (
+ALTER TABLE series_data_cold SET (
     timescaledb.compress,
     timescaledb.compress_segmentby = 'series_id',
     timescaledb.compress_orderby = 'time DESC'
 );
 
-SELECT add_compression_policy('prices_daily', INTERVAL '7 days', if_not_exists => TRUE);
+SELECT add_compression_policy('series_data_cold', INTERVAL '7 days', if_not_exists => TRUE);
+
+-- Hot (short-lived)
+
+CREATE TABLE IF NOT EXISTS series_data_hot (LIKE series_data_cold INCLUDING ALL);
+
+SELECT create_hypertable('series_data_hot', 'time', if_not_exists => TRUE);
+
+ALTER TABLE series_data_hot SET (
+    timescaledb.compress,
+    timescaledb.compress_segmentby = 'series_id',
+    timescaledb.compress_orderby = 'time DESC'
+);
+
+SELECT add_compression_policy('series_data_hot', INTERVAL '3 days', if_not_exists => TRUE);
+
+SELECT add_retention_policy('series_data_hot', INTERVAL '30 days', if_not_exists => TRUE);
+
 
 -- Reload config to apply telemetry change
 SELECT pg_reload_conf();

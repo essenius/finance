@@ -71,7 +71,7 @@ def make_fake_provider(fetch_result=None):
     fake_provider = Mock()
     fake_provider.fetch.return_value = fetch_result
     fake_provider.provider_config = Mock()
-    fake_provider.provider_config.history_limits.get.return_value = "60d"
+    fake_provider.provider_config.get_history_limit.return_value = timedelta(days=60)
     return fake_provider
 
 
@@ -191,7 +191,7 @@ def test_controller_malformed_result(assert_error, state, fixed_now, make_asset)
 
 def test_controller_none_limit(unwrap, state, fixed_now, make_asset):
     fake_provider = make_fake_provider()
-    fake_provider.provider_config.history_limits.get.return_value = None
+    fake_provider.provider_config.get_history_limit.return_value = None
     asset = make_asset()
     assets = make_assets([asset])
     series = make_series_list(asset)

@@ -21,6 +21,7 @@ def test_parse_duration_valid():
     assert parse_duration("10w") == timedelta(weeks=10)
     # years is an approximation: 365.25 days
     assert parse_duration("4y") == timedelta(days=365.25 * 4)
+    assert parse_duration("0") == timedelta(0)
 
 
 @pytest.mark.parametrize("text", ["10", "5x", "1.5h", "5 d", "-5m", "", "abc", "h5", "5mm", "1hour", "P5D"])

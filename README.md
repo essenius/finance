@@ -47,13 +47,15 @@ business:
       timezone: UTC
       constraints:
         history_limits:
-          default: 60d
-          1m: 7d
-          60m: 730d
+          default: 7d
+          5m: 60d
+          1h: 730d
           1d: null
 ```
 Read this as follows: for the provider Yahoo, the request timeout is 10 seconds, and the default timezone is UTC.
-It has a default of 60 days for the history limit, but for one minute it is 7 days, and for 1 day there is no limit
+A series with an interval of less than 5 minutes has a 7 day history limit, then for less than an hour it's 60 days, 
+then for less than a day it's 730 days, and above that there is no limit.
+
 
 #### Series templates
 

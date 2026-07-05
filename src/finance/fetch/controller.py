@@ -84,15 +84,12 @@ class FetchController:
             entry = state.get(series.id)
             first_saved = None if entry is None else entry.first_time
             last_saved = None if entry is None else entry.last_time
-            provider_limit = provider.provider_config.history_limits.get(
-                series.interval, provider.history_limits.get(None)
-            )
-            delta = series.bootstrap_history_delta()
+            provider_limit = provider.provider_config.get_history_limit(series.interval)
+            limit = series.bootstrap_history_delta()
 
             if provider_limit is not None:
-                limit_delta = parse_duration(provider_limit)
-                delta = min(delta, limit_delta)
-            start, end = self.get_window(first_saved, last_saved, delta)
+                limit = min(limit, provider_limit)
+            start, end = self.get_window(first_saved, last_saved, limit)
 
             result: FetchResult = provider.fetch(series, asset, start, end)
 

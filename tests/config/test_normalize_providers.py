@@ -25,7 +25,10 @@ def test_normalize_providers_basic(unwrap):
     assert providers["yahoo"] == ProviderConfig(name="yahoo", **default_params), "Yahoo"
     assert providers["fred"] == ProviderConfig(name="fred", **default_params), "FRED"
     assert providers["ecb"] == ProviderConfig(
-        name="ecb", timezone="Europe/Berlin", timeout="20s", history_limits={timedelta(0): timedelta(days=60), timedelta(days=1): None}
+        name="ecb",
+        timezone="Europe/Berlin",
+        timeout="20s",
+        history_limits={timedelta(0): timedelta(days=60), timedelta(days=1): None},
     ), "ECB"
 
 

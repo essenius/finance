@@ -20,7 +20,7 @@ def parse_duration(text: str, context: str | None = None) -> timedelta:
     Convert interval strings like '10m', '1h', '1d', '30s' into seconds.
     Raises ValueError on invalid formats.
     """
-    if text == '0':
+    if text == "0":
         return timedelta(0)
     match = re.fullmatch(r"(\d+)([smhdwy])", text)
     if not match:

@@ -5,7 +5,6 @@
 from collections.abc import Callable, Iterable
 from datetime import UTC, datetime, timedelta
 
-from finance.common.time_utils import parse_duration
 from finance.fetch.provider import MarketDataProvider
 
 from ..common.model import Asset, FetchResult, ProviderConfig, Series, SupportedProviders

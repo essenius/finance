@@ -213,7 +213,11 @@ def test_provider_config_history_limits():
     assert config.name == "x"
     assert config.timezone == "UTC"
     assert config.timeout == "20s"
-    assert config.history_limits == { timedelta(0): timedelta(days=5), timedelta(hours=1): timedelta(days=60), timedelta(days=1): None }
+    assert config.history_limits == {
+        timedelta(0): timedelta(days=5),
+        timedelta(hours=1): timedelta(days=60),
+        timedelta(days=1): None,
+    }
     assert config.timeout_delta() == timedelta(seconds=20)
 
     assert config.get_history_limit(timedelta(minutes=0)) == timedelta(days=5)
@@ -222,6 +226,7 @@ def test_provider_config_history_limits():
     assert config.get_history_limit(timedelta(hours=6)) == timedelta(days=60)
     assert config.get_history_limit(timedelta(days=1)) is None
     assert config.get_history_limit(timedelta(weeks=1)) is None
+
 
 def test_provider_config_empty_history_limits():
     config = ProviderConfig.create(

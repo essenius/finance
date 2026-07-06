@@ -23,9 +23,9 @@ business:
       timezone: UTC
       constraints:
         history_limits:
-          default: 60d
-          1m: 7d
-          60m: 730d
+          default: 7d
+          5m: 60d
+          1h: 730d
           1d: null
     
     ecb:
@@ -85,8 +85,9 @@ business:
     # FOREX: EURUSD (ECB)
     # -------------------------
     eurusd_ecb:
-      provider: ecb
-      provider_code: USD_EUR
+      provider:
+        name: ecb
+        code: USD_EUR
       symbol: EURUSD
       tags:
         instrument: forex

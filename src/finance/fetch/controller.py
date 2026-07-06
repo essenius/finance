@@ -83,7 +83,7 @@ class FetchController:
             entry = state.get(series.id)
             first_saved = None if entry is None else entry.first_time
             last_saved = None if entry is None else entry.last_time
-            provider_limit = provider.provider_config.get_history_limit(series.interval)
+            provider_limit = provider.provider_config.get_history_limit(series.interval_delta())
             limit = series.bootstrap_history_delta()
 
             if provider_limit is not None:
@@ -97,7 +97,7 @@ class FetchController:
         return result
 
     def fetch_incrementally(self, state: State) -> Iterable[FetchResult]:
-        now = self.now()
+        now: datetime = self.now()
 
         for series in self.series_list:
             # Freshness check

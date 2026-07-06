@@ -94,12 +94,15 @@ def fred_provider(fixed_now, fake_session):
 
 
 @pytest.fixture
-def yahoo_provider(fixed_now):
-    return YahooProvider(
-        asset_config={},
-        provider_config=ProviderConfig(name=SupportedProviders.YAHOO, timezone="UTC"),
-        now_provider=fixed_now,
+def yahoo_provider(fixed_now, fake_session):
+    def _make(now_provider=fixed_now):
+        return YahooProvider(
+            asset_config={},
+            provider_config=ProviderConfig(name=SupportedProviders.YAHOO, timezone="UTC"),
+            now_provider=now_provider,
+            session = fake_session()
     )
+    return _make
 
 
 @pytest.fixture

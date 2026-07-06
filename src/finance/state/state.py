@@ -52,7 +52,8 @@ class State:
     def _compute_policy(self, series: Series, time: datetime) -> dict:
 
         def is_aligned(ts: datetime, interval: timedelta) -> bool:
-            """Yahoo's last candle isn't aligned"""
+            # Yahoo's last candle time isn't aligned, it's the last data so far.
+            # This is not a Yahoo specific policy, we don't those in general.
             seconds = int(interval.total_seconds())
             return int(ts.timestamp()) % seconds == 0
 

@@ -21,6 +21,10 @@ export $(shell sed 's/=.*//' $(ENV_FILE))
 SRC_DIR := src/finance
 TEST_DIR := tests
 TOOL_DIR := tools
+DB_DIR := db
+OPS_DIR := ops
+ALL_SOURCE_DIRS := $(SRC_DIR) $(TOOL_DIR) $(DB_DIR) $(OPS_DIR)
+ALL_DIRS := $(ALL_SOURCE_DIRS) $(TEST_DIR)
 
 # Python interpreter (evaluate on use)
 PYTHON = python3
@@ -71,6 +75,8 @@ help:
 	@echo "  Source folder:       '$(SRC_DIR)'"
 	@echo "  Test folder:         '$(TEST_DIR)'"
 	@echo "  Tools folder:        '$(TOOL_DIR)'"
+	@echo "  DB folder:           '$(DB_DIR)'"
+	@echo "  Ops folder:          '$(OPS_DIR)'"
 
 # ------------------------------------------------------------
 # Environment selection
@@ -91,7 +97,7 @@ production:
 
 # cache dir is required but should not cause a trigger if changed
 $(LINT_STAMP): | $(CACHE_DIR)
-$(LINT_STAMP): $(shell find $(SRC_DIR) $(TOOL_DIR) -name '*.py')
+$(LINT_STAMP): $(shell find $(ALL_DIRS) -name '*.py')
 	$(PYTHON) -m $(TOOL_DIR).add_license
 	ruff check . --fix
 	ruff format .

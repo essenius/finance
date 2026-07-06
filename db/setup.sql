@@ -2,7 +2,8 @@
 -- Licensed under the Apache License, Version 2.0. See the LICENSE file for details.
 -- File: db/setup.sql
 
--- run with psql -f db/setup.sql "host=localhost user=postgres dbname=postgres sslmode=require"
+-- run with psql -h localhost -U postgres -f db/setup.sql
+-- set credentials in ~/.pgpass: localhost:5432:*:postgres:password:sslmode=verify-all
 
 -- Create database if not exists (Postgres doesn't have CREATE DATABASE IF NOT EXISTS)
 
@@ -32,6 +33,100 @@ CREATE EXTENSION IF NOT EXISTS timescaledb;
 
 -- Disable telemetry
 ALTER SYSTEM SET timescaledb.telemetry_level = 'off';
+
+CREATE SCHEMA bootstrap;
+
+CREATE OR REPLACE FUNCTION bootstrap.job_exists(
+    tablename name,
+    procname text
+)
+RETURNS boolean LANGUAGE sql AS $$
+    SELECT EXISTS (
+        SELECT 1
+        FROM timescaledb_information.jobs
+        WHERE hypertable_name = tablename::text
+          AND proc_name = procname
+    );
+$$;
+
+CREATE OR REPLACE FUNCTION bootstrap.table_exists(tablename name)
+RETURNS boolean LANGUAGE sql AS $$
+    SELECT EXISTS (
+        SELECT 1
+        FROM pg_class
+        WHERE relname = tablename::text
+          AND relkind = 'r'
+    );
+$$;
+
+CREATE OR REPLACE FUNCTION bootstrap.hypertable_exists(tablename name)
+RETURNS boolean LANGUAGE sql AS $$
+    SELECT EXISTS (
+        SELECT 1
+        FROM timescaledb_information.hypertables
+        WHERE hypertable_name = tablename::text
+    );
+$$;
+
+CREATE OR REPLACE FUNCTION bootstrap.create_data_table(
+    tablename name,
+    compress_after interval,
+    retention_after interval DEFAULT NULL
+)
+RETURNS void LANGUAGE plpgsql AS $$
+DECLARE
+    is_ht bool;
+BEGIN
+    -- Create the table
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_class
+        WHERE relname = tablename::text
+        AND relkind = 'r'
+    ) THEN
+        EXECUTE format($sql$
+            CREATE TABLE %I (
+                series_id   INT NOT NULL REFERENCES series(id),
+                time        TIMESTAMPTZ NOT NULL,
+                open        DOUBLE PRECISION,
+                high        DOUBLE PRECISION,
+                low         DOUBLE PRECISION,
+                close       DOUBLE PRECISION NOT NULL,
+                volume      DOUBLE PRECISION,
+                PRIMARY KEY (series_id, time)
+            );
+        $sql$, tablename);
+    END IF;
+
+    -- Convert to hypertable
+    IF NOT bootstrap.hypertable_exists(tablename) THEN
+        PERFORM create_hypertable(tablename::regclass, 'time');
+    END IF;
+
+    -- 3. Apply compression settings
+
+    EXECUTE format(
+        'ALTER TABLE %I SET (
+            timescaledb.compress,
+            timescaledb.compress_segmentby = ''series_id'',
+            timescaledb.compress_orderby = ''time DESC''
+        )',
+        tablename
+    );
+
+    -- Add compression policy
+    IF NOT bootstrap.job_exists(tablename, 'policy_compression') THEN
+        PERFORM add_compression_policy(tablename::regclass, compress_after);
+    END IF;
+
+    -- Add retention policy (optional)
+    IF retention_after IS NOT NULL
+       AND NOT bootstrap.job_exists(tablename, 'policy_retention') THEN
+        PERFORM add_retention_policy(tablename::regclass, retention_after);
+    END IF;
+
+END;
+$$;
 
 -- ============================
 -- Asset table
@@ -101,45 +196,8 @@ CREATE INDEX IF NOT EXISTS series_retention_idx ON series (retention);
 -- Hypertables
 -- ============================
 
--- Cold (long-lived)
-
-CREATE TABLE IF NOT EXISTS series_data_cold (
-    series_id   INT NOT NULL REFERENCES series(id),
-    time        TIMESTAMPTZ NOT NULL,
-    open        DOUBLE PRECISION,
-    high        DOUBLE PRECISION,
-    low         DOUBLE PRECISION,
-    close       DOUBLE PRECISION,
-    volume      DOUBLE PRECISION,
-    PRIMARY KEY (series_id, time)
-);
-
-SELECT create_hypertable('series_data_cold', 'time', if_not_exists => TRUE);
-
-ALTER TABLE series_data_cold SET (
-    timescaledb.compress,
-    timescaledb.compress_segmentby = 'series_id',
-    timescaledb.compress_orderby = 'time DESC'
-);
-
-SELECT add_compression_policy('series_data_cold', INTERVAL '7 days', if_not_exists => TRUE);
-
--- Hot (short-lived)
-
-CREATE TABLE IF NOT EXISTS series_data_hot (LIKE series_data_cold INCLUDING ALL);
-
-SELECT create_hypertable('series_data_hot', 'time', if_not_exists => TRUE);
-
-ALTER TABLE series_data_hot SET (
-    timescaledb.compress,
-    timescaledb.compress_segmentby = 'series_id',
-    timescaledb.compress_orderby = 'time DESC'
-);
-
-SELECT add_compression_policy('series_data_hot', INTERVAL '3 days', if_not_exists => TRUE);
-
-SELECT add_retention_policy('series_data_hot', INTERVAL '30 days', if_not_exists => TRUE);
-
+SELECT bootstrap.create_data_table('series_data_cold', '7 days');
+SELECT bootstrap.create_data_table('series_data_hot', '3 days', '30 days');
 
 -- Reload config to apply telemetry change
 SELECT pg_reload_conf();

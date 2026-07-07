@@ -2,8 +2,8 @@
 # Licensed under the Apache License, Version 2.0. See the LICENSE file for details.
 # File: tests/fetch/yahoo/test_fetch.py
 
-from datetime import UTC, date, datetime
 import json
+from datetime import UTC, date, datetime
 from unittest.mock import Mock, patch
 
 from finance.common.model import Retention, SeriesPoint, SeriesType

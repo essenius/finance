@@ -7,7 +7,7 @@ from datetime import UTC, datetime, timedelta
 
 from finance.fetch.provider import MarketDataProvider
 
-from ..common.model import Asset, FetchResult, ProviderConfig, Series, SupportedProviders
+from ..common.model import Asset, CompletionPolicy, FetchResult, ProviderConfig, Series, SupportedProviders
 from ..state.state import State
 from .ecb import EcbProvider
 from .fred import FredProvider
@@ -97,15 +97,25 @@ class FetchController:
         return result
 
     def fetch_incrementally(self, state: State) -> Iterable[FetchResult]:
-        now: datetime = self.now()
 
         for series in self.series_list:
             # Freshness check
             state_entry = state.get(series.id)
-            fresh = state_entry is not None and now - state_entry.last_time < series.interval_delta()
-            if fresh:
-                # not an error, just skip
-                continue
+            if self.should_fetch(series, None if state_entry is None else state_entry.last_time):
+                yield self.fetch_one_series(series, state)
 
-            # Fetch
-            yield self.fetch_one_series(series, state)
+    def should_fetch(self, series: Series, last_time: datetime | None) -> bool:
+        if last_time is None:
+            return True
+
+        now = self.now()
+        interval_closed = (now - last_time) >= series.interval_delta()
+        if not interval_closed:
+            return False
+
+        if series.completion_policy == CompletionPolicy.INTERVAL_CLOSE:
+            return True
+
+        # we have a NEXT_DAY completion policy. Only fetch if the day passed.
+        today = now.date()
+        return last_time.date() < today - timedelta(days=1)

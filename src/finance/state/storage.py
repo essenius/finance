@@ -5,7 +5,7 @@
 import json
 from pathlib import Path
 
-from finance.common.model import SeriesState
+from finance.common.model import Result, SeriesState
 
 
 class StateStorage:
@@ -39,7 +39,7 @@ class StateStorage:
 
         return result
 
-    def save(self, state: dict[int, SeriesState]) -> None:
+    def save(self, state: dict[int, SeriesState]) -> Result[None]:
         """
         Save state atomically to avoid corruption.
         """
@@ -47,6 +47,10 @@ class StateStorage:
         tmp_path = self.path.with_suffix(".tmp")
 
         serializable = {series_id: entry.to_dict() for series_id, entry in state.items()}
-        with tmp_path.open("w", encoding="utf-8") as f:
-            json.dump(serializable, f, indent=2)
-        tmp_path.replace(self.path)
+        try:
+            with tmp_path.open("w", encoding="utf-8") as f:
+                json.dump(serializable, f, indent=2)
+            tmp_path.replace(self.path)
+            return Result.ok(None)
+        except Exception as exc:
+            return Result.fail("could not save state", exc)

@@ -4,7 +4,7 @@
 
 environment:
   logging:
-    level: info
+    level: debug
   paths:
     wal: wal.jsonl
     state: state.json
@@ -42,20 +42,22 @@ business:
           requests_per_minute: 120
 
   series_templates:
+    daily_candle:
+      interval: 1d
+      # default series_type is candle, default completion_policy is next_day
+      # for >=1d, default retention is long lived, bootstrap_history 10y, completion_policy next_day
+      # long lived means stored in table without retention policy
+
     daily_value:
       interval: 1d
       series_type: value
-      # for >=1d, default retention is long lived, bootstrap_history 10y
-      # long lived means stored in table without retention policy
-
-    daily_candle:
-      interval: 1d
-      # default series_type is candle
+      # daily values are usually published entities like the daily EUR/USR rate of ECB or FRED interest rates
+      completion_policy: interval_close
 
     intraday_value:
       interval: 5m
       series_type: value
-      # for <1d, default retention is short lived, bootstrap_history 30d
+      # for <1d, default retention is short lived, bootstrap_history 30d, completion_policy interval_close
       # short lived means stored in table with retention policy
 
     intraday_candle:

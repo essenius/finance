@@ -3,7 +3,7 @@
 # File: src/finance/fetch/yahoo.py
 
 from collections.abc import Callable
-from datetime import UTC, datetime, time, timedelta
+from datetime import UTC, datetime, time
 from functools import partial
 from urllib.parse import quote, urlencode
 from zoneinfo import ZoneInfo
@@ -21,7 +21,6 @@ class YahooProvider(MarketDataProvider):
     # API
     # ----
 
-
     def fetch(self, series: Series, asset: Asset, start_time: datetime, end_time: datetime) -> FetchResult:
         name = series.name
         url = self._build_url(asset.provider_code, series.interval, start_time, end_time)
@@ -30,17 +29,17 @@ class YahooProvider(MarketDataProvider):
         if not result.ok:
             return result
 
-        def normalize_yahoo(timestamp: int, interval: timedelta, zone_info: ZoneInfo) -> datetime | None:
-            result = self.normalize_timestamp(timestamp, interval, zone_info)
+        def normalize_yahoo(timestamp: int, is_intraday: bool, zone_info: ZoneInfo) -> datetime | None:
+            result = self.normalize_timestamp(timestamp, is_intraday, zone_info)
             # invalidate timestamps for today with daily intervals or less frequently (day not done yet)
             today_midnight = datetime.combine(self.now().date(), time.min, tzinfo=UTC)
-            if interval >= timedelta(days=1) and result >= today_midnight:
+            if not is_intraday and result >= today_midnight:
                 return None
             return result
 
-        def bind_normalizer(interval, timezone: str):
+        def bind_normalizer(is_intraday: bool, timezone: str):
             zone_info = ZoneInfo(timezone)
-            return partial(normalize_yahoo, interval=interval, zone_info=zone_info)
+            return partial(normalize_yahoo, is_intraday=is_intraday, zone_info=zone_info)
 
         meta = result.payload.get("meta", {})
         timezone = meta.get("exchangeTimezoneName")
@@ -51,7 +50,7 @@ class YahooProvider(MarketDataProvider):
                 "missing exchangeTimeZoneName in meta",
             )
 
-        normalize = bind_normalizer(series.interval_delta(), timezone)
+        normalize = bind_normalizer(series.is_intraday(), timezone)
         return self._extract_candles(series, normalize, result.payload)
 
         # Fallback to metadata if no candles

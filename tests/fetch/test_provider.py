@@ -2,7 +2,7 @@
 # Licensed under the Apache License, Version 2.0. See the LICENSE file for details.
 # File: tests/fetch/test_provider.py
 
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from zoneinfo import ZoneInfo
 
 import pytest
@@ -104,9 +104,9 @@ def test_normalize_timestamp(fixed_now):
     timestamp = now.timestamp()
     # for daily or more, we have daily labels.
     # Note the date is different. Tokyo is 9 hours ahead of UTC, so the timestamp in local time is already in the next day.
-    assert MarketDataProvider.normalize_timestamp(timestamp, timedelta(days=1), ZoneInfo("Asia/Tokyo")) == datetime(
-        2025, 6, 16, 0, 0, 0, tzinfo=UTC
-    )
+    assert MarketDataProvider.normalize_timestamp(
+        timestamp, is_intraday=False, zone_info=ZoneInfo("Asia/Tokyo")
+    ) == datetime(2025, 6, 16, 0, 0, 0, tzinfo=UTC)
 
     # for intraday, we keep the timestamp in UTC
-    assert MarketDataProvider.normalize_timestamp(timestamp, timedelta(minutes=5), ZoneInfo("Asia/Tokyo")) == now
+    assert MarketDataProvider.normalize_timestamp(timestamp, is_intraday=True, zone_info=ZoneInfo("Asia/Tokyo")) == now

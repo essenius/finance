@@ -6,7 +6,7 @@ import json
 from datetime import datetime, timedelta
 from unittest.mock import Mock
 
-from finance.common.model import SeriesState
+from finance.common.model import Result, SeriesState
 from finance.state.state import State
 from finance.state.storage import StateStorage
 
@@ -54,8 +54,10 @@ def test_save_writes_actual_file(tmp_path, fixed_now):
     path = tmp_path / "state.json"
     storage = StateStorage(path)
     wal = Mock()
-    ts = Mock()
-    state = State(ts, wal, storage)
+    wal.read_all.return_value = []
+    backend = Mock()
+    backend.flush.return_value = Result.ok_payload(0)
+    state = State(backend, wal, storage)
     state.series = {1: SeriesState(last_time=now)}
 
     state.save()
@@ -68,7 +70,11 @@ def test_save_writes_actual_file(tmp_path, fixed_now):
 
 def test_save_does_not_mutate_state():
 
-    state = State(backend=Mock(), wal=Mock(), storage=Mock())
+    backend = Mock()
+    backend.flush.return_value = Result(0)
+    wal = Mock()
+    wal.read_all.return_value = []
+    state = State(backend=backend, wal=wal, storage=Mock())
     state.series = {2: SeriesState(last_time=10)}
 
     before = dict(state.series)

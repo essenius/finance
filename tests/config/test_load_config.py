@@ -165,7 +165,15 @@ def test_load_check_series_templates_minimal(unwrap):
 
 
 def test_load_check_series_templates_maximal(unwrap):
-    input = {"t1": {"interval": "1d", "series_type": "value", "retention": "short_lived", "bootstrap_history": "30d"}}
+    input = {
+        "t1": {
+            "interval": "1d",
+            "series_type": "value",
+            "retention": "short_lived",
+            "bootstrap_history": "30d",
+            "completion_policy": "next_day",
+        }
+    }
     result = check_series_templates(input)
     output = unwrap(result)
     assert input == output

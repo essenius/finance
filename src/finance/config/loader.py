@@ -15,7 +15,17 @@ from finance.common.time_utils import check_duration_in
 
 from ..common.applogger import LOG_LEVELS
 from ..common.introspection import here
-from ..common.model import BACKEND, Asset, ProviderConfig, Result, Retention, Series, SeriesType, SupportedProviders
+from ..common.model import (
+    BACKEND,
+    Asset,
+    CompletionPolicy,
+    ProviderConfig,
+    Result,
+    Retention,
+    Series,
+    SeriesType,
+    SupportedProviders,
+)
 from ..common.paths import resolve_config_path
 
 
@@ -169,6 +179,9 @@ def check_template(name: str, input: dict) -> None:
     retention = input.get("retention")
     if retention is not None:
         Retention.validate(retention)
+    completion_policy = input.get("completion_policy")
+    if completion_policy is not None:
+        CompletionPolicy.validate(completion_policy)
 
 
 def check_series_templates(raw_templates: dict | None) -> Result[dict[str, dict]]:

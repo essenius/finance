@@ -176,6 +176,12 @@ BEGIN
     END IF;
 END$$;
 
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'completion_policy') THEN
+        CREATE TYPE completion_policy AS ENUM ('interval_close', 'next_day');
+    END IF;
+END$$;
 
 CREATE TABLE IF NOT EXISTS series (
     id SERIAL PRIMARY KEY,
@@ -185,6 +191,7 @@ CREATE TABLE IF NOT EXISTS series (
     series_type series_type NOT NULL,
     retention series_retention NOT NULL,
     bootstrap_history TEXT NOT NULL,
+    completion_policy completion_policy NOT NULL,
 
     UNIQUE(asset_id, code)
 );

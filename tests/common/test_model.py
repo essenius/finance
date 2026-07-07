@@ -1,6 +1,6 @@
 # Copyright 2026 Rik Essenius
 # Licensed under the Apache License, Version 2.0. See the LICENSE file for details.
-# File: tests/common/test_model_result.py
+# File: tests/common/test_model.py
 
 from datetime import timedelta
 
@@ -9,6 +9,7 @@ import pytest
 from finance.common.model import (
     Asset,
     Candle,
+    CompletionPolicy,
     MeasurementResult,
     ProviderConfig,
     Result,
@@ -99,6 +100,7 @@ def test_series_create_with_id_differs(make_asset):
     assert series.interval_delta() == timedelta(days=1)
     assert series.bootstrap_history == "10y"
     assert series.bootstrap_history_delta() == timedelta(days=3652.5)
+    assert series.completion_policy == CompletionPolicy.NEXT_DAY
 
     series2 = series.with_id(10)
     assert (
@@ -109,10 +111,11 @@ def test_series_create_with_id_differs(make_asset):
     # differs from only looks at metadata, not at id, name
     assert not series.differs_from(series2)
 
-    config = config | {"bootstrap_history": "5y"}
+    config = config | {"bootstrap_history": "5y", "completion_policy": CompletionPolicy.INTERVAL_CLOSE}
     series3 = Series.create(asset, code="dummy", config=config)
     assert series.differs_from(series3)
     assert series3.bootstrap_history == "5y"
+    assert series3.completion_policy == CompletionPolicy.INTERVAL_CLOSE
 
 
 def test_result_success_payload():

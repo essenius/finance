@@ -59,7 +59,8 @@ class FakeCompositeEngine:
 
 def test_run_happy_path(tmp_path, caplog, fixed_now, state_deps, make_asset, make_series):
 
-    timescale_backend, wal, storage = state_deps
+    backend, wal, storage = state_deps
+    backend.flush.return_value = Result(0)
     now = fixed_now()
     state_holder = {}
     caplog.set_level("DEBUG")
@@ -94,7 +95,7 @@ def test_run_happy_path(tmp_path, caplog, fixed_now, state_deps, make_asset, mak
     run(
         load_config=load_config,
         registry_factory=registry_factory,
-        backend_factory=lambda *_: Result.ok_payload(timescale_backend),
+        backend_factory=lambda *_: Result.ok_payload(backend),
         state_factory=state_factory,
         state_storage_factory=lambda *_: storage,
         fetch_controller_factory=fetch_controller_factory,

@@ -354,13 +354,14 @@ class TimescaleBackend:
             series.series_type,
             series.retention,
             series.bootstrap_history,
+            series.completion_policy,
         )
 
         if series.id is None:
             # INSERT
             sql = """
-                INSERT INTO series (code, asset_id, interval, series_type, retention, bootstrap_history)
-                VALUES (%s, %s, %s, %s, %s, %s)
+                INSERT INTO series (code, asset_id, interval, series_type, retention, bootstrap_history, completion_policy)
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
                 RETURNING id;
             """
             params = base_fields
@@ -368,7 +369,7 @@ class TimescaleBackend:
         else:
             # UPDATE
             sql = """
-                UPDATE series SET code=%s, asset_id=%s, interval=%s, series_type=%s, retention=%s, bootstrap_history=%s WHERE id=%s RETURNING id;
+                UPDATE series SET code=%s, asset_id=%s, interval=%s, series_type=%s, retention=%s, bootstrap_history=%s, completion_policy=%s WHERE id=%s RETURNING id;
             """
 
             params = (*base_fields, series.id)
@@ -438,7 +439,7 @@ class TimescaleBackend:
                 cursor.execute(
                     """
                     SELECT s.id, s.code, s.asset_id, a.name as asset_name, a.name || ':' || s.code AS name,
-                           s.interval, s.series_type, s.retention, s.bootstrap_history FROM series s
+                           s.interval, s.series_type, s.retention, s.bootstrap_history, s.completion_policy FROM series s
                     JOIN asset a ON s.asset_id = a.id
                     ORDER BY s.id;
                     """
@@ -457,6 +458,7 @@ class TimescaleBackend:
                         series_type=row[6],
                         retention=row[7],
                         bootstrap_history=row[8],
+                        completion_policy=row[9],
                     )
                     for row in rows
                 ]

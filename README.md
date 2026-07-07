@@ -71,11 +71,13 @@ business:
       series_type: candle
       retention: short_lived
       bootstrap_history: 30d
+      completion_policy: interval_close
 
 This means we define a re-usable series template named `intraday_candle` which defines an interval of 5 minutes, a candle type [`open`, `high`, `low`, `close`, `volume`], and stored in the short lived table. On first fetch, it will try and fetch 30 days of history. 
-For series type, you can also use `value`. In that case, only the `close` field will be populated. This is useful for instruments that don't have the full candle like the ECB USD/EUR rate, and the FRED interest rates. All except the interval can be defaulted. For series type, the default is `candle`. The other two have defaults that depend on the interval. If the interval is less than a day, the default retention is `short_lived`, else `long_lived`. For bootstrap_history it's `30d` (30 days) and `10y` (10 years), respectively.
+For series type, you can also use `value`. In that case, only the `close` field will be populated. This is useful for instruments that don't have the full candle like the ECB USD/EUR rate, and the FRED interest rates. All except the interval can be defaulted. For series type, the default is `candle`. The other two have defaults that depend on the interval. If the interval is less than a day, the default retention is `short_lived`, else `long_lived`. For bootstrap_history it's `30d` (30 days) and `10y` (10 years), respectively. Completion policy defines when a measurement is complete: `interval_close` means at the end of an interval (i.e. no fetch before it ends) and `next_day` means 
+that we wait until tomorrow to fetch today's measurement. The latter value is useful with intervals of a day or more, to prevent fetching partial Yahoo results (it returns a candle for the current day while the market is still open). Default for `completion_policy` is `interval_close` for intervals less than a day, and `next_day` for intervals of a day or more.
 
-The `interval` amd `bootstrap_history` are durations. They are specified by a number and a letter, where allowed values are `m` (minutes), `h` (hours)or `d` (days) `w` (weeks) or `y` (years of 365.25 days).
+The `interval` amd `bootstrap_history` are durations. They are specified by a number and a letter, where allowed values are `m` (minutes), `h` (hours)or `d` (days) `w` (weeks) or `y` (years of 365.25 days). Internally they are translated to time deltas, so e.g. `7d` is equivalent to `1w`. 
 
 #### Assets
 

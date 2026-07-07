@@ -8,7 +8,7 @@ from unittest.mock import Mock
 
 import pytest
 
-from finance.common.model import Asset, Result, Retention, Series, SeriesType
+from finance.common.model import Asset, CompletionPolicy, Result, Retention, Series, SeriesType
 from finance.state.state import State
 from finance.state.storage import StateStorage
 from finance.state.wal import JsonlWAL
@@ -139,6 +139,7 @@ def make_series(make_asset):
             "series_type": SeriesType.VALUE,
             "retention": Retention.SHORT_LIVED,
             "bootstrap_history": "5d",
+            "completion_policy": CompletionPolicy.INTERVAL_CLOSE,
         }
         params = defaults | overrides
         params["name"] = f"{asset.name}:{params['code']}"

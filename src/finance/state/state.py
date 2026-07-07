@@ -24,6 +24,7 @@ class State:
         return self.flush_wal()
 
     def save(self) -> None:
+        self.flush_wal()
         self._storage.save(self.series)
 
     def get(self, series_id: int) -> SeriesState | None:
@@ -103,6 +104,7 @@ class State:
         warnings = []
         # We need to create a snapshot, as the process changes the WAL
         entries = list(self._wal.read_all())
+        print(f"WAL entries: {len(entries)}")
         for entry in entries:
             result = self.sync_backend(entry)
             # no sense continuing if the backend can't handle new points
@@ -112,9 +114,19 @@ class State:
             flushed_count += result.payload
 
         # force the backend to flush to the database
-        self._backend.flush()
-
+        result = self._backend.flush()
+        if result.ok and result.payload > 0:
+            self.sync_wal(result.payload)
+            flushed_count += result.payload
         return Result.ok_payload(flushed_count, warnings=warnings)
+
+    def sync_wal(self, written_count: int) -> Result[int]:
+        warnings = []
+        removed_count = self._wal.dequeue_multiple(written_count)
+        if removed_count != written_count:
+            warnings.append(f"Requested to remove {written_count} entries from the WAL but removed {removed_count}")
+
+        return Result.ok_payload(removed_count, warnings=warnings)
 
     def sync_backend(self, point: SeriesPoint) -> Result[int]:
         """
@@ -122,18 +134,12 @@ class State:
         - receive number of written points
         - remove that number of points from the wal
         """
-        warnings = []
         result = self._backend.add(point)
 
         if not result.ok:
             return result
 
-        written_count = result.payload
-        removed_count = self._wal.dequeue_multiple(written_count)
-        if removed_count != written_count:
-            warnings.append(f"Requested to remove {written_count} entries from the WAL but removed {removed_count}")
-
-        return Result.ok_payload(removed_count, warnings=warnings)
+        return self.sync_wal(result.payload)
 
     def ingest(self, series: Series, point: SeriesPoint) -> Result[int]:
         """

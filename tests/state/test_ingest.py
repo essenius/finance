@@ -48,14 +48,17 @@ def test_ingest_enqueues_and_removes_wal_entry(state_env, make_entry):
 def test_load_flushes_fifo_until_empty(state_env, two_wal_entries, unwrap):
     state, backend, wal, _ = state_env
 
-    # WAL contains two older entries + new one
-    wal.read_all.return_value = two_wal_entries()
-    backend.add.return_value = Result.ok_payload(1)
+    wal.read_all.side_effect = [
+        two_wal_entries(),  # first call
+        [],  # second call
+    ]
+    backend.add.side_effect = [Result.ok_payload(1), Result.ok_payload(0)]
+    backend.flush.return_value = Result.ok_payload(1)
     flush_count = unwrap(state.load())
-    assert flush_count == 2
+    assert flush_count == 2, "flush count"
     assert wal.is_empty(), "Wal is empty"
     assert backend.add.call_count == 2, "add call count"
-    assert wal.dequeue_multiple.call_count == 2
+    assert wal.dequeue_multiple.call_count == 3, "dequeue called 3 times (1, 0, 1)"
 
 
 def test_load_stops_on_first_failure(state_env, two_wal_entries, assert_error):

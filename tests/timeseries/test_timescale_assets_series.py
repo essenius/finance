@@ -5,6 +5,7 @@
 from unittest.mock import MagicMock
 
 from finance.common.model import Result
+from finance.timeseries.timescale_backend import TimescaleBackend
 
 # ------------------------------------------------------------
 # Helpers
@@ -226,12 +227,12 @@ def test_get_assets_error(assert_error, make_backend):
 
 
 def test_get_series_returns_series_list(make_backend):
-    backend = make_backend()
+    backend: TimescaleBackend = make_backend()
     backend._connection.closed = False
 
     rows = [
-        (10, "intraday", 1, "SPX", "SPX:intraday", "1m", "value", "short_lived", "30d"),
-        (11, "daily", 1, "SPX", "SPX:daily", "1d", "candle", "long_lived", "1y"),
+        (10, "intraday", 1, "SPX", "SPX:intraday", "1m", "value", "short_lived", "30d", "interval_close"),
+        (11, "daily", 1, "SPX", "SPX:daily", "1d", "candle", "long_lived", "1y", "next_day"),
     ]
 
     cursor_cm = make_cursor(fetchall=rows)

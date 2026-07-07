@@ -80,6 +80,11 @@ class SupportedProviders(StringEnum):
     FRED = "fred"
 
 
+class CompletionPolicy(StringEnum):
+    INTERVAL_CLOSE = "interval_close"
+    NEXT_DAY = "next_day"
+
+
 @dataclass(frozen=True)
 class SeriesPoint:
     series_id: int
@@ -457,6 +462,7 @@ class Series:
     retention: Retention
     series_type: SeriesType
     bootstrap_history: str
+    completion_policy: CompletionPolicy
 
     # assigned by backend
     id: int | None = None
@@ -480,13 +486,21 @@ class Series:
         interval = parse_duration(config["interval"], context())
         retention = config.get("retention")
         # if no retention was specified, then we use long lived if the interval is a day or more
+        is_intraday = Series.is_intraday_interval(interval)
         if retention is None:
-            retention = Retention.SHORT_LIVED if interval < timedelta(days=1) else Retention.LONG_LIVED
+            retention = Retention.SHORT_LIVED if is_intraday else Retention.LONG_LIVED
         else:
             retention = Retention.validate(retention)
         bootstrap_history = check_duration_in(config, "bootstrap_history")
         if bootstrap_history is None:
             bootstrap_history = "10y" if retention == Retention.LONG_LIVED else "30d"
+
+        completion_policy = config.get("completion_policy")
+        if completion_policy is None:
+            completion_policy = CompletionPolicy.INTERVAL_CLOSE if is_intraday else CompletionPolicy.NEXT_DAY
+        else:
+            completion_policy = CompletionPolicy.validate(completion_policy)
+
         return cls(
             name=name,
             code=code,
@@ -496,6 +510,7 @@ class Series:
             series_type=SeriesType.validate(config.get("series_type", SeriesType.CANDLE), context()),
             retention=retention,
             bootstrap_history=bootstrap_history,
+            completion_policy=completion_policy,
         )
 
     def with_id(self, new_id: id) -> Series:
@@ -509,6 +524,7 @@ class Series:
             and self.series_type == other.series_type
             and self.interval == other.interval
             and self.bootstrap_history == other.bootstrap_history
+            and self.completion_policy == other.completion_policy
         )
 
     def differs_from(self, other: Series) -> bool:
@@ -522,6 +538,13 @@ class Series:
 
     def __repr__(self):
         return f"Series(id={self.id}, name={self.name}, asset_id={self.asset_id}, retention={self.retention}, series_type={self.series_type}, interval={self.interval})"
+
+    @staticmethod
+    def is_intraday_interval(interval: timedelta):
+        return interval < timedelta(days=1)
+
+    def is_intraday(self):
+        return self.is_intraday_interval(self.interval_delta())
 
 
 @dataclass

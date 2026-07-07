@@ -100,8 +100,9 @@ def yahoo_provider(fixed_now, fake_session):
             asset_config={},
             provider_config=ProviderConfig(name=SupportedProviders.YAHOO, timezone="UTC"),
             now_provider=now_provider,
-            session = fake_session()
-    )
+            session=fake_session(),
+        )
+
     return _make
 
 

@@ -3,17 +3,16 @@
 # File: tests/fetch/test_controller.py
 
 from collections.abc import Callable, Iterable
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, time, timedelta
 from unittest.mock import Mock
 
 from finance.common.model import (
     Asset,
+    CompletionPolicy,
     MeasurementResult,
     ProviderConfig,
-    Retention,
     Series,
     SeriesState,
-    SeriesType,
     SupportedProviders,
 )
 from finance.fetch.controller import PROVIDER_REGISTRY, FetchController, create_providers
@@ -38,27 +37,6 @@ def make_assets(assets: list[Asset]):
     return result
 
 
-def make_series_list(
-    asset, code="dummy", interval="10m", bootstrap_history="5d", retention=Retention.SHORT_LIVED, id=None
-):
-    series = f"{asset.name}_{code}"
-    if id is None:
-        id = asset.id
-    return [
-        Series(
-            id=id,
-            code=code,
-            name=series,
-            asset_id=asset.id,
-            asset_name=asset.name,
-            series_type=SeriesType.VALUE,
-            interval=interval,
-            retention=retention,
-            bootstrap_history=bootstrap_history,
-        )
-    ]
-
-
 def single_result(fc: FetchController, state: State):
     results = list(fc.fetch_incrementally(state))
     assert len(results) == 1
@@ -67,7 +45,7 @@ def single_result(fc: FetchController, state: State):
 
 def make_fake_provider(fetch_result=None):
     if fetch_result is None:
-        fetch_result = MeasurementResult.ok_payload("eur_usd_dummy", [])
+        fetch_result = MeasurementResult.ok_payload("eur_usd:dummy", [])
     fake_provider = Mock()
     fake_provider.fetch.return_value = fetch_result
     fake_provider.provider_config = Mock()
@@ -103,10 +81,10 @@ def test_create_providers():
     assert isinstance(p[SupportedProviders.FRED], FredProvider)
 
 
-def test_controller_skips_fresh(state, fixed_now, make_asset):
+def test_controller_skips_fresh(state, fixed_now, make_asset, make_series):
     asset = make_asset()
     assets = make_assets([asset])
-    series = make_series_list(asset, interval="1h")
+    series = [make_series(asset, interval="1h")]
     fc = make_fetch_controller(series, assets.get, fixed_now)
 
     now = fixed_now()
@@ -121,11 +99,11 @@ def test_controller_skips_fresh(state, fixed_now, make_asset):
     fc.get_provider("yahoo").fetch.assert_not_called()
 
 
-def test_controller_fetches_when_stale(state, fixed_now, make_asset):
+def test_controller_fetches_when_stale(state, fixed_now, make_asset, make_series):
 
     asset = make_asset()
     assets = make_assets([asset])
-    series = make_series_list(asset, interval="1h")
+    series = [make_series(asset, interval="1h")]
 
     fc = make_fetch_controller(series, assets.get, fixed_now)
     now = fixed_now()
@@ -138,47 +116,67 @@ def test_controller_fetches_when_stale(state, fixed_now, make_asset):
 
     result = single_result(fc, state)
     assert result.ok
-    assert result.series_name == "eur_usd_dummy"
+    assert result.series_name == "eur_usd:dummy"
 
     fc.get_provider("yahoo").fetch.assert_called_once()
     assert state.series[1].last_try == now
 
 
-def test_controller_unknown_provider(assert_error, state, fixed_now, make_asset):
+def test_controller_skips_fetch_with_next_day(state, fixed_now, make_asset, make_series):
+
+    asset = make_asset()
+    assets = make_assets([asset])
+    series = [make_series(asset, interval="1h", completion_policy=CompletionPolicy.NEXT_DAY)]
+
+    fc = make_fetch_controller(series, assets.get, fixed_now)
+    now = fixed_now()
+    today = datetime.combine(now, time.min, UTC)
+    state.series.clear()
+    yesterday = today - timedelta(days=1)
+    # should not retrieve
+    state.series[1] = SeriesState(first_time=yesterday, last_time=yesterday, last_try=yesterday)
+
+    results = list(fc.fetch_incrementally(state))
+    assert len(results) == 0
+    fc.get_provider("yahoo").fetch.assert_not_called()
+    assert state.series[1].last_try == yesterday
+
+
+def test_controller_unknown_provider(assert_error, state, fixed_now, make_asset, make_series):
 
     asset = make_asset(provider="mystery")
     assets = make_assets([asset])
-    series = make_series_list(asset)
+    series = [make_series(asset)]
     providers = {}
     fc = FetchController(series, assets.get, providers.get, now_provider=fixed_now)
 
     result = single_result(fc, state)
-    assert_error(result, "no provider 'mystery'", "Skipped series 'eur_usd_dummy'")
+    assert_error(result, "no provider 'mystery'", "Skipped series 'eur_usd:dummy'")
 
-    assert result.series_name == "eur_usd_dummy"
+    assert result.series_name == "eur_usd:dummy"
 
     assert 1 in state.series
     assert state.series[1].last_try == fixed_now()
 
 
-def test_controller_unknown_asset(assert_error, state, fixed_now, make_asset):
+def test_controller_unknown_asset(assert_error, state, fixed_now, make_asset, make_series):
 
     asset = make_asset()
-    series = make_series_list(asset)
+    series = [make_series(asset)]
     assets = {}
     providers = {}
     fc = FetchController(series, assets.get, providers.get, now_provider=fixed_now)
 
     result = single_result(fc, state)
-    assert_error(result, "Could not find asset 1 (eur_usd)", "Skipped series 'eur_usd_dummy'")
+    assert_error(result, "Could not find asset 1 (eur_usd)", "Skipped series 'eur_usd:dummy'")
 
 
-def test_controller_malformed_result(assert_error, state, fixed_now, make_asset):
+def test_controller_malformed_result(assert_error, state, fixed_now, make_asset, make_series):
     fake_provider = make_fake_provider(fetch_result=MeasurementResult.fail("eur_usd_dummy", "bad data"))
 
     asset = make_asset()
     assets = make_assets([asset])
-    series = make_series_list(asset)
+    series = [make_series(asset)]
     providers = {"yahoo": fake_provider}
 
     fc = FetchController(series, assets.get, providers.get, now_provider=fixed_now)
@@ -189,12 +187,12 @@ def test_controller_malformed_result(assert_error, state, fixed_now, make_asset)
     assert state.series[1].last_try == fixed_now()
 
 
-def test_controller_none_limit(unwrap, state, fixed_now, make_asset):
+def test_controller_none_limit(unwrap, state, fixed_now, make_asset, make_series):
     fake_provider = make_fake_provider()
     fake_provider.provider_config.get_history_limit.return_value = None
     asset = make_asset()
     assets = make_assets([asset])
-    series = make_series_list(asset)
+    series = [make_series(asset)]
     providers = {"yahoo": fake_provider}
 
     fc = FetchController(series, assets.get, providers.get, now_provider=fixed_now)
@@ -202,7 +200,7 @@ def test_controller_none_limit(unwrap, state, fixed_now, make_asset):
     assert state.series[1].last_try == fixed_now()
 
 
-def test_controller_multiple_assets(state, fixed_now, make_asset):
+def test_controller_multiple_assets(state, fixed_now, make_asset, make_series):
 
     fake_provider = make_fake_provider()
 
@@ -214,7 +212,7 @@ def test_controller_multiple_assets(state, fixed_now, make_asset):
     asset1 = make_asset(name="eur_usd_yahoo")
     asset2 = make_asset(id=2, name="spx_yahoo", provider_code="^GSPC")
     assets = make_assets([asset1, asset2])
-    series = make_series_list(asset1) + make_series_list(asset2)
+    series = [make_series(asset1), make_series(asset2)]
 
     def get_providers(name: str):
         return fake_provider

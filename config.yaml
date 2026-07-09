@@ -88,14 +88,15 @@ business:
         currency: USD
         unit: ratio
       series:
-        daily: daily_value
+        daily: daily_candle
 
     # -------------------------
     # FOREX: EURUSD (ECB)
     # -------------------------
     eurusd_ecb:
-      provider: ecb
-      provider_code: USD_EUR
+      provider:
+        name: ecb
+        code: USD_EUR
       symbol: EURUSD
       tags:
         instrument: forex

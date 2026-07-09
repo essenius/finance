@@ -60,6 +60,7 @@ business:
       interval: 1d
       series_type: value
       # daily values are usually published entities like the daily EUR/USR rate of ECB or FRED interest rates
+      # we don't need to wait for the next day to fetch them.
       completion_policy: interval_close
 
     intraday_value:
@@ -292,6 +293,7 @@ business:
 
   # -------------------------
   # COMPOSITES
+  # note: disabled in V1
   # -------------------------
   composites:
     10Y_REAL:

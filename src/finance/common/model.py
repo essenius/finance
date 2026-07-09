@@ -371,7 +371,7 @@ class ProviderConfig:
         limits = {}
         for key, limit in config.items():
             limit_key = timedelta(0) if key == "default" else parse_duration(key, "key")
-            limit_value = None if limit is None else parse_duration(limit, f"theshold of key '{key}'")
+            limit_value = None if limit is None else parse_duration(str(limit), f"theshold of key '{key}'")
             limits[limit_key] = limit_value
         return limits
 

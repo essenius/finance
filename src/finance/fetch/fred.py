@@ -13,7 +13,7 @@ BASE_URL = "https://api.stlouisfed.org/fred/series/observations"
 class FredProvider(MarketDataProvider):
     """FRED daily economic data provider."""
 
-    def fetch(self, series: Series, asset: Asset, start_time: datetime, end_time: datetime) -> FetchResult:
+    def fetch(self, series: Series, asset: Asset, start_time: datetime, end_time: datetime, is_incremental: bool) -> FetchResult:
         if not self.api_key:
             return FetchResult.fail(series.name, "FRED requires an API key")
 
@@ -60,6 +60,6 @@ class FredProvider(MarketDataProvider):
                 continue
 
             value = float(value_str)
-            points.append(SeriesPoint(series_id=series.id, time=time, open=value, close=value))
+            points.append(SeriesPoint(series_id=series.id, time=time, close=value))
 
         return FetchResult.ok_payload(series.name, points)

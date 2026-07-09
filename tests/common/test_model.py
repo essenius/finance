@@ -204,13 +204,14 @@ def test_provider_config_defaults():
     assert config.timeout_delta() == timedelta(seconds=10)
 
 
-def test_provider_config_history_limits():
+def test_provider_config_history_limits_and_overlap():
     config = ProviderConfig.create(
         {
             "name": "x",
             "timezone": "UTC",
             "timeout": "20s",
             "constraints": {"history_limits": {"default": "5d", "1h": "60d", "1d": None}},
+            "overlap": { "default": "2h", "1d": "7d" }
         }
     )
     assert config.name == "x"
@@ -230,8 +231,12 @@ def test_provider_config_history_limits():
     assert config.get_history_limit(timedelta(days=1)) is None
     assert config.get_history_limit(timedelta(weeks=1)) is None
 
+    assert config.overlap == {timedelta(0): timedelta(hours=2), timedelta(days=1): timedelta(days=7)}
+    assert config.get_overlap(timedelta(hours=8)) == timedelta(hours=2)
+    assert config.get_overlap(timedelta(days=1)) == timedelta(days=7)
 
-def test_provider_config_empty_history_limits():
+
+def test_provider_config_empty_history_limits_and_overlaps():
     config = ProviderConfig.create(
         {
             "name": "x",
@@ -242,6 +247,7 @@ def test_provider_config_empty_history_limits():
 
     assert config.get_history_limit(timedelta(minutes=0)) is None
     assert config.get_history_limit(timedelta(weeks=1)) is None
+    assert config.get_overlap(timedelta(weeks=1)) is timedelta(0)
 
 
 def test_series_state(fixed_now):

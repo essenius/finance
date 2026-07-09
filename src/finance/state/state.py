@@ -104,7 +104,6 @@ class State:
         warnings = []
         # We need to create a snapshot, as the process changes the WAL
         entries = list(self._wal.read_all())
-        print(f"WAL entries: {len(entries)}")
         for entry in entries:
             result = self.sync_backend(entry)
             # no sense continuing if the backend can't handle new points
@@ -115,7 +114,7 @@ class State:
 
         # force the backend to flush to the database
         result = self._backend.flush()
-        if result.ok and result.payload > 0:
+        if result.ok and (result.payload > 0):
             self.sync_wal(result.payload)
             flushed_count += result.payload
         return Result.ok_payload(flushed_count, warnings=warnings)

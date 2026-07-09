@@ -54,7 +54,10 @@ def fake_session():
             self.responses.append(exc)
             return self
 
-        def get(self, *a, **k):
+        def get(self, url, params=None, timeout=None, **kwargs):
+            self.url = url
+            self.params = params
+            self.timeout = timeout
             r = self.responses[self.calls]
             self.calls += 1
             if isinstance(r, Exception):

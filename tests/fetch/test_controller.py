@@ -232,8 +232,8 @@ def test_get_window_user_waited_too_long(fixed_now):
     now = fixed_now()
     last = now - timedelta(seconds=1000)
     limit = timedelta(seconds=500)
-    start, end = fc.get_window(first_saved=last, last_saved=last, limit=limit)
-    assert (start, end) == (now - limit, now)
+    start, end, is_incremental = fc.get_window(first_saved=last, last_saved=last, limit=limit, overlap = timedelta(0))
+    assert (start, end, is_incremental) == (now - limit, now, False)
 
 
 def test_get_window_normal_incremental(fixed_now):
@@ -242,5 +242,18 @@ def test_get_window_normal_incremental(fixed_now):
     limit = timedelta(seconds=500)
     first = now - limit
     last = now - timedelta(seconds=400)
-    start, end = fc.get_window(first_saved=first, last_saved=last, limit=limit)
-    assert (start, end) == (last, now)
+    result = fc.get_window(first_saved=first, last_saved=last, limit=limit, overlap=timedelta(0))
+    # the start must be right after the last saved time, not on it
+    assert result == (last, now, True)
+
+def test_get_window_normal_includes_overlap(fixed_now):
+    fc = FetchController([], always_none, always_none, now_provider=fixed_now)
+    now = fixed_now()
+    limit = timedelta(seconds=500)
+    first = now - limit
+    last = now - timedelta(seconds=400)
+    overlap = timedelta(seconds=100)
+    window_start = last - overlap
+    result = fc.get_window(first_saved=first, last_saved=last, limit=limit, overlap=overlap)
+    # the start must be right after the last saved time, not on it
+    assert result == (window_start, now, True)

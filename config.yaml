@@ -21,6 +21,9 @@ business:
     yahoo:
       timeout: 10s
       timezone: UTC
+      overlap: 
+        default: 2h
+        1d: 7d
       constraints:
         history_limits:
           default: 7d
@@ -31,11 +34,15 @@ business:
     ecb:
       timeout: 20s
       timezone: Europe/Berlin
+      overlap:
+        default: 0
       constraints: {}
     
     fred:
       timeout: 10s
       timezone: America/Chicago
+      overlap: 
+        default: 30d
       constraints: 
         rate_limit:
           # not used as way beyond usage, just capturing 

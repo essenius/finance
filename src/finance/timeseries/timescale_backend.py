@@ -188,10 +188,19 @@ class TimescaleBackend:
     def _insert_batches(self, entries: list[SeriesPoint], context: str) -> Result[None]:
         """
         Data-driven batch insertion for all SeriesPoint subclasses.
+        Inserts
         """
-        fields = "series_id, time, open, high, low, close, volume"
-        values = "%s, %s, %s, %s, %s, %s, %s"
-        sql_template = f"INSERT INTO {{table}} ({fields}) VALUES ({values}) ON CONFLICT (series_id, time) DO NOTHING"
+        sql_template = """
+        INSERT INTO {table} (series_id, time, open, high, low, close, volume)
+        VALUES (%s, %s, %s, %s, %s, %s, %s)
+        ON CONFLICT (series_id, time)
+        DO UPDATE SET
+            open   = EXCLUDED.open,
+            high   = EXCLUDED.high,
+            low    = EXCLUDED.low,
+            close  = EXCLUDED.close,
+            volume = EXCLUDED.volume
+        """
 
         points: dict[str, list] = {"hot": [], "cold": []}
         for point in entries:

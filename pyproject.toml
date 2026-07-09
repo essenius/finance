@@ -8,7 +8,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "finance"
-version = "0.2.16"
+version = "0.2.17"
 description = "Finance tools"
 authors = [{ name = "Rik Essenius" }]
 readme = "README.md"

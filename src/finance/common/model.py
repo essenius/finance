@@ -346,6 +346,7 @@ class ProviderConfig:
     timezone: str
     timeout: str = "10s"
     history_limits: dict[timedelta, timedelta | None] = field(default_factory=dict)
+    overlap: dict[timedelta, timedelta | None] = field(default_factory=dict)
 
     def timeout_delta(self) -> timedelta:
         return parse_duration(self.timeout, f"timeout for {self.name}")
@@ -353,17 +354,20 @@ class ProviderConfig:
     @classmethod
     def create(cls, content: dict) -> ProviderConfig:
         raw_history_limits = content.get("constraints", {}).get("history_limits", {})
-        history_limits: dict[timedelta, timedelta | None] = ProviderConfig.parse_history_limit(raw_history_limits)
+        history_limits: dict[timedelta, timedelta | None] = ProviderConfig.parse_duration_table(raw_history_limits)
+        raw_overlap = content.get("overlap", {})
+        overlap: dict[timedelta, timedelta | None] = ProviderConfig.parse_duration_table(raw_overlap)
 
         return cls(
             name=content["name"],
             timeout=check_duration_in(content, "timeout", "10s"),
             timezone=content.get("timezone", "UTC"),
             history_limits=history_limits,
+            overlap=overlap
         )
 
     @staticmethod
-    def parse_history_limit(config: dict) -> dict[timedelta, timedelta | None]:
+    def parse_duration_table(config: dict) -> dict[timedelta, timedelta | None]:
         limits = {}
         for key, limit in config.items():
             limit_key = timedelta(0) if key == "default" else parse_duration(key, "key")
@@ -371,17 +375,25 @@ class ProviderConfig:
             limits[limit_key] = limit_value
         return limits
 
-    def get_history_limit(self, interval: timedelta) -> timedelta | None:
-        if not self.history_limits:
+    @staticmethod
+    def get_from_duration_table(delta: timedelta, table: dict[timedelta, timedelta]| None) -> timedelta:
+        if not table:
             return None  # unlimited
-
         chosen = None
-        for threshold, limit in self.history_limits.items():
-            if interval >= threshold:
+        for threshold, limit in table.items():
+            if delta >= threshold:
                 chosen = limit
             else:
                 break
         return chosen
+
+
+    def get_history_limit(self, interval: timedelta) -> timedelta | None:
+        return self.get_from_duration_table(interval, self.history_limits)
+
+    def get_overlap(self, interval: timedelta) -> timedelta | None:
+        return self.get_from_duration_table(interval, self.overlap) or timedelta(0)
+
 
 
 @dataclass(frozen=True)

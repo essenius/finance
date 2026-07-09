@@ -96,7 +96,7 @@ def test_fetch_success(yahoo_provider, unwrap, make_asset, make_series, fixed_no
     series = make_series(asset, interval="1h", retention=Retention.SHORT_LIVED, series_type=SeriesType.VALUE)
     provider = yahoo_provider()
     with patch.object(provider.session, "get", return_value=response):
-        result = provider.fetch(series, asset, now, now)
+        result = provider.fetch(series, asset, now, now, False)
 
     payload = unwrap(result)
     assert len(payload) == 1, "one result"
@@ -112,7 +112,7 @@ def test_impl_http_error(yahoo_provider, assert_error, make_asset, make_series, 
     series = make_series(asset)
     provider = yahoo_provider()
     with patch.object(provider.session, "get", return_value=response):
-        result = provider.fetch(series, asset, now, now)
+        result = provider.fetch(series, asset, now, now, False)
 
     assert_error(result, "Exception during Yahoo fetch", "boom")
 
@@ -137,7 +137,7 @@ def test_fetch_missing_exchange_timezone(yahoo_provider, assert_error, make_asse
     series = make_series(asset, interval="1h", retention=Retention.SHORT_LIVED, series_type=SeriesType.VALUE)
     provider = yahoo_provider()
     with patch.object(provider.session, "get", return_value=response):
-        result = provider.fetch(series, asset, now, now)
+        result = provider.fetch(series, asset, now, now, False)
 
     assert_error(
         result, "Could not parse series 'AAPL:dummy' in Yahoo fetch result", "missing exchangeTimeZoneName in meta"
@@ -210,7 +210,7 @@ def test_fetch_real_fixture_1d_eliminates_today(yahoo_provider, unwrap, make_ass
     series = make_series(asset, interval="1d")
     start_time = datetime(2026, 5, 19, tzinfo=UTC)
     end_time = datetime(2026, 5, 22, 23, 59, 59, tzinfo=UTC)
-    result = provider.fetch(series, asset, start_time=start_time, end_time=end_time)
+    result = provider.fetch(series, asset, start_time=start_time, end_time=end_time, is_incremental=False)
     points = unwrap(result)
     assert len(points) == 3, "last day eliminated (today)"
     last_point: SeriesPoint = points[-1]

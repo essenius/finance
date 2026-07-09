@@ -27,11 +27,17 @@ business:
           5m: 60d
           1h: 730d
           1d: null
+      overlap: 
+        default: 2h
+        1d: 7d
     
     ecb:
       timeout: 20s
       timezone: Europe/Berlin
       constraints: {}
+      overlap:
+        default: 0
+
     
     fred:
       timeout: 10s
@@ -40,6 +46,8 @@ business:
         rate_limit:
           # not used as way beyond usage, just capturing 
           requests_per_minute: 120
+      overlap: 
+        default: 30d
 
   series_templates:
     daily_candle:

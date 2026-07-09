@@ -16,13 +16,14 @@ def test_ecb_fetch_real_fixture(ecb_provider, assert_ok, make_asset, make_series
     provider = ecb_provider()
     provider.session.queue(200, fake_json)
 
-    asset = make_asset(provider_code="EUR_USD")
+    asset = make_asset(provider_code="USD_EUR")
     series = make_series(asset)
     start_time = datetime(2026, 5, 8, tzinfo=ZoneInfo("Europe/Berlin"))
     end_time = datetime(2026, 5, 8, 23, 59, 59, tzinfo=ZoneInfo("Europe/Berlin"))
-    result = provider.fetch(series, asset, start_time=start_time, end_time=end_time)
+    result = provider.fetch(series, asset, start_time=start_time, end_time=end_time, is_incremental=False)
+    assert provider.session.url == "https://data-api.ecb.europa.eu/service/data/EXR/D.USD.EUR.SP00.A"
+    assert provider.session.params == { "format": "jsondata", "startPeriod": "2026-05-08", "endPeriod": "2026-05-08", "detail": "dataonly" }
 
-    # time must be May 8, 2026 00:00 UTC
     assert_ok(result, time=datetime(2026, 5, 8, 0, 0, 0, tzinfo=UTC), close=1.1761)
 
 
@@ -34,14 +35,15 @@ def test_ecb_fetch_ok(ecb_provider, assert_ok, make_asset, make_series):
 
     provider = ecb_provider()
     provider.session.queue(200, fake_json)
-    asset = make_asset(provider_code="EUR_USD")
+    asset = make_asset(provider_code="USD_EUR")
     series = make_series(asset)
 
     start_time = datetime(2026, 5, 8, tzinfo=ZoneInfo("Europe/Berlin"))
     end_time = datetime(2026, 5, 8, 23, 59, 59, tzinfo=ZoneInfo("Europe/Berlin"))
-    result = provider.fetch(series, asset, start_time=start_time, end_time=end_time)
+    result = provider.fetch(series, asset, start_time=start_time, end_time=end_time, is_incremental=True)
     assert_ok(result, time=datetime(2026, 5, 8, 0, 0, 0, tzinfo=UTC), close=1.1761)
-
+    assert provider.session.url == "https://data-api.ecb.europa.eu/service/data/EXR/D.USD.EUR.SP00.A"
+    assert provider.session.params == { "format": "jsondata", "updatedAfter": "2026-05-08", "detail": "dataonly" }
 
 @pytest.mark.parametrize(
     "provider_code",
@@ -60,7 +62,7 @@ def test_ecb_fetch_wrong_provider_code(ecb_provider, make_series, make_asset, pr
 
     start_time = datetime(2026, 5, 8, tzinfo=ZoneInfo("Europe/Berlin"))
     end_time = datetime(2026, 5, 8, 23, 59, 59, tzinfo=ZoneInfo("Europe/Berlin"))
-    result = provider.fetch(series, asset, start_time=start_time, end_time=end_time)
+    result = provider.fetch(series, asset, start_time=start_time, end_time=end_time, is_incremental=True)
     assert not result.ok
     assert f"Could not split provider code '{provider_code}' into base_quote" in result.reason
     assert result.payload is None
@@ -73,7 +75,7 @@ def test_ecb_fetch_non_200(ecb_provider, assert_error, make_asset, make_series, 
 
     asset = make_asset(provider_code="EUR_USD")
     series = make_series(asset)
-    result = provider.fetch(series, asset, now, now)
+    result = provider.fetch(series, asset, now, now, False)
     assert_error(result, "Exception during ECB fetch of eur_usd:dummy", "Internal Server Error")
 
 
@@ -103,7 +105,7 @@ def test_ecb_malformed_json(
 
     asset = make_asset(provider_code="EUR_USD")
     series = make_series(asset)
-    result = provider.fetch(series, asset, now, now)
+    result = provider.fetch(series, asset, now, now, False)
     assert_error(result, f"Could not find ECB {context}", expected)
 
 
@@ -152,7 +154,7 @@ def test_ecb_fetch_multiple_points_skip_invalid(unwrap, ecb_provider, make_serie
     )
     asset = make_asset(provider_code="EUR_USD")
     series = make_series(asset)
-    points = unwrap(provider.fetch(series, asset, now, now))
+    points = unwrap(provider.fetch(series, asset, now, now, True))
 
     assert len(points) == 2
     assert points[0].close == 1.10

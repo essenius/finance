@@ -45,26 +45,28 @@ class FetchController:
         self.now = kwargs.pop("now_provider", lambda: datetime.now(UTC))
 
     def get_window(
-        self, first_saved: datetime | None, last_saved: datetime | None, limit: timedelta
-    ) -> tuple[datetime, datetime]:
+        self, first_saved: datetime | None, last_saved: datetime | None, limit: timedelta, overlap: timedelta
+    ) -> tuple[datetime, datetime, bool]: # start of window, end of window
 
+        is_incremental = True
         now = self.now()
         window_start = now - limit
 
         # Case 1: no history yet, get maximum
         if first_saved is None or last_saved is None:
-            return window_start, now
+            return window_start, now, not is_incremental
 
         # Case 2: history needed before first saved point (so get maximum and let the ingestion eliminate duplicates)
         if first_saved > window_start:
-            return window_start, now
+            return window_start, now, not is_incremental
 
-        # Case 3: user waited too long → last_saved is outside the allowed window
-        if last_saved < window_start:
-            return window_start, now
+        start_point = last_saved - overlap
+        # Case 3: user waited too long for the next ingestion → last_saved is outside the allowed window
+        if start_point < window_start:
+            return window_start, now, not is_incremental
 
-        # Case 4: normal incremental fetch → fetch after last_saved
-        return last_saved, now
+        # Case 4: normal incremental fetch → fetch after last_saved - overlap
+        return start_point, now, is_incremental
 
     def fetch_one_series(self, series: Series, state: State) -> FetchResult:
 
@@ -83,14 +85,16 @@ class FetchController:
             entry = state.get(series.id)
             first_saved = None if entry is None else entry.first_time
             last_saved = None if entry is None else entry.last_time
-            provider_limit = provider.provider_config.get_history_limit(series.interval_delta())
+            interval = series.interval_delta()
+            config = provider.provider_config
+            provider_limit = config.get_history_limit(interval)
+            overlap = config.get_overlap(interval)
             limit = series.bootstrap_history_delta()
-
             if provider_limit is not None:
                 limit = min(limit, provider_limit)
-            start, end = self.get_window(first_saved, last_saved, limit)
+            start, end, is_incremental = self.get_window(first_saved, last_saved, limit, overlap)
 
-            result: FetchResult = provider.fetch(series, asset, start, end)
+            result: FetchResult = provider.fetch(series, asset, start, end, is_incremental)
 
         # TODO eliminate. Don't think we need it right now
         state.update_after_fetch(series.id, self.now())

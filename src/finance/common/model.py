@@ -363,7 +363,7 @@ class ProviderConfig:
             timeout=check_duration_in(content, "timeout", "10s"),
             timezone=content.get("timezone", "UTC"),
             history_limits=history_limits,
-            overlap=overlap
+            overlap=overlap,
         )
 
     @staticmethod
@@ -376,7 +376,7 @@ class ProviderConfig:
         return limits
 
     @staticmethod
-    def get_from_duration_table(delta: timedelta, table: dict[timedelta, timedelta]| None) -> timedelta:
+    def get_from_duration_table(delta: timedelta, table: dict[timedelta, timedelta] | None) -> timedelta:
         if not table:
             return None  # unlimited
         chosen = None
@@ -387,13 +387,11 @@ class ProviderConfig:
                 break
         return chosen
 
-
     def get_history_limit(self, interval: timedelta) -> timedelta | None:
         return self.get_from_duration_table(interval, self.history_limits)
 
     def get_overlap(self, interval: timedelta) -> timedelta | None:
         return self.get_from_duration_table(interval, self.overlap) or timedelta(0)
-
 
 
 @dataclass(frozen=True)

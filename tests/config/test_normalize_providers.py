@@ -14,7 +14,7 @@ def test_normalize_providers_basic(unwrap):
         "timeout": "20s",
         "nonsense": "ignored",
         "constraints": {"history_limits": {"default": "60d", "1d": None}},
-        "overlap": { "default": "0" }
+        "overlap": {"default": "0"},
     }
 
     fred = {}
@@ -30,7 +30,7 @@ def test_normalize_providers_basic(unwrap):
         timezone="Europe/Berlin",
         timeout="20s",
         history_limits={timedelta(0): timedelta(days=60), timedelta(days=1): None},
-        overlap= { timedelta(0): timedelta(0) }
+        overlap={timedelta(0): timedelta(0)},
     ), "ECB"
 
 

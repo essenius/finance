@@ -21,7 +21,9 @@ class YahooProvider(MarketDataProvider):
     # API
     # ----
 
-    def fetch(self, series: Series, asset: Asset, start_time: datetime, end_time: datetime, is_incremental: bool) -> FetchResult:
+    def fetch(
+        self, series: Series, asset: Asset, start_time: datetime, end_time: datetime, is_incremental: bool
+    ) -> FetchResult:
         name = series.name
         url = self._build_url(asset.provider_code, series.interval, start_time, end_time)
         result = self._safe_call(measurement=name, fn=lambda: self._fetch_impl(url, name), context="Yahoo fetch")

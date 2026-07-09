@@ -46,7 +46,7 @@ class FetchController:
 
     def get_window(
         self, first_saved: datetime | None, last_saved: datetime | None, limit: timedelta, overlap: timedelta
-    ) -> tuple[datetime, datetime, bool]: # start of window, end of window
+    ) -> tuple[datetime, datetime, bool]:  # start of window, end of window
 
         is_incremental = True
         now = self.now()

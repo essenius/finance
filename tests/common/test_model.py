@@ -211,7 +211,7 @@ def test_provider_config_history_limits_and_overlap():
             "timezone": "UTC",
             "timeout": "20s",
             "constraints": {"history_limits": {"default": "5d", "1h": "60d", "1d": None}},
-            "overlap": { "default": "2h", "1d": "7d" }
+            "overlap": {"default": "2h", "1d": "7d"},
         }
     )
     assert config.name == "x"

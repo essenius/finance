@@ -22,7 +22,12 @@ def test_ecb_fetch_real_fixture(ecb_provider, assert_ok, make_asset, make_series
     end_time = datetime(2026, 5, 8, 23, 59, 59, tzinfo=ZoneInfo("Europe/Berlin"))
     result = provider.fetch(series, asset, start_time=start_time, end_time=end_time, is_incremental=False)
     assert provider.session.url == "https://data-api.ecb.europa.eu/service/data/EXR/D.USD.EUR.SP00.A"
-    assert provider.session.params == { "format": "jsondata", "startPeriod": "2026-05-08", "endPeriod": "2026-05-08", "detail": "dataonly" }
+    assert provider.session.params == {
+        "format": "jsondata",
+        "startPeriod": "2026-05-08",
+        "endPeriod": "2026-05-08",
+        "detail": "dataonly",
+    }
 
     assert_ok(result, time=datetime(2026, 5, 8, 0, 0, 0, tzinfo=UTC), close=1.1761)
 
@@ -43,7 +48,8 @@ def test_ecb_fetch_ok(ecb_provider, assert_ok, make_asset, make_series):
     result = provider.fetch(series, asset, start_time=start_time, end_time=end_time, is_incremental=True)
     assert_ok(result, time=datetime(2026, 5, 8, 0, 0, 0, tzinfo=UTC), close=1.1761)
     assert provider.session.url == "https://data-api.ecb.europa.eu/service/data/EXR/D.USD.EUR.SP00.A"
-    assert provider.session.params == { "format": "jsondata", "updatedAfter": "2026-05-08", "detail": "dataonly" }
+    assert provider.session.params == {"format": "jsondata", "updatedAfter": "2026-05-08", "detail": "dataonly"}
+
 
 @pytest.mark.parametrize(
     "provider_code",

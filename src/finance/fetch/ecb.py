@@ -15,10 +15,11 @@ BASE_URL = "https://data-api.ecb.europa.eu/service/data"
 class EcbProvider(MarketDataProvider):
     """ECB daily FX provider (no intraday)."""
 
-    def fetch(self, series: Series, asset: Asset, start_time: datetime, end_time: datetime, is_incremental:bool) -> FetchResult:
+    def fetch(
+        self, series: Series, asset: Asset, start_time: datetime, end_time: datetime, is_incremental: bool
+    ) -> FetchResult:
         start_date = start_time.date().isoformat()
         end_date = end_time.date().isoformat()
-
 
         if is_incremental:
             params = {"updatedAfter": start_date}

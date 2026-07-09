@@ -47,7 +47,9 @@ class MarketDataProvider:
                 return Result.fail(f"cannot index with [{key}] at {path[:i]}")
         return Result.ok_payload(current)
 
-    def fetch(self, series: Series, asset: Asset, start_time: datetime, end_time: datetime, is_incremental: bool) -> FetchResult:
+    def fetch(
+        self, series: Series, asset: Asset, start_time: datetime, end_time: datetime, is_incremental: bool
+    ) -> FetchResult:
         """
         Fetch data points for the given asset definition between start_time and end_time.
         """
@@ -63,4 +65,3 @@ class MarketDataProvider:
         # (even if the UTC date of the timestamp could be different, as e.g. in Japan)
         local = datetime.fromtimestamp(timestamp, tz=zone_info)
         return datetime.combine(local.date(), time.min, tzinfo=UTC)
-

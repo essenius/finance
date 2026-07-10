@@ -24,7 +24,7 @@ def test_fred_fetch_normal_with_skipped(fred_provider, assert_ok, make_asset, ma
     )
     asset = make_asset(provider_code="T10YIE")
     now = fixed_now()  # ignored but we need a value
-    result = provider.fetch(make_series(asset), asset, now, now)
+    result = provider.fetch(make_series(asset), asset, now, now, True)
     # no change in date as the date is a label, not a timestamp
     assert_ok(result, datetime(2024, 5, 9, 0, 0, 0, tzinfo=UTC), 2.34)
     assert len(result.payload) == 1, "Ignored invalid values"
@@ -67,7 +67,7 @@ def test_fred_malformed_cases(
 
     now = fixed_now()  # again, ignored
     asset = make_asset(provider_code="T10YIE")
-    result = provider.fetch(make_series(asset), asset, now, now)
+    result = provider.fetch(make_series(asset), asset, now, now, True)
     assert_error(result, expected_error, None)
 
 
@@ -77,7 +77,7 @@ def test_fred_fetch_network_error(assert_error, fred_provider, make_asset, make_
 
     asset = make_asset(provider_code="T10YIE")
     now = fixed_now()
-    result = provider.fetch(make_series(asset), asset, now, now)
+    result = provider.fetch(make_series(asset), asset, now, now, True)
 
     assert_error(result, "Exception during FRED fetch", "Boom!")
 
@@ -87,5 +87,5 @@ def test_fred_status_code_not_200(assert_error, fred_provider, make_asset, make_
     provider.session.queue(500, {}, "status 500")
     asset = make_asset(provider_code="T10YIE")
     now = fixed_now()
-    result = provider.fetch(make_series(asset), asset, now, now)
+    result = provider.fetch(make_series(asset), asset, now, now, True)
     assert_error(result, "Exception during FRED fetch", "status 500")

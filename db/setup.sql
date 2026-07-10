@@ -208,3 +208,27 @@ SELECT bootstrap.create_data_table('series_data_hot', '3 days', '30 days');
 
 -- Reload config to apply telemetry change
 SELECT pg_reload_conf();
+
+
+CREATE OR REPLACE VIEW series_with_asset AS
+SELECT
+    s.id AS series_id,
+    s.code as series_code,
+    s.asset_id,
+    a.name AS asset_name,
+    a.name || ':' || s.code AS series_name,
+    a.provider,
+    a.provider_code,
+    a.symbol,
+    a.display_name,
+    a.instrument,
+    a.region,
+    a.exchange,
+    a.currency,
+    a.unit,
+    s.interval,
+    s.retention,
+    s.series_type,
+    s.bootstrap_history,
+    s.completion_policy
+FROM series s JOIN asset a ON s.asset_id = a.id ORDER BY series_id ASC;

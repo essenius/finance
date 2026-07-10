@@ -9,6 +9,7 @@ from .provider import MarketDataProvider
 
 BASE_URL = "https://api.stlouisfed.org/fred/series/observations"
 
+# check out https://api.stlouisfed.org/fred/series/search?search_text=gold&api_key=...&file_type=json
 
 class FredProvider(MarketDataProvider):
     """FRED daily economic data provider."""

@@ -120,7 +120,7 @@ business:
         exchange: COMMODITY
         region: GLOBAL
         currency: USD
-        unit: troy_ounce
+        unit: 100_troy_ounce
       series:
         intraday: intraday_candle
         daily: daily_candle

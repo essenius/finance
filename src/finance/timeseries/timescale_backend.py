@@ -82,7 +82,9 @@ class TimescaleBackend:
                 )
 
             backend = cls(ts_config, series_by_id, now)
-            backend.refresh_short_lived_series_ids()
+            refresh_result = backend.refresh_short_lived_series_ids()
+            if not refresh_result.ok:
+                return refresh_result
             return Result.ok_payload(backend)
 
         except KeyError as ke:
@@ -92,15 +94,27 @@ class TimescaleBackend:
     # Utilities
     # ------------------------------------------------------------
 
+    def _connect(self):
+        print("CONNECT FROM:", psycopg.connect)
+        return psycopg.connect(**self._config.connect_config())
+
     def ensure_connected(self) -> Result[None]:
         if self.is_connected():
             return Result.ok_payload(None)
 
         try:
-            self._connection = psycopg.connect(**self._config.connect_config())
+            conn = self._connect()
         except Exception as exc:
             return Result.fail("Connect failed", exc)
 
+        # probe query to check permissions
+        try:
+            with conn.cursor() as cur:
+                cur.execute("SELECT id from series LIMIT 1")
+        except Exception as exc:
+            conn.rollback()  # clear aborted state
+            return Result.fail("Database startup failed", exc)
+        self._connection = conn
         return Result.ok_payload(None)
 
     def is_connected(self) -> bool:
@@ -292,15 +306,16 @@ class TimescaleBackend:
     # Persisting assets and series
     # ------------------------------------------------------------
 
-    def refresh_short_lived_series_ids(self) -> None:
+    def refresh_short_lived_series_ids(self) -> Result:
         """
         Load all short lived series IDs wi into a set for fast lookup during state rebuild.
         """
         sql = f"SELECT id FROM series WHERE retention = '{Retention.SHORT_LIVED}';"
 
-        def operation():
+        def operation() -> Result:
             rows = self._execute_read(sql)
             self._short_lived_series_ids = {row[0] for row in rows}
+            return Result.ok_payload(None)
 
         return self._database_operation(operation, "load short lived series ids")
 

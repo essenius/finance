@@ -68,10 +68,23 @@ RETURNS boolean LANGUAGE sql AS $$
     );
 $$;
 
+CREATE OR REPLACE FUNCTION bootstrap.create_series_indexes(tbl_name text)
+RETURNS void LANGUAGE plpgsql AS $$
+BEGIN
+    -- Index on series_id
+    EXECUTE format(
+        'CREATE INDEX IF NOT EXISTS %I_series_id_idx ON %I (series_id);',
+        tbl_name, tbl_name
+    );
+END;
+$$;
+
+
 CREATE OR REPLACE FUNCTION bootstrap.create_data_table(
     tablename name,
     compress_after interval,
-    retention_after interval DEFAULT NULL
+    retention_after interval,
+    chunk_interval interval
 )
 RETURNS void LANGUAGE plpgsql AS $$
 DECLARE
@@ -100,7 +113,11 @@ BEGIN
 
     -- Convert to hypertable
     IF NOT bootstrap.hypertable_exists(tablename) THEN
-        PERFORM create_hypertable(tablename::regclass, 'time');
+        PERFORM create_hypertable(
+            tablename::regclass,
+            'time',
+            chunk_time_interval => chunk_interval
+        );
     END IF;
 
     -- 3. Apply compression settings
@@ -124,6 +141,8 @@ BEGIN
        AND NOT bootstrap.job_exists(tablename, 'policy_retention') THEN
         PERFORM add_retention_policy(tablename::regclass, retention_after);
     END IF;
+
+    PERFORM bootstrap.create_series_indexes(tablename);
 
 END;
 $$;
@@ -203,8 +222,8 @@ CREATE INDEX IF NOT EXISTS series_retention_idx ON series (retention);
 -- Hypertables
 -- ============================
 
-SELECT bootstrap.create_data_table('series_data_cold', '7 days');
-SELECT bootstrap.create_data_table('series_data_hot', '3 days', '30 days');
+SELECT bootstrap.create_data_table('series_data_cold'::name, '7 days'::interval, NULL::interval, '1 month'::interval);
+SELECT bootstrap.create_data_table('series_data_hot'::name, '3 days'::interval, '30 days'::interval, '1 day'::interval);
 
 -- Reload config to apply telemetry change
 SELECT pg_reload_conf();

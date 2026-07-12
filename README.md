@@ -14,6 +14,7 @@ There are two files involve in configuration:
 As secrets are not to be shared, the repo only has an example .env file, which you can use as example. 
 
 Supported entries
+- `FINANCE_CONFIG`: the YAML configuration file (default config.yaml). Relative to the current directory (or absolute).
 - `FRED_API_KEY`: the API key for FRED (mandatory). 
 - `YAHOO_API_KEY`: the API key for Yahoo (optional).
 - `TIMESCALEDB_HOST`: the TimescaleDB host e.g. `localhost`.
@@ -23,14 +24,29 @@ Supported entries
 - `TIMESCALEDB_SSL_MODE`: the SSL mode in PostgreSQL format. Default is `verify-full`. You can use `disable` to use plain TCP instead of TLS, or `require` to use TLS but not validate the certs. You can also use `verify-ca` to verify the CA cert but not the hostname. 
 - `TIMESCALEDB_SSL_ROOT_CERT`: the location of the CA certificate to be used. If omitted, the standard CA cert storage will be used. 
 
-Everything but the secrets (API keys, credentials) can also be specified in the Environment configuration section of `config.yaml`.
+Everything except the secrets (API keys, credentials) and `FINANCE_CONFIG` can also be specified in the Environment configuration section of `config.yaml`.
 
 ### Environment Configuration
 
 This section contains settings that determine the technical setup and operation, such as like logging level, paths, and TimescaleDB settings.
+Most of the timescaledb settings can also be set in .env or environment variables. If they are set in both, the yaml configuration wins.
 
-If you don't consider the `url`, `db`, `ssl_mode` or `ssl_root_cert` sensitive, you can also store these in `config.yaml`, under the `environment`-`timescaledb`.
-If settings are in both locations, the one in `config.yaml` is taken.
+```
+environment:
+  logging:
+    level: info
+  paths:
+    wal: wal.jsonl
+    state: state.json
+  timescaledb:
+    host: localhost
+    port: 5432
+    ssl_mode: verify-full
+    db: finance
+    max_batch_size: 1000
+    max_batch_age_seconds: 2.0
+```
+max_batch_size and max_batch_age_seconds control how often the ingested data points are persisted in the database. So in this example it is either after 1000 points were ingested, or (more than) 2 seconds passed since the last save.
 
 ### Business Configuration
 
@@ -45,6 +61,9 @@ business:
     yahoo:
       timeout: 10s
       timezone: UTC
+      overlap:
+        default: 2h
+        1d: 7d
       constraints:
         history_limits:
           default: 7d
@@ -53,9 +72,13 @@ business:
           1d: null
 ```
 Read this as follows: for the provider Yahoo, the request timeout is 10 seconds, and the default timezone is UTC.
+Fetch requests will take an overlap of 2 hours for intervals of less than a day, and 7 days for intervals of a day or longer.
 A series with an interval of less than 5 minutes has a 7 day history limit, then for less than an hour it's 60 days, 
 then for less than a day it's 730 days, and above that there is no limit.
 
+Overlap means that already retrieved data will be retrieved again, to catch later corrections.
+For ECB, the interval is 0, because ECB has a mode where you can retrieve everything that changed since a certain timestamp.
+That makes the overlap unnecessary.
 
 #### Series templates
 
@@ -98,7 +121,7 @@ business:
         exchange: COMMODITY
         region: GLOBAL
         currency: USD
-        unit: troy_ounce
+        unit: 100_troy_ounce
       series:
         intraday: intraday_candle
         daily: daily_candle
@@ -107,15 +130,11 @@ business:
 In this example, `gold` is the asset key, which must be unique and should not be changed after it has been ingested into the database. 
 The `provider` section specifies which provider to use  and which provider code to use for fetching. The symbol here is `GOLD`. You can also omit it, and then the key (in this case `gold`) will be used instead. The tags are metadata that you can use for querying. The series section defines the series, using the series templates as defined earlier. You can also make this a section with the same entries as the template instead of a reference. 
 
-
-
 #### Composites
 
-Composites have been disabled for V1. They will be re-introduced later.
+_Composites have been disabled for V1. They will be re-introduced later._
 
-Intent is to define composite data using base data or even other composites. They also have a unique user defined identifier, and always have an `expression` referring to the other identifiers. For single value series, you do not need to use the field name, for multi valued ones you do. so `fred_10y_nominal - fred_10y_breakeven` is correct assuming both
-identifiers exist in asset definitions. For multi-value assets, use `asset.field` as in e.g. `gold_daily.high - gold_daily.low`. Composites can also have InfluxDB `tags` and `timeseries` (daily or intraday). You can use arithmetical functions like `+`, `-`, `*`, `/`, `min`, `max`, `math.sqrt` and others. Dependencies are taken into account, and cycles will be rejected. 
-
+Intent is to define composite data using base data or even other composites. They also have a unique user defined identifier, and always have an `expression` referring to the other identifiers. For single value series, you do not need to use the field name, for multi valued ones you do. so `fred_10y_nominal - fred_10y_breakeven` is correct assuming both identifiers exist in asset definitions. For multi-value assets, use `asset.field` as in e.g. `gold_daily.high - gold_daily.low`. Composites can also have InfluxDB `tags` and `timeseries` (daily or intraday). You can use arithmetical functions like `+`, `-`, `*`, `/`, `min`, `max`, `math.sqrt` and others. Dependencies are taken into account, and cycles will be rejected. 
 
 ---
 
@@ -158,7 +177,7 @@ config.yaml          # configuration (e.g. assets and composites), see above
 .env.acc             # environment settings for acceptance deployment
 .env.prod            # environment settings for production deployment
 LICENSE              # the license file
-makefile             # testing/building/deploying the application
+Makefile             # testing/building/deploying the application
 pyproject.toml       # project definition
 pytest.ini           # pytest config
 README.md            # this file

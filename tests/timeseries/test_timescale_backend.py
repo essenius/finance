@@ -20,6 +20,7 @@ default_config = {
 def series_by_id(id: int) -> Series:
     return None
 
+
 @contextmanager
 def make_backend(config, execute_error=False):  # returns Result[TimescaleBackend]
     # Fake cursor
@@ -91,7 +92,6 @@ def test_from_config_success_no_defaults():
     }
 
     with make_backend(config) as result:
-
         assert result.ok
 
         backend = result.payload
@@ -113,7 +113,6 @@ def test_from_config_success_no_defaults():
 def test_from_config_success_defaults():
 
     with make_backend(default_config) as result:
-
         assert result.ok
 
         backend = result.payload
@@ -183,7 +182,6 @@ def test_flush_without_connection_and_exception(fixed_now, assert_error):
 def test_add_writes_two_entries(fixed_now):
 
     with unwrapped_backend(default_config | {"max_batch_size": 2}) as backend:
-
         mock_conn = MagicMock()
         mock_cursor = MagicMock()
 
@@ -208,16 +206,15 @@ def test_add_writes_two_entries(fixed_now):
 def test_close_writes(fixed_now):
 
     with unwrapped_backend(default_config | {"max_batch_size": 2}) as backend:
+        # mock_conn = MagicMock()
+        # mock_cursor = MagicMock()
 
-        #mock_conn = MagicMock()
-        #mock_cursor = MagicMock()
-
-        #mock_conn.cursor.return_value.__enter__.return_value = mock_cursor
+        # mock_conn.cursor.return_value.__enter__.return_value = mock_cursor
 
         now = fixed_now()
         entry1 = SeriesPoint(series_id=1, time=now, close=1)
 
-        #with patch("psycopg.connect", return_value=mock_conn):
+        # with patch("psycopg.connect", return_value=mock_conn):
         result = backend.add(entry1)
         assert result.ok, "add"
         assert len(backend._pending) == 1
@@ -230,8 +227,6 @@ def test_close_writes(fixed_now):
 def test_flush_writes_when_batch_too_old(fixed_now):
 
     with unwrapped_backend(default_config | {"max_batch_age_seconds": 0}) as backend:
-
-
         now = fixed_now()
         entry = SeriesPoint(series_id=1, time=now, close=1)
 
@@ -245,8 +240,7 @@ def test_flush_writes_when_batch_too_old(fixed_now):
 def test_flush_raises_in_context_manager(fixed_now, assert_error):
 
     with unwrapped_backend(default_config | {"max_batch_size": 1}) as backend:
-
-    # mock cursor context manager
+        # mock cursor context manager
         mock_cursor_cm = MagicMock()
         mock_cursor_cm.__enter__.side_effect = Exception("Cursor boom!")
         backend.mock_conn.cursor.return_value = mock_cursor_cm
@@ -318,7 +312,6 @@ def test_read_first_returns_none_when_empty():
 
 def test_read_first_handles_db_error(unwrap):
     with unwrapped_backend(default_config) as backend:
-
         backend.mock_conn.cursor.side_effect = Exception("boom")
 
         result = backend.read_first(1)
@@ -338,7 +331,6 @@ def test_read_first_rejects_empty_id(unwrap, assert_error):
 
 def test_read_last_returns_daily_value_point(unwrap, fixed_now):
     with unwrapped_backend(default_config) as backend:
-
         now = fixed_now()
         midnight_today = datetime(now.year, now.month, now.day, 0, 0, 0, tzinfo=UTC)
         mock_cursor_cm = make_mock_cursor(rows=[(1, midnight_today, None, None, None, 11, None)])

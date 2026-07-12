@@ -11,10 +11,13 @@ BASE_URL = "https://api.stlouisfed.org/fred/series/observations"
 
 # check out https://api.stlouisfed.org/fred/series/search?search_text=gold&api_key=...&file_type=json
 
+
 class FredProvider(MarketDataProvider):
     """FRED daily economic data provider."""
 
-    def fetch(self, series: Series, asset: Asset, start_time: datetime, end_time: datetime, is_incremental: bool) -> FetchResult:
+    def fetch(
+        self, series: Series, asset: Asset, start_time: datetime, end_time: datetime, is_incremental: bool
+    ) -> FetchResult:
         if not self.api_key:
             return FetchResult.fail(series.name, "FRED requires an API key")
 

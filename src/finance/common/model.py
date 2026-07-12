@@ -559,18 +559,80 @@ class Series:
 
 @dataclass
 class SeriesState:
-    first_time: datetime | None = None
-    last_time: datetime | None = None
-    last_try: datetime | None = None
+    first_point: datetime | None = None
+    last_point: datetime | None = None
+    first_start: datetime | None = None
+    last_end: datetime | None = None
+
+    @staticmethod
+    def is_none_or_smaller(left, right):
+        return left is None or left < right
+
+    @staticmethod
+    def is_none_or_greater(left, right):
+        return left is None or left > right
+
+    def get_start(self, fetch_time, limit, overlap)-> tuple[datetime, bool]:
+        """
+        Calculate the start moment for the next fetch, and return if it is an incremental or full fetch
+        """
+        is_incremental = True
+        window_start = fetch_time - limit
+
+        # No history yet, get maximum
+        if self.first_point is None or self.last_point is None:
+            return window_start, not is_incremental
+
+        # History needed before first saved point (so get maximum and let the ingestion handle duplicates)
+        if self.is_none_or_greater(self.first_start, window_start):
+            return window_start, not is_incremental
+
+        start_point = self.last_point - overlap
+
+        # Start point is too far in the past, so limit to the allowed window
+        if start_point < window_start:
+            return window_start, not is_incremental
+
+        # Normal incremental fetch → fetch after last_saved - overlap
+        return start_point, is_incremental
+
+    def set_window(self, fetch_time: datetime, limit: timedelta, overlap:timedelta) -> tuple[datetime, bool]:
+        """
+        Calculate the fetch window, and update the first start and last end accordingly
+        """
+        window_start, is_incremental = self.get_start(fetch_time, limit, overlap)
+        if self.is_none_or_smaller(self.last_end, fetch_time):
+            self.last_end = fetch_time
+        if self.is_none_or_greater(self.first_start, window_start):
+            self.first_start = window_start
+        return window_start, is_incremental
+
+    def update_point_range(self, first: datetime, last: datetime):
+        # update the captured point range
+        if self.is_none_or_smaller(self.last_point, last):
+            self.last_point = last
+
+        if self.is_none_or_greater(self.first_point, first):
+            self.first_point = first
+
+        # Match the fetch ranges if necessary
+        self.update_fetch_range(self.first_point, self.last_point)
+
+    def update_fetch_range(self, start: datetime, end: datetime):
+        if self.is_none_or_greater(self.first_start, start):
+            self.first_start = start
+        if self.is_none_or_smaller(self.last_end, end):
+            self.last_end = end
 
     def to_dict(self):
         def serialize(s: datetime | None) -> str | None:
             return None if s is None else s.isoformat(timespec="seconds")
 
         return {
-            "first_time": serialize(self.first_time),
-            "last_time": serialize(self.last_time),
-            "last_try": serialize(self.last_try),
+            "first_point": serialize(self.first_point),
+            "last_point": serialize(self.last_point),
+            "first_start": serialize(self.first_start),
+            "last_end": serialize(self.last_end)
         }
 
     @classmethod
@@ -579,7 +641,8 @@ class SeriesState:
             return datetime.fromisoformat(s) if s is not None else None
 
         return cls(
-            first_time=parse(input.get("first_time")),
-            last_time=parse(input.get("last_time")),
-            last_try=parse(input.get("last_try")),
+            first_point=parse(input.get("first_point")),
+            last_point=parse(input.get("last_point")),
+            first_start=parse(input.get("first_start")),
+            last_end=parse(input.get("last_end")),
         )

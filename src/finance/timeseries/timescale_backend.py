@@ -95,7 +95,6 @@ class TimescaleBackend:
     # ------------------------------------------------------------
 
     def _connect(self):
-        print("CONNECT FROM:", psycopg.connect)
         return psycopg.connect(**self._config.connect_config())
 
     def ensure_connected(self) -> Result[None]:

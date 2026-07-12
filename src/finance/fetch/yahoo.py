@@ -25,8 +25,8 @@ class YahooProvider(MarketDataProvider):
         self, series: Series, asset: Asset, start_time: datetime, end_time: datetime, is_incremental: bool
     ) -> FetchResult:
         name = series.name
-        url = self._build_url(asset.provider_code, series.interval, start_time, end_time)
-        result = self._safe_call(measurement=name, fn=lambda: self._fetch_impl(url, name), context="Yahoo fetch")
+        url, params = self._build_url(asset.provider_code, series.interval, start_time, end_time)
+        result = self._safe_call(measurement=name, fn=lambda: self._fetch_impl(url, name, params), context="Yahoo fetch")
 
         if not result.ok:
             return result
@@ -55,18 +55,11 @@ class YahooProvider(MarketDataProvider):
         normalize = bind_normalizer(series.is_intraday(), timezone)
         return self._extract_candles(series, normalize, result.payload)
 
-        # Fallback to metadata if no candles
-        # TODO delete
-        # if not candles.payload:
-        #    return self._get_from_meta(series, meta, start_time, end_time)
-
-        # return candles
-
     # -----------
     # Fetch data
     # -----------
 
-    def _build_url(self, provider_code, interval_str, start_time, end_time):
+    def _build_url(self, provider_code, interval_str, start_time, end_time) -> tuple[str, dict]:
         encoded = quote(provider_code, safe="")
         params = {
             "interval": interval_str,
@@ -75,12 +68,12 @@ class YahooProvider(MarketDataProvider):
             "includePrePost": "false",
             "events": "div,splits",
         }
-        return f"{self.BASE_URL.format(symbol=encoded)}?{urlencode(params)}"
+        return f"{self.BASE_URL.format(symbol=encoded)}", params
 
-    def _fetch_impl(self, url, name) -> MeasurementResult[dict]:
+    def _fetch_impl(self, url, name, params) -> MeasurementResult[dict]:
         """fetch the response from the provider. Is called from a _safe_call wrapper so can throw"""
         headers = {"User-Agent": "Mozilla/5.0"}
-        response = self.session.get(url, headers=headers, timeout=self.provider_config.timeout_delta().seconds)
+        response = self.session.get(url, params=params, headers=headers, timeout=self.provider_config.timeout_delta().seconds)
         response.raise_for_status()
         data = response.json()
 
@@ -174,56 +167,3 @@ class YahooProvider(MarketDataProvider):
         candles, warnings = self._build_candles(timestamps, arrays, point_factory, normalize)
 
         return FetchResult.ok_payload(name, candles, warnings)
-
-    """
-    TODO delete
-    # --------------
-    # Get from meta
-    # --------------
-
-    META_FIELD_MAP = {
-        "open": None,  # cannot synthesize
-        "close": "regularMarketPrice",
-        "high": "regularMarketDayHigh",
-        "low": "regularMarketDayLow",
-        "volume": "regularMarketVolume",
-    }
-
-    def _get_from_meta(self, series: Series, meta: dict, start_time: datetime, end_time: datetime) -> FetchResult:
-
-        name = series.name
-        timestamp = meta.get("regularMarketTime")
-        reason = "Cannot synthesize from metadata"
-        # Only use fallback if timestamp exists
-        if timestamp is None:
-            return FetchResult.fail(name, reason, "timestamp missing")
-
-        time = datetime.fromtimestamp(timestamp, UTC)
-
-        # Reject metadata outside requested window
-        if not (start_time <= time <= end_time):
-            return FetchResult.fail(name, reason, "metadata timestamp outside requested range")
-
-        factory = SeriesPoint.factory(series)
-        fields = factory.func.fields()
-        synthetic = {field: None for field in fields}
-        warnings = []
-        found_value = False
-        for field in fields:
-            meta_key = self.META_FIELD_MAP.get(field)
-            if meta_key is None:
-                continue
-            v = meta.get(meta_key)
-            if v is None:
-                warnings.append(f"Missing value for '{field}'")
-                continue
-
-            found_value = True
-            synthetic[field] = float(v)
-
-        if not found_value:
-            return FetchResult.fail(name, reason, "No fields synthesized", warnings)
-
-        mapped = factory.func.map(synthetic)
-        return FetchResult.ok_payload(name, [factory(time=time, **mapped)], warnings)
-    """

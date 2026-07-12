@@ -3,7 +3,6 @@
 # File: src/finance/state/state.py
 
 from collections.abc import Iterable
-from dataclasses import replace
 from datetime import datetime, timedelta
 
 from ..common.model import Result, Series, SeriesPoint, SeriesState
@@ -27,18 +26,16 @@ class State:
         self.flush_wal()
         self._storage.save(self.series)
 
-    def get(self, series_id: int) -> SeriesState | None:
+    def get_series_state(self, series_id: int) -> SeriesState | None:
         entry = self.series.get(series_id)
         if entry is not None:
             return entry
 
         rebuilt = self._rebuild_measurement_state(series_id)
-        if rebuilt:
-            self.series[series_id] = rebuilt
-            return rebuilt
+        self.series[series_id] = rebuilt
+        return rebuilt
 
-        return None
-
+    '''
     def update_after_fetch(self, series_id: int, now: datetime) -> bool:
         """
         Record that a fetch attempt was made
@@ -46,58 +43,53 @@ class State:
         old = self.series.get(series_id)
         if old is None:
             # No state yet → create minimal entry
-            self.series[series_id] = SeriesState(last_try=now)
+            self.series[series_id] = SeriesState(last_end=now)
         else:
-            self.series[series_id] = replace(old, last_try=now)
+            self.series[series_id] = replace(old, last_end=now)
+    '''
 
+    @staticmethod
+    def is_aligned(ts: datetime, interval: timedelta) -> bool:
+        # Yahoo's last candle time isn't aligned, it's the last data so far.
+        # This is not a Yahoo specific policy, we don't those in general.
+        seconds = int(interval.total_seconds())
+        return int(ts.timestamp()) % seconds == 0
+
+    '''
+    TODO delete
     def _compute_policy(self, series: Series, time: datetime) -> dict:
-
-        def is_aligned(ts: datetime, interval: timedelta) -> bool:
-            # Yahoo's last candle time isn't aligned, it's the last data so far.
-            # This is not a Yahoo specific policy, we don't those in general.
-            seconds = int(interval.total_seconds())
-            return int(ts.timestamp()) % seconds == 0
 
         if not is_aligned(time, series.interval_delta()):
             return {"skipped": True, "reason": "misaligned-interval"}
 
-        entry = self.get(series.id)
+        entry = self.get_series_state(series.id)
 
         # No state or no time → first ever point, must write
-        if entry is None or entry.first_time is None or entry.last_time is None:
+        if entry.first_point is None or entry.last_point is None:
             return {"skipped": False, "reason": "first"}
 
         # Before known window → must write
-        if time < entry.first_time:
+        if time < entry.first_point:
             return {"skipped": False, "reason": "before-window"}
 
         # After known window → must write
-        if time > entry.last_time:
+        if time > entry.last_point:
             return {"skipped": False, "reason": "new"}
 
         # Inside window → skip
-        if time == entry.last_time:
-            return {"skipped": True, "reason": "unchanged"}
+        if time == entry.last_point:
+            return {"skipped": False, "reason": "perhaps-changed"}
 
         return {"skipped": True, "reason": "inside-window"}
+    '''
 
     def update_range(self, series_id: int, first: datetime, last: datetime) -> None:
         """
         Update the saved range after a batch has been ingested
         """
-        s = self.series.get(series_id) or SeriesState()
+        s = self.get_series_state(series_id)
+        s.update_point_range(first, last)
 
-        new_first = s.first_time
-        new_last = s.last_time
-
-        if new_last is None or last > new_last:
-            new_last = last
-
-        if new_first is None or first < new_first:
-            new_first = first
-
-        if new_first != s.first_time or new_last != s.last_time:
-            self.series[series_id] = replace(s, first_time=new_first, last_time=new_last)
 
     def flush_wal(self) -> Result[int]:
         flushed_count = 0
@@ -146,15 +138,11 @@ class State:
         - check if write is needed, if not bail out
         - append to WAL (ingestion succeeds here)
         - ask backend to write it
-
-        Note: first and last times are not updated, that needs to happen after the batch was done
         """
-        policy = self._compute_policy(series, point.time)
-        if policy["skipped"]:
-            return Result.ok_payload(0, meta=policy)
+        if self.is_aligned(point.time, series.interval_delta()):
+            self._wal.enqueue(point)
 
-        self._wal.enqueue(point)
-        return self.sync_backend(point).with_meta(policy)
+        return self.sync_backend(point)
 
     def iter_series_state(self) -> Iterable[tuple[int, SeriesState]]:
         """
@@ -167,12 +155,12 @@ class State:
         yield from self.series.items()
 
     # used for composite
-    def get_last_time(self, series_id: int) -> datetime | None:
+    def get_last_point(self, series_id: int) -> datetime | None:
         """
-        Return the last_time for a metric, performing lazy rebuild if needed.
+        Return the last_point for a metric, performing lazy rebuild if needed.
         """
-        entry = self.get(series_id)
-        return None if entry is None else entry.last_time
+        entry = self.get_series_state(series_id)
+        return entry.last_point
 
     '''
     Removed from V1 scope
@@ -201,13 +189,14 @@ class State:
 
         # If nothing exists anywhere, bail out
         if wal_first is None and timescale_first is None:
-            return None
+            return SeriesState()
 
-        first_time = min(time for time in (wal_first, timescale_first) if time is not None)
-        last_time = max(time for time in (wal_last, timescale_last) if time is not None)
+        first_point = min(time for time in (wal_first, timescale_first) if time is not None)
+        last_point = max(time for time in (wal_last, timescale_last) if time is not None)
 
         return SeriesState(
-            first_time=first_time,
-            last_time=last_time,
-            last_try=None,
+            first_point=first_point,
+            last_point=last_point,
+            first_start=first_point,
+            last_end=last_point,
         )

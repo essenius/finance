@@ -8,7 +8,7 @@ from unittest.mock import Mock
 
 import pytest
 
-from finance.common.model import Asset, CompletionPolicy, Result, Retention, Series, SeriesType
+from finance.common.model import Asset, CompletionPolicy, Result, Retention, Series, SeriesState, SeriesType
 from finance.state.state import State
 from finance.state.storage import StateStorage
 from finance.state.wal import JsonlWAL
@@ -46,7 +46,7 @@ def state_env(state_deps) -> tuple[State, TimescaleBackend, JsonlWAL, StateStora
 
     backend, wal, storage = state_deps
     state = State(backend, wal, storage)
-    state._rebuild_measurement_state = lambda series_id: None
+    state._rebuild_measurement_state = lambda series_id: SeriesState()
 
     return state, backend, wal, storage
 

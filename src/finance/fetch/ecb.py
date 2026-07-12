@@ -100,8 +100,6 @@ class EcbProvider(MarketDataProvider):
         if url is None:
             return FetchResult.fail(name, f"Could not split provider code '{provider_code}' into base_quote for url")
 
-        # was ?format=jsondata&lastNObservations=1&detail=dataonly"
-
         response = self.session.get(url, params=params, timeout=self.provider_config.timeout_delta().seconds)
         response.raise_for_status()
         data = response.json()
@@ -118,7 +116,6 @@ class EcbProvider(MarketDataProvider):
             return dates_result
         date_values = dates_result.payload
 
-        # Convert to DailyValuePoints
         points = self._parse_points(series, observations, date_values)
 
         return FetchResult.ok_payload(name, points)

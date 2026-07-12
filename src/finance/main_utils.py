@@ -87,8 +87,14 @@ def process_result(result: FetchResult, state: State, series: Series) -> bool:
 
     all_ok = True
 
+    # this assumes the payload is ordered on increasing time
     batch_first = payload[0].time
     batch_last = payload[-1].time
+    # correct if it was the other way around
+    if batch_first > batch_last:
+        batch_first, batch_last = batch_last, batch_first
+
+    logger.debug(f"Retrieved range for {series.name}: {batch_first.astimezone().isoformat()} - {batch_last.astimezone().isoformat()}, {len(payload)} records.")
 
     for point in payload:
         ingest_result = state.ingest(series, point)
@@ -99,4 +105,6 @@ def process_result(result: FetchResult, state: State, series: Series) -> bool:
 
     if all_ok:
         state.update_range(point.series_id, batch_first, batch_last)
+        range = state.series[point.series_id]
+        logger.debug(f"Range for {series.name} after updating: {range.first_point.astimezone().isoformat()} - {range.last_point.astimezone().isoformat()}")
     return all_ok

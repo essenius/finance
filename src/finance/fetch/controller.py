@@ -7,7 +7,7 @@ from datetime import UTC, datetime, timedelta
 
 from finance.fetch.provider import MarketDataProvider
 
-from ..common.model import Asset, CompletionPolicy, FetchResult, ProviderConfig, Series, SupportedProviders
+from ..common.model import Asset, CompletionPolicy, FetchResult, ProviderConfig, Series, SeriesState, SupportedProviders
 from ..state.state import State
 from .ecb import EcbProvider
 from .fred import FredProvider
@@ -44,6 +44,8 @@ class FetchController:
         self.get_provider = get_provider
         self.now = kwargs.pop("now_provider", lambda: datetime.now(UTC))
 
+    '''
+    TODO delete
     def get_window(
         self, first_saved: datetime | None, last_saved: datetime | None, limit: timedelta, overlap: timedelta
     ) -> tuple[datetime, datetime, bool]:  # start of window, end of window
@@ -52,21 +54,22 @@ class FetchController:
         now = self.now()
         window_start = now - limit
 
-        # Case 1: no history yet, get maximum
+        # No history yet, get maximum
         if first_saved is None or last_saved is None:
             return window_start, now, not is_incremental
 
-        # Case 2: history needed before first saved point (so get maximum and let the ingestion eliminate duplicates)
+        # History needed before first saved point (so get maximum and let the ingestion handle duplicates)
         if first_saved > window_start:
             return window_start, now, not is_incremental
 
         start_point = last_saved - overlap
-        # Case 3: user waited too long for the next ingestion → last_saved is outside the allowed window
+        # Start point is too far in the past, so limit to the allowed window
         if start_point < window_start:
             return window_start, now, not is_incremental
 
-        # Case 4: normal incremental fetch → fetch after last_saved - overlap
+        # Normal incremental fetch → fetch after last_saved - overlap
         return start_point, now, is_incremental
+            '''
 
     def fetch_one_series(self, series: Series, state: State) -> FetchResult:
 
@@ -82,9 +85,7 @@ class FetchController:
         if provider is None:
             result = FetchResult.fail(series.name, f"no provider '{asset.provider}'", f"Skipped series '{series.name}'")
         else:
-            entry = state.get(series.id)
-            first_saved = None if entry is None else entry.first_time
-            last_saved = None if entry is None else entry.last_time
+            entry = state.get_series_state(series.id)
             interval = series.interval_delta()
             config = provider.provider_config
             provider_limit = config.get_history_limit(interval)
@@ -92,34 +93,39 @@ class FetchController:
             limit = series.bootstrap_history_delta()
             if provider_limit is not None:
                 limit = min(limit, provider_limit)
-            start, end, is_incremental = self.get_window(first_saved, last_saved, limit, overlap)
+            now = self.now()
+            start, is_incremental = entry.set_window(now, limit, overlap)
+            result: FetchResult = provider.fetch(series, asset, start, now, is_incremental)
 
-            result: FetchResult = provider.fetch(series, asset, start, end, is_incremental)
-
-        # TODO eliminate. Don't think we need it right now
-        state.update_after_fetch(series.id, self.now())
         return result
 
     def fetch_incrementally(self, state: State) -> Iterable[FetchResult]:
 
         for series in self.series_list:
             # Freshness check
-            state_entry = state.get(series.id)
-            if self.should_fetch(series, None if state_entry is None else state_entry.last_time):
+            state_entry = state.get_series_state(series.id)
+            if self.should_fetch(series, state_entry):
                 yield self.fetch_one_series(series, state)
 
-    def should_fetch(self, series: Series, last_time: datetime | None) -> bool:
-        if last_time is None:
+    def should_fetch(self, series: Series, state_entry: SeriesState | None) -> bool:
+        # Nothing fetched yet
+        if state_entry.last_point is None:
             return True
 
         now = self.now()
-        interval_closed = (now - last_time) >= series.interval_delta()
+        # We don't have sufficient history
+        if state_entry.first_point > now - series.bootstrap_history_delta():
+            return True
+
+        # if the interval after the last fetched point is not closed yet, don't fetch
+        interval_closed = (now - state_entry.last_point) >= series.interval_delta()
         if not interval_closed:
             return False
 
+        # the interval is closed and the policy is interval close
         if series.completion_policy == CompletionPolicy.INTERVAL_CLOSE:
             return True
 
         # we have a NEXT_DAY completion policy. Only fetch if the day passed.
         today = now.date()
-        return last_time.date() < today - timedelta(days=1)
+        return state_entry.last_point.date() < today - timedelta(days=1)

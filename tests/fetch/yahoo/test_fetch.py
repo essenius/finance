@@ -21,7 +21,7 @@ def test_fetch_impl_success(yahoo_provider, unwrap):
     response.raise_for_status.return_value = None
 
     with patch.object(provider.session, "get", return_value=response):
-        result = provider._fetch_impl("http://x", "m")
+        result = provider._fetch_impl("http://x", "m", {})
 
     payload = unwrap(result)
     assert payload == {"foo": "bar"}
@@ -35,7 +35,7 @@ def test_fetch_impl_missing_chart(yahoo_provider, assert_error):
     response.raise_for_status.return_value = None
 
     with patch.object(provider.session, "get", return_value=response):
-        result = provider._fetch_impl("http://x", "m")
+        result = provider._fetch_impl("http://x", "m", {})
 
     assert_error(result, "Could not interpret fetch response", "no 'chart' in response")
 
@@ -47,7 +47,7 @@ def test_fetch_impl_empty_result(yahoo_provider, assert_error):
     response.raise_for_status.return_value = None
 
     with patch.object(provider.session, "get", return_value=response):
-        result = provider._fetch_impl("http://x", "m")
+        result = provider._fetch_impl("http://x", "m", {})
 
     assert_error(result, "Could not interpret fetch response", "result empty")
 
@@ -64,7 +64,7 @@ def test_fetch_impl_yahoo_error_object(yahoo_provider, assert_error):
     response.raise_for_status.return_value = None
 
     with patch.object(provider.session, "get", return_value=response):
-        result = provider._fetch_impl("http://x", "m")
+        result = provider._fetch_impl("http://x", "m", {})
 
     assert_error(
         result, "Could not interpret fetch response", "{'code': 'BadSymbol', 'description': 'Symbol not found'}"
@@ -142,60 +142,6 @@ def test_fetch_missing_exchange_timezone(yahoo_provider, assert_error, make_asse
     assert_error(
         result, "Could not parse series 'AAPL:dummy' in Yahoo fetch result", "missing exchangeTimeZoneName in meta"
     )
-
-
-"""
-TODO delete
-def test_fetch_fallback_to_meta(yahoo_provider, unwrap, make_asset, make_series, fixed_now):
-    now = fixed_now()
-    response = Mock()
-    response.json.return_value = {
-        "chart": {
-            "result": [
-                {
-                    "timestamp": [],
-                    "indicators": {"quote": [{}]},
-                    "meta": {"regularMarketTime": now.timestamp(), "regularMarketPrice": 42.0},
-                }
-            ],
-            "error": None,
-        }
-    }
-    response.raise_for_status.return_value = None
-
-    with patch.object(yahoo_provider.session, "get", return_value=response):
-        asset = make_asset(provider_code="AAPL")
-        series = make_series(asset, interval="1d", resolution=DAILY, series_type=SeriesType.CANDLE)
-        result = yahoo_provider.fetch(series, asset, now, now)
-
-    payload = unwrap(result)
-    assert len(payload) == 1
-    assert payload[0].close == 42.0
-    assert result.warnings == ["Missing value for 'high'", "Missing value for 'low'", "Missing value for 'volume'"]
-
-def test_fetch_propagates_extract_candles_error(yahoo_provider, assert_error, make_asset, make_series, fixed_now):
-    response = Mock()
-    response.json.return_value = {
-        "chart": {
-            "result": [
-                {
-                    "timestamp": None,
-                    "indicators": {"quote": [{}]},
-                    "meta": {},
-                }
-            ],
-            "error": None,
-        }
-    }
-    response.raise_for_status.return_value = None
-    now = fixed_now()
-    with patch.object(yahoo_provider.session, "get", return_value=response):
-        asset = make_asset(provider_code="AAPL")
-        series = make_series(asset, interval="1d", resolution=DAILY, series_type=SeriesType.VALUE)
-        result = yahoo_provider.fetch(series, asset, now, now)
-
-    assert_error(result, "Cannot synthesize from metadata", "timestamp missing")
-"""
 
 
 def test_fetch_real_fixture_1d_eliminates_today(yahoo_provider, unwrap, make_asset, make_series):

@@ -2,11 +2,12 @@
 # Licensed under the Apache License, Version 2.0. See the LICENSE file for details.
 # File: tests/test_main_utils.py
 
+from datetime import timedelta
 from unittest.mock import MagicMock, Mock
 
 import pytest
 
-from finance.common.model import FetchResult, Result, Retention, Series, SeriesPoint, SeriesResult
+from finance.common.model import FetchResult, Result, Retention, Series, SeriesPoint, SeriesResult, SeriesState
 from finance.main_utils import process_result, reconcile_registry, unwrap
 from finance.registry.registry import Registry
 
@@ -53,13 +54,14 @@ class FakeState:
 
     def __init__(self):
         self.calls = []
+        self.series={}
 
     def ingest(self, series: Series, point: SeriesPoint):
         self.calls.append(point)
         return SeriesResult.ok_payload("spx", point)  # success
 
     def update_range(self, series_id: int, first: int, last: int) -> None:
-        pass
+        self.series[series_id] = SeriesState(first_point=first, last_point=last)
 
 
 class SkipState(FakeState):
@@ -94,8 +96,9 @@ def test_process_result_empty_payload():
     assert state.calls == []
 
 
-def test_process_result_single_point():
-    fp = SeriesPoint(series_id=1, time=100, close=1)
+def test_process_result_single_point(fixed_now):
+    now = fixed_now()
+    fp = SeriesPoint(series_id=1, time=now, close=1)
     r = FetchResult.ok_payload("spx", [fp])
     state = FakeState()
 
@@ -106,12 +109,13 @@ def test_process_result_single_point():
     point: SeriesPoint = state.calls[0]
     assert point.series_id == 1
     assert point.close == 1
-    assert point.time == 100
+    assert point.time == now
 
 
-def test_process_result_multiple_points():
-    fp1 = SeriesPoint(series_id=1, time=10, close=1)
-    fp2 = SeriesPoint(series_id=2, time=20, close=2)
+def test_process_result_multiple_points(fixed_now):
+    now = fixed_now()
+    fp1 = SeriesPoint(series_id=1, time=now + timedelta(seconds=5), close=1)
+    fp2 = SeriesPoint(series_id=2, time=now, close=2)
     r = FetchResult.ok_payload("spx", [fp1, fp2])
     state = FakeState()
 
@@ -123,8 +127,8 @@ def test_process_result_multiple_points():
     assert state.calls[1].close == 2
 
 
-def test_process_result_skip():
-    fp = SeriesPoint(series_id=1, time=100, close=1)
+def test_process_result_skip(fixed_now):
+    fp = SeriesPoint(series_id=1, time=fixed_now(), close=1)
     r = FetchResult.ok_payload("spx", [fp])
     state = SkipState()
 
@@ -133,8 +137,8 @@ def test_process_result_skip():
     assert len(state.calls) == 1
 
 
-def test_process_result_ingest_failure():
-    fp = SeriesPoint(series_id=1, time=100, close=1)
+def test_process_result_ingest_failure(fixed_now):
+    fp = SeriesPoint(series_id=1, time=fixed_now(), close=1)
     r = FetchResult.ok_payload("spx", [fp])
     state = FailingState()
 

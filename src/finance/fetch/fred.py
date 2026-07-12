@@ -28,7 +28,7 @@ class FredProvider(MarketDataProvider):
             "series_id": asset.provider_code,
             "api_key": self.api_key,
             "file_type": "json",
-            "sort_order": "desc",
+            "sort_order": "asc",
             "observation_start": start_date,
             "observation_end": end_date,
         }

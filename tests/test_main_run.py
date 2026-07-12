@@ -79,7 +79,7 @@ def test_run_happy_path(tmp_path, caplog, fixed_now, state_deps, make_asset, mak
 
     def state_factory(backend, wal, storage):
         state = State(backend, wal, storage)
-        state._rebuild_measurement_state = lambda *_: None
+        state._rebuild_measurement_state = lambda *_: SeriesState()
         state_holder["state"] = state
         return state
 
@@ -109,7 +109,7 @@ def test_run_happy_path(tmp_path, caplog, fixed_now, state_deps, make_asset, mak
     state = state_holder["state"]
 
     # Validate state writes
-    assert state.series.get(1) == SeriesState(first_time=now, last_time=now)
+    assert state.series.get(1) == SeriesState(first_point=now, last_point=now, first_start=now, last_end=now)
 
     assert "Finance version:" in caplog.text
     assert "Done." in caplog.text
@@ -153,7 +153,7 @@ def test_run_fetch_failure(tmp_path, caplog, fixed_now, make_asset, make_series)
             return Result.ok_payload(0)
 
     def fetch_controller_factory(series, get_assets, get_providers):
-        return FakeFetchController([(1, 1, 100)])
+        return FakeFetchController([(1, 1, fixed_now())])
 
     # def composite_engine_builder(composites, state):
     #    return Result.ok_payload(FakeCompositeEngine([]))

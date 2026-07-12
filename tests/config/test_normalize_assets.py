@@ -142,26 +142,3 @@ def test_normalize_asset_missing_template(assert_error):
     }
     result = normalize_assets_and_series(series_cfg, {})
     assert_error(result, "Could not parse asset 'spx'", "Could not find series template 'template1'")
-
-
-"""
-TODO delete
-def test_normalize_assets_default_resolution_settings(unwrap):
-    raw = {
-        "spx": {
-            "provider": "yahoo",
-            "provider_code": "^GSPC",
-            "symbol": "SPX",
-            "resolution": {DAILY: {}},
-        }
-    }
-
-    providers = unwrap(normalize_providers({}))
-    assets, series = unwrap(normalize_assets_and_series(raw, providers))
-
-    assert len(assets) == 1
-    assert assets[0].symbol == "SPX"
-    assert len(series) == 1
-    assert series[0].interval == "1d"
-    assert series[0].history_limit == "10y"
-"""

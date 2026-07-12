@@ -76,8 +76,10 @@ def run(
 
         backend: TimescaleBackend = backend_result.payload
 
+        logger.debug("Reconciling loaded config with backend")
         reconcile(registry, backend)
 
+        logger.debug("Loading state")
         wal = wal_factory(paths.get("wal"))
         storage = state_storage_factory(paths.get("state"))
         state = state_factory(backend=backend_result.payload, wal=wal, storage=storage)
@@ -92,6 +94,7 @@ def run(
         providers = provider_factory(api_keys=secrets.get("api_keys"), providers_config=provider_cfg)
         fetch_controller = fetch_controller_factory(registry.all_series(), registry.get_asset_by_id, providers.get)
         for result in fetch_controller.fetch_incrementally(state):
+            logger.debug(f"Fetched {result.series_name}")
             series = registry.get_series_by_name(result.series_name)
             if not process_result(result, state, series):
                 fetch_failures += 1

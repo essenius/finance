@@ -46,34 +46,3 @@ def normalize_db_time(value):
     if isinstance(value, date):
         return datetime.combine(value, time.min, tzinfo=UTC)
     raise TypeError(f"Unexpected time type: {type(value)}")
-
-
-'''
-TODO delete if no longer needed
-def to_utc_midnight(local_dt: datetime) -> datetime:
-    """
-    Given a timezone-aware datetime representing a *local date label*,
-    return the UTC midnight that lies inside the validity interval of that date.
-    """
-    tz = local_dt.tzinfo
-
-    # Validity interval in local time
-    start_local = datetime(local_dt.year, local_dt.month, local_dt.day, 0, 0, tzinfo=tz)
-    end_local = start_local + timedelta(days=1)
-
-    # Convert interval to UTC
-    start_utc = start_local.astimezone(UTC)
-    end_utc = end_local.astimezone(UTC)
-
-    # Candidate UTC midnight: same *local* date, but in UTC
-    candidate = datetime(local_dt.year, local_dt.month, local_dt.day, 0, 0, tzinfo=UTC)
-
-    # If candidate is inside the interval, use it
-    if start_utc <= candidate < end_utc:
-        return candidate
-
-    # Otherwise the next UTC midnight must be inside the interval:
-    # start_utc <= next_midnight < end_utc. Invalid dates can't happen.
-    next_midnight = candidate + timedelta(days=1)
-    return next_midnight
-'''

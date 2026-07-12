@@ -18,12 +18,12 @@ def test_storage_load_missing_file(tmp_path):
 def test_storage_load_valid_dict(tmp_path, fixed_now):
     now = fixed_now()
     path = tmp_path / "state.json"
-    data = {1: {"last_try": now.isoformat(timespec="seconds")}}
+    data = {1: {"last_end": now.isoformat(timespec="seconds")}}
     path.write_text(json.dumps(data))
 
     storage = StateStorage(path)
     state_dict = storage.load()
-    assert state_dict[1] == SeriesState(first_time=None, last_time=None, last_try=now)
+    assert state_dict[1] == SeriesState(first_point=None, last_point=None, last_end=now)
 
 
 def test_storage_load_ignore_non_dict(tmp_path):
@@ -63,12 +63,13 @@ def test_storage_save_atomic_success(tmp_path, fixed_now):
     path = tmp_path / "state.json"
     storage = StateStorage(path)
 
-    state = {1: SeriesState(last_try=now)}
+    state = {1: SeriesState(first_start=now, last_end=now)}
     storage.save(state)
 
     assert path.exists()
     result = json.loads(path.read_text())
-    assert result["1"] == {"first_time": None, "last_time": None, "last_try": now.isoformat(timespec="seconds")}
+    now_iso = now.isoformat(timespec="seconds")
+    assert result["1"] == {"first_point": None, "last_point": None, "first_start": now_iso, "last_end": now_iso}
 
 
 def test_storage_save_overwrites_existing(tmp_path, fixed_now):
@@ -77,14 +78,15 @@ def test_storage_save_overwrites_existing(tmp_path, fixed_now):
     path.write_text("OLD DATA")
 
     storage = StateStorage(path)
-    new_state = {2: SeriesState(last_try=now)}
+    new_state = {2: SeriesState(last_end=now)}
 
     storage.save(new_state)
 
     assert json.loads(path.read_text())["2"] == {
-        "first_time": None,
-        "last_time": None,
-        "last_try": now.isoformat(timespec="seconds"),
+        "first_point": None,
+        "last_point": None,
+        "first_start": None,
+        "last_end": now.isoformat(timespec="seconds"),
     }
 
 
@@ -111,7 +113,7 @@ def test_storage_load_after_save(tmp_path, fixed_now):
     path = tmp_path / "state.json"
     storage = StateStorage(path)
 
-    state = {3: SeriesState(last_try=now)}
+    state = {3: SeriesState(last_end=now)}
     storage.save(state)
 
     loaded = storage.load()

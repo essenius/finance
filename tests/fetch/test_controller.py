@@ -9,6 +9,7 @@ from unittest.mock import Mock
 from finance.common.model import (
     Asset,
     CompletionPolicy,
+    FetchResult,
     MeasurementResult,
     ProviderConfig,
     Series,
@@ -37,7 +38,7 @@ def make_assets(assets: list[Asset]):
     return result
 
 
-def single_result(fc: FetchController, state: State):
+def single_result(fc: FetchController, state: State) -> FetchResult:
     results = list(fc.fetch_incrementally(state))
     assert len(results) == 1
     return results[0]
@@ -50,6 +51,8 @@ def make_fake_provider(fetch_result=None):
     fake_provider.fetch.return_value = fetch_result
     fake_provider.provider_config = Mock()
     fake_provider.provider_config.get_history_limit.return_value = timedelta(days=60)
+    fake_provider.provider_config.get_overlap.return_value = timedelta(days=0)
+
     return fake_provider
 
 
@@ -84,20 +87,37 @@ def test_create_providers():
 def test_controller_skips_fresh(state, fixed_now, make_asset, make_series):
     asset = make_asset()
     assets = make_assets([asset])
-    series = [make_series(asset, interval="1h")]
+    series = [make_series(asset, interval="1h", )]
     fc = make_fetch_controller(series, assets.get, fixed_now)
 
     now = fixed_now()
-    first = now - timedelta(seconds=10000)
+    first = now - timedelta(days=6) # we want 5 days, we have 6
     last = now - timedelta(seconds=1000)
-    last_try = now - timedelta(seconds=100)
+    last_end = now - timedelta(seconds=100)
     state.series.clear()
-    state.series[1] = SeriesState(last_try=last_try, first_time=first, last_time=last)
+    state.series[1] = SeriesState(first_point=first, last_point=last, last_end=last_end)
 
     results = list(fc.fetch_incrementally(state))
     assert results == []
     fc.get_provider("yahoo").fetch.assert_not_called()
 
+
+def test_controller_fetch_when_oldest_too_new(state, fixed_now, make_asset, make_series):
+    asset = make_asset()
+    assets = make_assets([asset])
+    series = [make_series(asset, interval="1h", )]
+    fc = make_fetch_controller(series, assets.get, fixed_now)
+
+    now = fixed_now()
+    first = now - timedelta(days=1) # we want 5 days, we have 1
+    last = now - timedelta(seconds=1000)
+    last_end = now - timedelta(seconds=100)
+    state.series.clear()
+    state.series[1] = SeriesState(last_end=last_end, first_point=first, last_point=last)
+
+    result = single_result(fc, state)
+    assert result.ok
+    assert result.series_name == "eur_usd:dummy"
 
 def test_controller_fetches_when_stale(state, fixed_now, make_asset, make_series):
 
@@ -111,7 +131,7 @@ def test_controller_fetches_when_stale(state, fixed_now, make_asset, make_series
 
     # stale vs 1h
     state.series[1] = SeriesState(
-        last_try=now - timedelta(hours=2), first_time=now - timedelta(hours=10), last_time=now - timedelta(hours=2)
+        last_end=now - timedelta(hours=2), first_point=now - timedelta(weeks=1), last_point=now - timedelta(hours=2)
     )
 
     result = single_result(fc, state)
@@ -119,7 +139,7 @@ def test_controller_fetches_when_stale(state, fixed_now, make_asset, make_series
     assert result.series_name == "eur_usd:dummy"
 
     fc.get_provider("yahoo").fetch.assert_called_once()
-    assert state.series[1].last_try == now
+    assert state.series[1].last_end == now
 
 
 def test_controller_skips_fetch_with_next_day(state, fixed_now, make_asset, make_series):
@@ -133,13 +153,14 @@ def test_controller_skips_fetch_with_next_day(state, fixed_now, make_asset, make
     today = datetime.combine(now, time.min, UTC)
     state.series.clear()
     yesterday = today - timedelta(days=1)
+    last_week = today - timedelta(weeks=1)
     # should not retrieve
-    state.series[1] = SeriesState(first_time=yesterday, last_time=yesterday, last_try=yesterday)
+    state.series[1] = SeriesState(first_point=last_week, last_point=yesterday, last_end=yesterday)
 
     results = list(fc.fetch_incrementally(state))
     assert len(results) == 0
     fc.get_provider("yahoo").fetch.assert_not_called()
-    assert state.series[1].last_try == yesterday
+    assert state.series[1].last_end == yesterday
 
 
 def test_controller_unknown_provider(assert_error, state, fixed_now, make_asset, make_series):
@@ -156,7 +177,7 @@ def test_controller_unknown_provider(assert_error, state, fixed_now, make_asset,
     assert result.series_name == "eur_usd:dummy"
 
     assert 1 in state.series
-    assert state.series[1].last_try == fixed_now()
+    assert state.series[1].last_end is None
 
 
 def test_controller_unknown_asset(assert_error, state, fixed_now, make_asset, make_series):
@@ -184,7 +205,7 @@ def test_controller_malformed_result(assert_error, state, fixed_now, make_asset,
     assert_error(result, "bad data", None)
 
     # always updates state, even when failed
-    assert state.series[1].last_try == fixed_now()
+    assert state.series[1].last_end == fixed_now()
 
 
 def test_controller_none_limit(unwrap, state, fixed_now, make_asset, make_series):
@@ -197,7 +218,7 @@ def test_controller_none_limit(unwrap, state, fixed_now, make_asset, make_series
 
     fc = FetchController(series, assets.get, providers.get, now_provider=fixed_now)
     unwrap(single_result(fc, state))
-    assert state.series[1].last_try == fixed_now()
+    assert state.series[1].last_end == fixed_now()
 
 
 def test_controller_multiple_assets(state, fixed_now, make_asset, make_series):
@@ -225,36 +246,3 @@ def test_controller_multiple_assets(state, fixed_now, make_asset, make_series):
     assert fake_provider.fetch.call_count == 2
     assert 1 in state.series
     assert 2 in state.series
-
-
-def test_get_window_user_waited_too_long(fixed_now):
-    fc = FetchController([], always_none, always_none, now_provider=fixed_now)
-    now = fixed_now()
-    last = now - timedelta(seconds=1000)
-    limit = timedelta(seconds=500)
-    start, end, is_incremental = fc.get_window(first_saved=last, last_saved=last, limit=limit, overlap=timedelta(0))
-    assert (start, end, is_incremental) == (now - limit, now, False)
-
-
-def test_get_window_normal_incremental(fixed_now):
-    fc = FetchController([], always_none, always_none, now_provider=fixed_now)
-    now = fixed_now()
-    limit = timedelta(seconds=500)
-    first = now - limit
-    last = now - timedelta(seconds=400)
-    result = fc.get_window(first_saved=first, last_saved=last, limit=limit, overlap=timedelta(0))
-    # the start must be right after the last saved time, not on it
-    assert result == (last, now, True)
-
-
-def test_get_window_normal_includes_overlap(fixed_now):
-    fc = FetchController([], always_none, always_none, now_provider=fixed_now)
-    now = fixed_now()
-    limit = timedelta(seconds=500)
-    first = now - limit
-    last = now - timedelta(seconds=400)
-    overlap = timedelta(seconds=100)
-    window_start = last - overlap
-    result = fc.get_window(first_saved=first, last_saved=last, limit=limit, overlap=overlap)
-    # the start must be right after the last saved time, not on it
-    assert result == (window_start, now, True)

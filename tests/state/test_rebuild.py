@@ -63,8 +63,8 @@ def make_state(*, wal_entries=None, first=None, last=None, initial_state=None) -
 
 
 def assert_result(result: SeriesState, first: int, last: int):
-    assert result.first_time == first
-    assert result.last_time == last
+    assert result.first_point == first
+    assert result.last_point == last
 
 
 # ------
@@ -111,9 +111,9 @@ def test_rebuild_merge_influx_and_wal():
 
 def test_rebuild_empty_everywhere():
     state = make_state()
-    assert state._rebuild_measurement_state(1) is None
+    assert state._rebuild_measurement_state(1) == SeriesState()
 
 
 def test_rebuild_influx_malformed():
     state = make_state(first=make_backend_fail_result(), last=make_backend_fail_result())
-    assert state._rebuild_measurement_state(1) is None
+    assert state._rebuild_measurement_state(1) == SeriesState()

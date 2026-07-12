@@ -2,7 +2,7 @@
 # Licensed under the Apache License, Version 2.0. See the LICENSE file for details.
 # File: tests/common/test_model.py
 
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
@@ -252,10 +252,62 @@ def test_provider_config_empty_history_limits_and_overlaps():
 
 def test_series_state(fixed_now):
 
-    state = SeriesState(first_time=fixed_now(), last_time=fixed_now())
+    state = SeriesState(first_point=fixed_now(), last_point=fixed_now())
     state_dict = state.to_dict()
-    assert state_dict["last_try"] is None
-    assert state_dict["first_time"] == "2025-06-15T15:06:40+00:00"
-    assert state_dict["last_time"] == "2025-06-15T15:06:40+00:00"
+    assert state_dict["last_end"] is None
+    assert state_dict["first_point"] == "2025-06-15T15:06:40+00:00"
+    assert state_dict["last_point"] == "2025-06-15T15:06:40+00:00"
     state_roundtrip = SeriesState.from_dict(state_dict)
     assert state == state_roundtrip
+
+
+def test_series_state_window_too_old(fixed_now):
+    now = fixed_now()
+    start = now - timedelta(hours=10)
+    end = now - timedelta(hours=9)
+    limit = timedelta(hours=5)
+    state = SeriesState(first_point=start, last_point=end, first_start=start, last_end=end)
+    result = state.get_start(fetch_time=now, limit=limit, overlap=timedelta(0))
+    assert result == (now - limit, False)
+
+
+def test_series_state_window_normal_incremental(fixed_now):
+    now = fixed_now()
+    start = now - timedelta(hours=6)
+    end = now - timedelta(hours=2)
+    limit = timedelta(hours=5)
+    state = SeriesState(first_point=start, last_point=end, first_start=start, last_end=end)
+    result = state.get_start(fetch_time=now, limit=limit, overlap=timedelta(0))
+    assert result == (end, True)
+
+
+def test_series_state_window_normal_includes_overlap(fixed_now):
+    now = fixed_now()
+    limit = timedelta(hours=6)
+    first = now - limit
+    last = now - timedelta(hours=4)
+    overlap = timedelta(hours=1)
+    window_start = last - overlap
+    state = SeriesState(first_point=first, last_point=last, first_start=first, last_end=last)
+    result = state.get_start(fetch_time=now, limit=limit, overlap=overlap)
+    assert result == (window_start, True)
+
+def test_series_state_set_window_no_update(fixed_now):
+    now = fixed_now()
+    limit = timedelta(hours=6)
+    first = now - limit
+    last = now - timedelta(hours=4)
+    overlap = timedelta(hours=1)
+    window_start = last - overlap
+    state = SeriesState(first_point=first, last_point=last, first_start=datetime.min.replace(tzinfo=UTC), last_end=datetime.max.replace(tzinfo=UTC))
+    result = state.set_window(fetch_time=now, limit=limit, overlap=overlap)
+    assert result == (window_start, True)
+
+def test_update_fetch_range_no_change(state):
+    first = datetime.min
+    current = first + timedelta(days=10)
+    range_min = first + timedelta(days=2)
+    range_max = current - timedelta(days=2)
+    state = SeriesState(first_start=first, last_end=current)
+    state.update_fetch_range(start=range_min, end=range_max)
+    assert state == SeriesState(first_start=first, last_end=current)

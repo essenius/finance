@@ -374,11 +374,11 @@ class TimescaleBackend:
             series.retention,
             series.bootstrap_history,
             write_timezone(series.timezone),
-            series.publication_offset,
             write_time(series.market_open),
             write_time(series.market_close),
             series.week_start,
             series.week_end,
+            series.publication_offset,
         )
 
         if series.id is None:
@@ -386,7 +386,7 @@ class TimescaleBackend:
             sql = """
                 INSERT INTO series (
                     code, asset_id, interval, series_type, retention, bootstrap_history,
-                    timezone, publication_offset, market_open, market_close, week_start, week_end)
+                    timezone, market_open, market_close, week_start, week_end, publication_offset)
                 VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 RETURNING id;
             """
@@ -397,8 +397,8 @@ class TimescaleBackend:
             sql = """
                 UPDATE series
                 SET code=%s, asset_id=%s, interval=%s, series_type=%s, retention=%s,
-                    bootstrap_history=%s, timezone=%s, publication_offset=%s,
-                    market_open=%s, market_close=%s, week_start=%s, week_end=%s
+                    bootstrap_history=%s, timezone=%s, market_open=%s, market_close=%s,
+                    week_start=%s, week_end=%s, publication_offset=%s
                 WHERE id=%s
                 RETURNING id;
             """
@@ -438,20 +438,22 @@ class TimescaleBackend:
                     """
                 )
                 rows = cursor.fetchall()
+                col_index = {desc.name: i for i, desc in enumerate(cursor.description)}
+
             return Result.ok_payload(
                 [
                     Asset(
-                        id=row[0],
-                        name=row[1],
-                        symbol=row[2],
-                        provider=row[3],
-                        provider_code=row[4],
-                        display_name=row[5],
-                        instrument=row[6],
-                        region=row[7],
-                        exchange=row[8],
-                        currency=row[9],
-                        unit=row[10],
+                        id=row[col_index["id"]],
+                        name=row[col_index["name"]],
+                        symbol=row[col_index["symbol"]],
+                        provider=row[col_index["provider"]],
+                        provider_code=row[col_index["provider_code"]],
+                        display_name=row[col_index["display_name"]],
+                        instrument=row[col_index["instrument"]],
+                        region=row[col_index["region"]],
+                        exchange=row[col_index["exchange"]],
+                        currency=row[col_index["currency"]],
+                        unit=row[col_index["unit"]],
                     )
                     for row in rows
                 ]
@@ -478,25 +480,26 @@ class TimescaleBackend:
                     """
                 )
                 rows = cursor.fetchall()
+                col_index = {desc.name: i for i, desc in enumerate(cursor.description)}
 
             return Result.ok_payload(
                 [
                     Series(
-                        id=row[0],
-                        code=row[1],
-                        asset_id=row[2],
-                        asset_name=row[3],
-                        name=row[4],
-                        interval=row[5],
-                        series_type=row[6],
-                        retention=row[7],
-                        bootstrap_history=row[8],
-                        timezone=parse_timezone(row[9]),
-                        publication_offset=row[10],
-                        market_open=parse_time(row[11]),
-                        market_close=parse_time(row[12]),
-                        week_start=row[13],
-                        week_end=row[14],
+                        id=row[col_index["id"]],
+                        code=row[col_index["code"]],
+                        asset_id=row[col_index["asset_id"]],
+                        asset_name=row[col_index["asset_name"]],
+                        name=row[col_index["name"]],
+                        interval=row[col_index["interval"]],
+                        series_type=row[col_index["series_type"]],
+                        retention=row[col_index["retention"]],
+                        bootstrap_history=row[col_index["bootstrap_history"]],
+                        timezone=parse_timezone(row[col_index["timezone"]]),
+                        market_open=parse_time(row[col_index["market_open"]]),
+                        market_close=parse_time(row[col_index["market_close"]]),
+                        week_start=row[col_index["week_start"]],
+                        week_end=row[col_index["week_end"]],
+                        publication_offset=row[col_index["publication_offset"]],
                     )
                     for row in rows
                 ]

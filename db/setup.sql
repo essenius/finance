@@ -205,11 +205,11 @@ CREATE TABLE IF NOT EXISTS series (
     retention series_retention NOT NULL,
     bootstrap_history TEXT NOT NULL,
     timezone TEXT NOT NULL,
-    publication_offset TEXT NOT NULL,
     market_open TIME WITHOUT TIME ZONE NOT NULL,
     market_close TIME WITHOUT TIME ZONE NOT NULL,
     week_start week_day NOT NULL,
     week_end week_day NOT NULL,
+    publication_offset TEXT NOT NULL,
 
     UNIQUE(asset_id, code)
 );
@@ -249,11 +249,11 @@ SELECT
     s.series_type,
     s.bootstrap_history,
     s.timezone,
-    s.publication_offset,
     s.market_open,
     s.market_close,
     s.week_start,
-    s.week_end
+    s.week_end,
+    s.publication_offset
 FROM series s JOIN asset a ON s.asset_id = a.id ORDER BY series_id ASC;
 
 CREATE TABLE IF NOT EXISTS series_state (

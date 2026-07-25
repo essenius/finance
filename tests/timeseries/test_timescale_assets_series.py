@@ -3,6 +3,7 @@
 # File: tests/timeseries/test_timescale_assets_series.py
 
 from datetime import datetime
+from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 from finance.common.result import Result
@@ -209,6 +210,21 @@ def test_get_assets_returns_asset_list(make_backend):
     ]
 
     cursor_cm = make_cursor(fetchall=rows)
+
+    inner_cursor = cursor_cm.__enter__.return_value
+    inner_cursor.description = [
+        SimpleNamespace(name="id"),
+        SimpleNamespace(name="name"),
+        SimpleNamespace(name="symbol"),
+        SimpleNamespace(name="provider"),
+        SimpleNamespace(name="provider_code"),
+        SimpleNamespace(name="display_name"),
+        SimpleNamespace(name="instrument"),
+        SimpleNamespace(name="region"),
+        SimpleNamespace(name="exchange"),
+        SimpleNamespace(name="currency"),
+        SimpleNamespace(name="unit"),
+    ]
     backend._connection.cursor.return_value = cursor_cm
 
     result = backend.get_assets()
@@ -251,11 +267,11 @@ def test_get_series_returns_series_list(make_backend):
             "short_lived",
             "30d",
             "Europe/Berlin",
-            "1m",
             "min",
             "max",
             "sun",
             "sat",
+            "1m",
         ),
         (
             11,
@@ -268,15 +284,34 @@ def test_get_series_returns_series_list(make_backend):
             "long_lived",
             "1y",
             "UTC",
-            "1d",
             "9:00",
             "17:00",
             "mon",
             "fri",
+            "1d",
         ),
     ]
 
     cursor_cm = make_cursor(fetchall=rows)
+
+    inner_cursor = cursor_cm.__enter__.return_value
+    inner_cursor.description = [
+        SimpleNamespace(name="id"),
+        SimpleNamespace(name="code"),
+        SimpleNamespace(name="asset_id"),
+        SimpleNamespace(name="asset_name"),
+        SimpleNamespace(name="name"),
+        SimpleNamespace(name="interval"),
+        SimpleNamespace(name="series_type"),
+        SimpleNamespace(name="retention"),
+        SimpleNamespace(name="bootstrap_history"),
+        SimpleNamespace(name="timezone"),
+        SimpleNamespace(name="market_open"),
+        SimpleNamespace(name="market_close"),
+        SimpleNamespace(name="week_start"),
+        SimpleNamespace(name="week_end"),
+        SimpleNamespace(name="publication_offset"),
+    ]
     backend._connection.cursor.return_value = cursor_cm
 
     result = backend.get_series()

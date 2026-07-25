@@ -8,7 +8,10 @@ from zoneinfo import ZoneInfo
 
 import requests
 
-from ..common.model import Asset, FetchResult, MeasurementResult, ProviderConfig, Result, Series, T
+from finance.common.result import Result, T
+from finance.common.time_utils import now_second_precision
+
+from ..common.model import Asset, FetchResult, MeasurementResult, ProviderConfig, Series
 
 
 class MarketDataProvider:
@@ -17,9 +20,10 @@ class MarketDataProvider:
     def __init__(self, provider_config: ProviderConfig, api_key: str | None = None, **kwargs):
         self.provider_config = provider_config
         self.api_key = api_key
+        # not taking requests.session as the default, to avoid unnecessary construction
         self.session = kwargs.pop("session", None) or requests.Session()
-        self.now = kwargs.pop("now_provider", None) or (lambda: datetime.now(UTC))
-        self.timezone = ZoneInfo(provider_config.timezone)
+        self.now = kwargs.pop("now_provider", now_second_precision)
+        # self.timezone = ZoneInfo(provider_config.timezone)
 
     def _safe_call(
         self, measurement: str, fn: Callable[[], MeasurementResult[T]], context: str

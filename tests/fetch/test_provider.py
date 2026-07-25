@@ -16,8 +16,6 @@ def test_init_defaults(dummy_provider):
     p = dummy_provider()
 
     assert p.api_key is None
-    assert p.provider_config.timezone is not None
-    assert p.timezone == ZoneInfo("UTC")
     assert isinstance(p.session, requests.Session)
 
     now = p.now()

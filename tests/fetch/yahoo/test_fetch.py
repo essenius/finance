@@ -6,7 +6,8 @@ import json
 from datetime import UTC, date, datetime
 from unittest.mock import Mock, patch
 
-from finance.common.model import Retention, SeriesPoint, SeriesType
+from finance.common.model import SeriesPoint
+from finance.common.string_enums import Retention, SeriesType
 from finance.fetch.yahoo import YahooProvider
 
 # ----------------------------------------------------------------------
@@ -76,9 +77,13 @@ def test_fetch_impl_yahoo_error_object(yahoo_provider, assert_error):
 # ----------------------------------------------------------------------
 
 
-def test_fetch_success(yahoo_provider, unwrap, make_asset, make_series, fixed_now):
+def test_fetch_success(yahoo_provider, unwrap, make_asset, make_series):
+
+    def fake_now():
+        return datetime(2026, 7, 23, 15, 00, tzinfo=UTC)
+
     response = Mock()
-    now = fixed_now()
+    now = fake_now()
     response.json.return_value = {
         "chart": {
             "result": [
@@ -94,13 +99,13 @@ def test_fetch_success(yahoo_provider, unwrap, make_asset, make_series, fixed_no
     response.raise_for_status.return_value = None
     asset = make_asset(provider_code="AAPL")
     series = make_series(asset, interval="1h", retention=Retention.SHORT_LIVED, series_type=SeriesType.VALUE)
-    provider = yahoo_provider()
+    provider = yahoo_provider(now_provider=fake_now)
     with patch.object(provider.session, "get", return_value=response):
         result = provider.fetch(series, asset, now, now, False)
 
     payload = unwrap(result)
     assert len(payload) == 1, "one result"
-    assert payload[0].time == datetime(2025, 6, 15, 15, 6, 40, tzinfo=UTC), "datetime is instant"
+    assert payload[0].time == datetime(2026, 7, 23, 15, 00, tzinfo=UTC), "datetime is instant"
     assert payload[0].close == 10.0, "Close is 10"
 
 

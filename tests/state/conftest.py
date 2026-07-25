@@ -17,7 +17,7 @@ def make_entry(make_asset, make_series) -> dict:
         time = datetime.fromtimestamp(timestamp, tz=UTC)
         asset = make_asset(id=series_id, name=name)
         series = make_series(asset, id=series_id)
-        return {"series": series, "point": SeriesPoint(series_id=series_id, time=time, close=value)}
+        return {"point": SeriesPoint(series_id=series_id, time=time, close=value), "series": series}
 
     return _make
 
@@ -26,20 +26,8 @@ def make_entry(make_asset, make_series) -> dict:
 def two_wal_entries(make_entry) -> list[tuple[Series, SeriesPoint] | None]:
     def _entries():
         return [
-            make_entry(series_id=1, value=1, timestamp=10),
-            make_entry(series_id=1, value=2, timestamp=20),
-        ]
-
-    return _entries
-
-
-@pytest.fixture
-def two_wal_entries_with_none(make_entry) -> list[tuple[Series, SeriesPoint] | None]:
-    def _entries():
-        return [
-            make_entry(series_id=1, value=1, timestamp=10),
-            make_entry(series_id=1, value=2, timestamp=20),
-            None,
+            make_entry(series_id=1, value=1, timestamp=10)["point"],
+            make_entry(series_id=1, value=2, timestamp=20)["point"],
         ]
 
     return _entries

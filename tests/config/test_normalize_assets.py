@@ -4,7 +4,8 @@
 
 from datetime import timedelta
 
-from finance.common.model import Asset, Retention, Series, SeriesType
+from finance.common.model import Asset, Series
+from finance.common.string_enums import Retention, SeriesType
 from finance.config.loader import normalize_assets_and_series
 
 

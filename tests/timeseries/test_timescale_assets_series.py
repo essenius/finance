@@ -2,14 +2,23 @@
 # Licensed under the Apache License, Version 2.0. See the LICENSE file for details.
 # File: tests/timeseries/test_timescale_assets_series.py
 
+from datetime import datetime
 from unittest.mock import MagicMock
 
-from finance.common.model import Result
+from finance.common.result import Result
+from finance.common.string_enums import Retention, SeriesType
 from finance.timeseries.timescale_backend import TimescaleBackend
 
 # ------------------------------------------------------------
 # Helpers
 # ------------------------------------------------------------
+
+default_config = {
+    "host": "host123",
+    "user": "fin_user",
+    "password": "s3cr3t",
+    "db": "fin2",
+}
 
 
 def make_cursor(fetchone=None, fetchall=None):
@@ -231,8 +240,40 @@ def test_get_series_returns_series_list(make_backend):
     backend._connection.closed = False
 
     rows = [
-        (10, "intraday", 1, "SPX", "SPX:intraday", "1m", "value", "short_lived", "30d", "interval_close"),
-        (11, "daily", 1, "SPX", "SPX:daily", "1d", "candle", "long_lived", "1y", "next_day"),
+        (
+            10,
+            "intraday",
+            1,
+            "SPX",
+            "SPX:intraday",
+            "1m",
+            "value",
+            "short_lived",
+            "30d",
+            "Europe/Berlin",
+            "1m",
+            "min",
+            "max",
+            "sun",
+            "sat",
+        ),
+        (
+            11,
+            "daily",
+            1,
+            "SPX",
+            "SPX:daily",
+            "1d",
+            "candle",
+            "long_lived",
+            "1y",
+            "UTC",
+            "1d",
+            "9:00",
+            "17:00",
+            "mon",
+            "fri",
+        ),
     ]
 
     cursor_cm = make_cursor(fetchall=rows)
@@ -243,8 +284,9 @@ def test_get_series_returns_series_list(make_backend):
     assert result.ok
     series = result.payload
     assert len(series) == 2
-    assert series[0].retention == "short_lived"
-    assert series[1].series_type == "candle"
+    assert series[0].retention == Retention.SHORT_LIVED
+    assert series[1].series_type == SeriesType.CANDLE
+    assert series[1].publication_offset == "1d"
 
 
 def test_get_series_error(assert_error, make_backend):
@@ -299,3 +341,17 @@ def test_execute_write_success(make_backend):
 
     mock_cursor.execute.assert_called_once_with("INSERT INTO asset(symbol) VALUES (%s) RETURNING id;", ("AAPL",))
     mock_cursor.fetchone.assert_called_once()
+
+
+def test_save_sweep(unwrapped_backend):
+    with unwrapped_backend(default_config) as backend:
+        backend.mock_cursor.fetchone.return_value = [42]
+
+        next_sweep = datetime.max
+        sweep_start = datetime.min
+        result = backend.save_sweep(series_id=42, next_sweep=next_sweep, sweep_start=sweep_start)
+
+    assert result.ok
+    assert result.payload == 42
+    assert backend.mock_cursor.execute.call_count == 3
+    assert backend.mock_cursor.execute.call_args_list[2].args[1] == (42, datetime.max, datetime.min)

@@ -2,11 +2,10 @@
 # Licensed under the Apache License, Version 2.0. See the LICENSE file for details.
 # File: tests/timeseries/test_timescale_backend.py
 
-from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
 from unittest.mock import MagicMock, patch
 
-from finance.common.model import Series, SeriesPoint
+from finance.common.model import Series, SeriesPoint, SeriesState
 from finance.timeseries.timescale_backend import TimescaleBackend
 
 default_config = {
@@ -21,37 +20,6 @@ def series_by_id(id: int) -> Series:
     return None
 
 
-@contextmanager
-def make_backend(config, execute_error=False):  # returns Result[TimescaleBackend]
-    # Fake cursor
-    fake_cursor = MagicMock()
-    fake_cursor.execute.return_value = None
-
-    # Fake connection
-    fake_conn = MagicMock()
-    fake_conn.cursor.return_value.__enter__.return_value = fake_cursor
-    if execute_error:
-        fake_conn.cursor.return_value.__enter__.return_value.execute.side_effect = Exception("Execute boom!")
-
-    # Patch psycopg.connect so backend receives fake_conn
-    with patch("psycopg.connect", return_value=fake_conn) as mock_connect:
-        result = TimescaleBackend.from_config(config, series_by_id)
-
-        # Attach mocks to the backend so tests can inspect them
-        if result.ok:
-            backend = result.payload
-            backend.mock_connect = mock_connect
-            backend.mock_conn = fake_conn
-            backend.mock_cursor = fake_cursor
-        yield result
-
-
-@contextmanager
-def unwrapped_backend(config, execute_error=False):
-    with make_backend(config, execute_error) as result:
-        yield result.payload
-
-
 def test_constructor_is_pure():
 
     backend = TimescaleBackend(None, series_by_id)
@@ -59,7 +27,7 @@ def test_constructor_is_pure():
     assert backend._pending == []
 
 
-def test_from_config_failure_cert(assert_error):
+def test_from_config_failure_cert(assert_error, make_backend_context):
     config = {
         "host": "myhost",
         "port": 1234,
@@ -71,7 +39,7 @@ def test_from_config_failure_cert(assert_error):
         "max_batch_age_seconds": 2.5,
     }
 
-    with make_backend(config) as result:
+    with make_backend_context(config) as result:
         assert_error(
             result,
             "Timescale backend initialization failed",
@@ -79,7 +47,7 @@ def test_from_config_failure_cert(assert_error):
         )
 
 
-def test_from_config_success_no_defaults():
+def test_from_config_success_no_defaults(make_backend_context):
     config = {
         "host": "myhost",
         "port": 1234,
@@ -91,7 +59,7 @@ def test_from_config_success_no_defaults():
         "max_batch_age_seconds": 2.5,
     }
 
-    with make_backend(config) as result:
+    with make_backend_context(config) as result:
         assert result.ok
 
         backend = result.payload
@@ -110,9 +78,9 @@ def test_from_config_success_no_defaults():
         assert backend.now is not None
 
 
-def test_from_config_success_defaults():
+def test_from_config_success_defaults(make_backend_context):
 
-    with make_backend(default_config) as result:
+    with make_backend_context(default_config) as result:
         assert result.ok
 
         backend = result.payload
@@ -131,12 +99,12 @@ def test_from_config_success_defaults():
         assert backend.now is not None
 
 
-def test_from_config_failure(assert_error):
-    with make_backend({}) as result:
+def test_from_config_failure(assert_error, make_backend_context):
+    with make_backend_context({}) as result:
         assert_error(result, "Timescale backend initialization failed", "Cannot find mandatory config key 'host'")
 
 
-def test_ensure_connected_reconnects():
+def test_ensure_connected_reconnects(unwrapped_backend):
 
     with unwrapped_backend(default_config) as backend:
         backend._connection = None
@@ -147,7 +115,7 @@ def test_ensure_connected_reconnects():
         assert backend._connection is backend.mock_connect.return_value
 
 
-def test_ensure_connected_does_not_reconnect():
+def test_ensure_connected_does_not_reconnect(unwrapped_backend):
 
     class FakeConnection:
         closed: bool = False
@@ -159,14 +127,14 @@ def test_ensure_connected_does_not_reconnect():
         assert result.ok
 
 
-def test_flush_without_pending_does_nothing():
+def test_flush_without_pending_does_nothing(unwrapped_backend):
     with unwrapped_backend(default_config) as backend:
         # the only way this can return without an error (no connection) is if pending is empty
         result = backend.flush()
         assert result.ok
 
 
-def test_flush_without_connection_and_exception(fixed_now, assert_error):
+def test_flush_without_connection_and_exception(fixed_now, assert_error, unwrapped_backend):
     # force an immediate flush after adding via the batch size
 
     with unwrapped_backend(default_config | {"max_batch_size": 1}) as backend:
@@ -179,7 +147,7 @@ def test_flush_without_connection_and_exception(fixed_now, assert_error):
             assert_error(result, "Connect failed", "Boom!")
 
 
-def test_add_writes_two_entries(fixed_now):
+def test_add_writes_two_entries(fixed_now, unwrapped_backend):
 
     with unwrapped_backend(default_config | {"max_batch_size": 2}) as backend:
         mock_conn = MagicMock()
@@ -203,7 +171,7 @@ def test_add_writes_two_entries(fixed_now):
             assert backend._pending == []
 
 
-def test_close_writes(fixed_now):
+def test_close_writes(fixed_now, unwrapped_backend):
 
     with unwrapped_backend(default_config | {"max_batch_size": 2}) as backend:
         # mock_conn = MagicMock()
@@ -224,7 +192,7 @@ def test_close_writes(fixed_now):
         assert backend._pending == []
 
 
-def test_flush_writes_when_batch_too_old(fixed_now):
+def test_flush_writes_when_batch_too_old(fixed_now, unwrapped_backend):
 
     with unwrapped_backend(default_config | {"max_batch_age_seconds": 0}) as backend:
         now = fixed_now()
@@ -237,7 +205,7 @@ def test_flush_writes_when_batch_too_old(fixed_now):
         assert backend._pending == []
 
 
-def test_flush_raises_in_context_manager(fixed_now, assert_error):
+def test_flush_raises_in_context_manager(fixed_now, assert_error, unwrapped_backend):
 
     with unwrapped_backend(default_config | {"max_batch_size": 1}) as backend:
         # mock cursor context manager
@@ -273,7 +241,7 @@ def make_mock_cursor(rows):
     return mock_cm
 
 
-def test_read_first_returns_candle_row(fixed_now):
+def test_read_first_returns_candle_row(fixed_now, unwrapped_backend):
 
     with unwrapped_backend(default_config) as backend:
         now = fixed_now()
@@ -286,7 +254,7 @@ def test_read_first_returns_candle_row(fixed_now):
         assert result.payload == SeriesPoint(series_id=1, time=now, open=10, high=12, low=8, close=11, volume=1000)
 
 
-def test_read_first_returns_value_row(fixed_now):
+def test_read_first_returns_value_row(fixed_now, unwrapped_backend):
     with unwrapped_backend(default_config) as backend:
         backend._intraday_series_ids = {1}
         now = fixed_now()
@@ -299,7 +267,7 @@ def test_read_first_returns_value_row(fixed_now):
         assert result.payload == SeriesPoint(series_id=1, time=now, close=15)
 
 
-def test_read_first_returns_none_when_empty():
+def test_read_first_returns_none_when_empty(unwrapped_backend):
     with unwrapped_backend(default_config) as backend:
         mock_cursor_cm = make_mock_cursor(rows=[None])  # fetchone() returns None
         backend.mock_conn.cursor.return_value = mock_cursor_cm
@@ -310,7 +278,7 @@ def test_read_first_returns_none_when_empty():
         assert result.payload is None
 
 
-def test_read_first_handles_db_error(unwrap):
+def test_read_first_handles_db_error(unwrapped_backend):
     with unwrapped_backend(default_config) as backend:
         backend.mock_conn.cursor.side_effect = Exception("boom")
 
@@ -320,7 +288,7 @@ def test_read_first_handles_db_error(unwrap):
         assert "boom" in result.error
 
 
-def test_read_first_rejects_empty_id(unwrap, assert_error):
+def test_read_first_rejects_empty_id(assert_error, unwrapped_backend):
     with unwrapped_backend(default_config) as backend:
         mock_cursor_cm = make_mock_cursor(rows=[None])  # fetchone() returns None
         backend.mock_conn.cursor.return_value = mock_cursor_cm
@@ -329,7 +297,7 @@ def test_read_first_rejects_empty_id(unwrap, assert_error):
         assert_error(result, "Series id not set for Read first", None)
 
 
-def test_read_last_returns_daily_value_point(unwrap, fixed_now):
+def test_read_last_returns_daily_value_point(fixed_now, unwrapped_backend):
     with unwrapped_backend(default_config) as backend:
         now = fixed_now()
         midnight_today = datetime(now.year, now.month, now.day, 0, 0, 0, tzinfo=UTC)
@@ -342,6 +310,74 @@ def test_read_last_returns_daily_value_point(unwrap, fixed_now):
         assert result.payload == SeriesPoint(series_id=1, time=midnight_today, close=11)
 
 
-def test_fail_on_execute(assert_error):
-    with make_backend(default_config, execute_error=True) as result:
+def test_fail_on_execute(assert_error, make_backend_context):
+    with make_backend_context(default_config, execute_error=True) as result:
         assert_error(result, "Database startup failed", "Execute boom!")
+
+
+def test_get_series_states_loads_min_max(fixed_now, unwrapped_backend):
+
+    with unwrapped_backend(default_config) as backend:
+        now = fixed_now()
+        # Two series in cold table
+
+        cold_rows = [
+            (1, now - timedelta(days=10), now - timedelta(days=1)),
+            (2, now - timedelta(days=20), now - timedelta(days=5)),
+        ]
+
+        hot_rows = [
+            (3, now - timedelta(hours=6), now - timedelta(hours=1)),
+        ]
+
+        sweep_start = now - timedelta(days=7)
+        next_sweep = now + timedelta(days=1)
+        sweep_result = [(1, next_sweep, sweep_start), (4, next_sweep, sweep_start)]
+
+        # _execute_read() calls cursor().execute(); cursor().fetchall()
+        # get_series_states() calls _execute_read() twice: cold, then hot.
+        # So we drive both via fetchall.side_effect on the single mock_cursor.
+        backend.mock_conn.cursor.return_value.fetchall.side_effect = [cold_rows, hot_rows, sweep_result]
+        result = backend.get_series_states()
+        assert result.ok
+
+        state = result.payload
+
+        # Validate dict keys
+        assert set(state.keys()) == {1, 2, 3, 4}
+
+        # Validate series 1 (cold and sweep)
+        s1: SeriesState = state[1]
+        assert (s1.first_point, s1.last_point) == (cold_rows[0][1], cold_rows[0][2])
+        assert s1.sweep_start == sweep_start
+        assert s1.next_sweep == next_sweep
+        assert not s1.needs_save
+
+        # Validate series 2 (cold and no sweep)
+        s2: SeriesState = state[2]
+        assert (s2.first_point, s2.last_point) == (cold_rows[1][1], cold_rows[1][2])
+        assert s2.sweep_start is None
+        assert s2.next_sweep is None
+        assert s2.needs_save
+
+        # Validate series 3 (hot and no sweep)
+        s3: SeriesState = state[3]
+        assert (s3.first_point, s3.last_point) == (hot_rows[0][1], hot_rows[0][2])
+        assert s3.needs_save
+
+        # Validate series 4 (only sweep)
+        s4: SeriesState = state[4]
+        assert s4.first_point is None
+        assert s4.last_point is None
+        assert s4.sweep_start == sweep_start
+        assert s4.next_sweep == next_sweep
+        assert not s4.needs_save
+
+
+def test_get_series_states_error(assert_error, unwrapped_backend):
+    with unwrapped_backend(default_config) as backend:
+        mock_cursor_cm = make_mock_cursor(rows=[None])  # fetchone() returns None
+        mock_cursor_cm.execute.side_effect = Exception("Boom!")
+        backend.mock_conn.cursor.return_value = mock_cursor_cm
+        result = backend.get_series_states()
+        assert_error(result, "get_series_states_range operation failed", "Boom!")

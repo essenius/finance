@@ -186,19 +186,13 @@ BEGIN
     IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'series_type') THEN
         CREATE TYPE series_type AS ENUM ('candle', 'value');
     END IF;
-END$$;
 
-DO $$
-BEGIN
     IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'series_retention') THEN
         CREATE TYPE series_retention AS ENUM ('short_lived', 'long_lived');
     END IF;
-END$$;
 
-DO $$
-BEGIN
-    IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'completion_policy') THEN
-        CREATE TYPE completion_policy AS ENUM ('interval_close', 'next_day');
+    IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'week_day') THEN
+        CREATE TYPE week_day AS ENUM ('mon','tue','wed','thu','fri','sat','sun');
     END IF;
 END$$;
 
@@ -210,7 +204,12 @@ CREATE TABLE IF NOT EXISTS series (
     series_type series_type NOT NULL,
     retention series_retention NOT NULL,
     bootstrap_history TEXT NOT NULL,
-    completion_policy completion_policy NOT NULL,
+    timezone TEXT NOT NULL,
+    publication_offset TEXT NOT NULL,
+    market_open TIME WITHOUT TIME ZONE NOT NULL,
+    market_close TIME WITHOUT TIME ZONE NOT NULL,
+    week_start week_day NOT NULL,
+    week_end week_day NOT NULL,
 
     UNIQUE(asset_id, code)
 );
@@ -249,5 +248,16 @@ SELECT
     s.retention,
     s.series_type,
     s.bootstrap_history,
-    s.completion_policy
+    s.timezone,
+    s.publication_offset,
+    s.market_open,
+    s.market_close,
+    s.week_start,
+    s.week_end
 FROM series s JOIN asset a ON s.asset_id = a.id ORDER BY series_id ASC;
+
+CREATE TABLE IF NOT EXISTS series_state (
+    series_id INT PRIMARY KEY REFERENCES series(id),
+    next_sweep TIMESTAMPTZ NOT NULL,
+    sweep_start TIMESTAMPTZ NOT NULL
+);

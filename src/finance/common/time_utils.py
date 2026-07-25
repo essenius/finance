@@ -2,8 +2,10 @@
 # Licensed under the Apache License, Version 2.0. See the LICENSE file for details.
 # File: src/finance/common/time_utils.py
 
+import calendar
 import re
-from datetime import UTC, date, datetime, time, timedelta
+from datetime import UTC, date, datetime, time, timedelta, tzinfo
+from zoneinfo import ZoneInfo
 
 DURATION_UNITS = {
     "s": 1,
@@ -13,6 +15,8 @@ DURATION_UNITS = {
     "w": 604800,
     "y": 31557600,  # 365.25 days
 }
+
+WEEKDAY_ABBR_MAP = {abbr.lower(): i for i, abbr in enumerate(calendar.day_abbr)}
 
 
 def parse_duration(text: str, context: str | None = None) -> timedelta:
@@ -42,7 +46,90 @@ def check_duration_in(content: dict, name: str, default: str | None = None) -> s
 
 def normalize_db_time(value):
     if isinstance(value, datetime):
-        return value.astimezone(UTC)
+        if value.tzinfo is None:
+            # Naive → treat as UTC
+            return value.replace(tzinfo=UTC, microsecond=0)
+        return value.astimezone(UTC).replace(microsecond=0)
     if isinstance(value, date):
         return datetime.combine(value, time.min, tzinfo=UTC)
     raise TypeError(f"Unexpected time type: {type(value)}")
+
+
+def now_second_precision():
+    return datetime.now(tz=UTC).replace(microsecond=0)
+
+
+def parse_weekday(name: str) -> int:
+    key = name.lower()
+    if key not in WEEKDAY_ABBR_MAP:
+        raise ValueError(f"Cannot understand day '{key}'.")
+    return WEEKDAY_ABBR_MAP[key]
+
+
+def snap_to(timestamp: datetime, range: timedelta) -> datetime:
+    delta = range.total_seconds()
+    snapped = (timestamp.timestamp() // delta) * delta
+    return datetime.fromtimestamp(snapped, tz=timestamp.tzinfo)
+
+
+def parse_time(value):
+    if isinstance(value, int):
+        # YAML sexagesimal integer (expects only hh:mm)
+        hours = value // 60
+        minutes = value % 60
+        if hours > 23:
+            raise ValueError(
+                f"Cannot understand sexagesimal value '{value}' ({hours}:{minutes}). Use hh:mm only or use quotes."
+            )
+        return time(hour=hours, minute=minutes)
+
+    # used "hh:mm"
+    value = str(value).strip().lower()
+    if value == "min":
+        return time.min
+    if value == "max":
+        return time.max
+
+    # Normalize single-digit hour → pad to HH:MM...
+    parts = value.split(":")
+    if len(parts[0]) == 1:
+        parts[0] = "0" + parts[0]
+        value = ":".join(parts)
+    try:
+        return time.fromisoformat(value)
+    except Exception:
+        raise ValueError(f"Cannot understand time '{value}'.") from None
+
+
+def write_time(t: time) -> str:
+    return time.isoformat(t)
+
+
+def parse_timezone(s: str) -> ZoneInfo:
+    try:
+        return ZoneInfo(s)
+    except Exception:
+        raise ValueError(f"Cannot understand timezone '{s}'.") from None
+
+
+def write_timezone(tz: tzinfo) -> str:
+    # Special-case Python's UTC
+    if tz is UTC:
+        return "UTC"
+
+    # ZoneInfo: use canonical key
+    if hasattr(tz, "key"):
+        return tz.key
+
+    raise ValueError("Cannot write timezone without key field")
+
+
+def parse_datetime(s: str) -> datetime:
+    try:
+        return datetime.fromisoformat(s) if s is not None else None
+    except Exception:
+        raise ValueError(f"Cannot understand datetime '{s}'.") from None
+
+
+def write_datetime(t: time) -> str:
+    return datetime.isoformat(t)

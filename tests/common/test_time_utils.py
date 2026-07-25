@@ -2,11 +2,25 @@
 # Licensed under the Apache License, Version 2.0. See the LICENSE file for details.
 # File: tests/common/test_time_utils.py
 
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime, time, timedelta, timezone
+from zoneinfo import ZoneInfo
 
 import pytest
 
-from finance.common.time_utils import check_duration_in, normalize_db_time, parse_duration
+from finance.common.time_utils import (
+    check_duration_in,
+    normalize_db_time,
+    now_second_precision,
+    parse_datetime,
+    parse_duration,
+    parse_time,
+    parse_timezone,
+    parse_weekday,
+    snap_to,
+    write_datetime,
+    write_time,
+    write_timezone,
+)
 
 # ---------------
 # Parse duration
@@ -48,8 +62,10 @@ def test_check_duration_in():
 
 def test_normalize_db_time_datetime(fixed_now):
     now = fixed_now()
-    result = normalize_db_time(now)
-    assert result == now
+    assert normalize_db_time(now) == now
+
+    naive_now = datetime(2026, 7, 14)
+    assert normalize_db_time(naive_now) == datetime(2026, 7, 14, tzinfo=UTC)
 
 
 def test_normalize_db_time_date(fixed_now):
@@ -63,3 +79,86 @@ def test_normalize_db_time_error():
     with pytest.raises(TypeError) as exc_info:
         normalize_db_time("qx")
     assert str(exc_info.value) == "Unexpected time type: <class 'str'>"
+
+
+def test_parse_weekday():
+    assert parse_weekday("sat") == 5
+    with pytest.raises(ValueError) as exc_info:
+        parse_weekday("bogus")
+    assert str(exc_info.value) == "Cannot understand day 'bogus'."
+
+
+def test_parse_write_time():
+    time_str = write_time(time.min)
+    assert time_str == "00:00:00"
+    assert parse_time("min") == time.min
+
+    time_str = write_time(time.max)
+    assert time_str == "23:59:59.999999"
+    assert parse_time("max") == time.max
+
+    a_datetime = parse_time(955)  # 15:55 in sexagesimal
+    assert a_datetime == time(hour=15, minute=55)
+    assert write_time(a_datetime) == "15:55:00", "writing always in seconds"
+
+    a_datetime = parse_time("9:00:05")
+    assert a_datetime == time(hour=9, second=5), "string parsing uses seconds too"
+    time_str = write_time(a_datetime)
+    assert time_str == "09:00:05"
+    assert parse_time(time_str) == a_datetime
+
+    with pytest.raises(ValueError) as exc_info:
+        parse_time(58230)  # 16:10:30"
+    assert str(exc_info.value) == "Cannot understand sexagesimal value '58230' (970:30). Use hh:mm only or use quotes."
+    with pytest.raises(ValueError) as exc_info:
+        parse_time("bogus")
+    assert str(exc_info.value) == "Cannot understand time 'bogus'."
+
+
+def test_snap_to():
+    base = datetime(2026, 7, 10, 9, 30, tzinfo=UTC)
+    interval = timedelta(minutes=15)
+    assert snap_to(base, interval) == base, "base"
+    highest_snapped_back = snap_to(base + interval - timedelta(seconds=1), interval)
+    assert highest_snapped_back == base, "base highest snapped back"
+    assert snap_to(base + interval, interval) == base + interval, "next snap"
+
+
+def test_now_second_precision():
+    now = datetime.now(tz=UTC)
+    on_seconds = now_second_precision()
+    assert on_seconds.microsecond == 0
+    assert now - on_seconds < timedelta(seconds=1)
+
+
+def test_parse_write_timezone():
+    timezone_str = "Pacific/Honolulu"
+    timezone_obj = parse_timezone(timezone_str)
+    assert timezone_obj == ZoneInfo(timezone_str)
+    assert write_timezone(timezone_obj) == timezone_str
+
+    timezone_str = write_timezone(UTC)
+    assert timezone_str == "UTC"
+
+    # note this is not orthogonal. Writing datetime.UTC returns ZoneInfo("UTC")
+    # this is because datetime.UTC uses the legacy format without key
+    utc = parse_timezone(timezone_str)
+    assert utc.key == timezone_str
+
+    with pytest.raises(ValueError) as exc_info:
+        parse_timezone("bogus")
+    assert str(exc_info.value) == "Cannot understand timezone 'bogus'."
+
+    with pytest.raises(ValueError) as exc_info:
+        write_timezone(timezone(timedelta(hours=3)))
+    assert str(exc_info.value) == "Cannot write timezone without key field"
+
+
+def test_parse_write_datetime():
+    dt = datetime(2026, 5, 16, 9, tzinfo=UTC)
+    dt_str = write_datetime(dt)
+    assert dt_str == "2026-05-16T09:00:00+00:00"
+    assert parse_datetime(dt_str) == dt
+    with pytest.raises(ValueError) as exc_info:
+        parse_datetime("bogus")
+    assert str(exc_info.value) == "Cannot understand datetime 'bogus'."

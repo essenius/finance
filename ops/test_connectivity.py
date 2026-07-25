@@ -2,10 +2,11 @@
 # Licensed under the Apache License, Version 2.0. See the LICENSE file for details.
 # File: ops/test_connectivity.py
 
-from datetime import UTC, datetime
 from pathlib import Path
 
+from finance.common.dict_utils import deep_merge
 from finance.common.model import SeriesPoint
+from finance.common.time_utils import now_second_precision
 from finance.config.loader import ConfigLoader
 from finance.main_utils import reconcile_registry, unwrap
 from finance.registry.registry import Registry
@@ -46,7 +47,9 @@ def main():
     registry.load_yaml_assets(asset_list)
     registry.load_yaml_series(series_list)
 
-    backend_result = TimescaleBackend.from_config(config=secrets | env_cfg, series_by_id=registry.get_series_by_id)
+    backend_result = TimescaleBackend.from_config(
+        config=deep_merge(secrets, env_cfg), series_by_id=registry.get_series_by_id
+    )
     if not backend_result.ok:
         print("Backend creation failed:", backend_result.reason, backend_result.error)
         return
@@ -74,7 +77,7 @@ def main():
     for entry in series:
         print(entry)
 
-    now = datetime.now(tz=UTC)
+    now = now_second_precision()
     print(f"writing point at {now}")
     id = registry.all_series()[0].id
     point = SeriesPoint(id, now, close=123.48)

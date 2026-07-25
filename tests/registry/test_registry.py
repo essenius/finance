@@ -4,7 +4,7 @@
 
 import pytest
 
-from finance.common.model import Retention
+from finance.common.string_enums import Retention
 from finance.registry.registry import Registry
 
 # ------------------------------------------------------------

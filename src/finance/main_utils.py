@@ -8,7 +8,8 @@ from pathlib import Path
 from typing import TypeVar
 
 from finance.common.applogger import AppLogger
-from finance.common.model import FetchResult, Result, Series
+from finance.common.model import FetchResult, Series
+from finance.common.result import Result
 from finance.registry.registry import Registry
 from finance.state.state import State
 from finance.timeseries.timescale_backend import TimescaleBackend
@@ -94,17 +95,21 @@ def process_result(result: FetchResult, state: State, series: Series) -> bool:
     if batch_first > batch_last:
         batch_first, batch_last = batch_last, batch_first
 
-    logger.debug(f"Retrieved range for {series.name}: {batch_first.astimezone().isoformat()} - {batch_last.astimezone().isoformat()}, {len(payload)} records.")
+    logger.debug(
+        f"Retrieved range for {series.name}: {batch_first.isoformat()} - {batch_last.isoformat()}, {len(payload)} records."
+    )
 
     for point in payload:
-        ingest_result = state.ingest(series, point)
+        ingest_result = state.ingest(point)
         # log any errors
         unwrap(ingest_result, throw=False)
         if not ingest_result.ok:
             all_ok = False
 
     if all_ok:
-        state.update_range(point.series_id, batch_first, batch_last)
+        state.update_state(point.series_id, batch_first, batch_last)
         range = state.series[point.series_id]
-        logger.debug(f"Range for {series.name} after updating: {range.first_point.astimezone().isoformat()} - {range.last_point.astimezone().isoformat()}")
+        logger.debug(
+            f"Range for {series.name} after updating: {range.first_point.isoformat()} - {range.last_point.isoformat()}"
+        )
     return all_ok

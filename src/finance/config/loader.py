@@ -11,21 +11,14 @@ from zoneinfo import ZoneInfo
 import yaml
 from dotenv import dotenv_values
 
+from finance.common.dict_utils import deep_merge
+from finance.common.result import Result
+from finance.common.string_enums import Retention, SeriesType, SupportedProviders
 from finance.common.time_utils import check_duration_in
 
 from ..common.applogger import LOG_LEVELS
 from ..common.introspection import here
-from ..common.model import (
-    BACKEND,
-    Asset,
-    CompletionPolicy,
-    ProviderConfig,
-    Result,
-    Retention,
-    Series,
-    SeriesType,
-    SupportedProviders,
-)
+from ..common.model import BACKEND, Asset, ProviderConfig, Series
 from ..common.paths import resolve_config_path
 
 
@@ -83,9 +76,6 @@ class ConfigLoader:
             if key.endswith("_API_KEY"):
                 provider = key[:-8].lower()  # strip "_API_KEY"
                 api_keys[provider] = value
-
-            #            elif key.startswith("INFLUX_"):
-            #                influx[key[7:].lower()] = value
             elif key.startswith(f"{BACKEND.upper()}_"):
                 timescaledb[key[len(BACKEND) + 1 :].lower()] = value
             elif key == "FINANCE_CONFIG":
@@ -123,11 +113,8 @@ def require(cfg: dict, key: str, context: str) -> str | dict:
 
 
 def apply_logging_config(config: dict) -> None:
-
     level_name = config.get("logging", {}).get("level", "info").lower()
-
     py_level = LOG_LEVELS.get(level_name, logging.INFO)
-
     logging.basicConfig(level=py_level, format="%(message)s")
 
 
@@ -170,7 +157,6 @@ def check_template(name: str, input: dict) -> None:
     """Check the values early so of there are errors, it's clear where they are
     (i.e. in the template and not in the asset definition)
     """
-    require(input, "interval", f"template '{name}'")
     check_duration_in(input, "interval")
     check_duration_in(input, "bootstrap_history")
     series_type = input.get("series_type")
@@ -179,9 +165,7 @@ def check_template(name: str, input: dict) -> None:
     retention = input.get("retention")
     if retention is not None:
         Retention.validate(retention)
-    completion_policy = input.get("completion_policy")
-    if completion_policy is not None:
-        CompletionPolicy.validate(completion_policy)
+    check_duration_in(input, "publication_offset")
 
 
 def check_series_templates(raw_templates: dict | None) -> Result[dict[str, dict]]:
@@ -226,13 +210,16 @@ def normalize_assets_and_series(
             series_config = require(cfg, "series", context)
 
             for code, series_def in series_config.items():
-                if isinstance(series_def, str):
-                    template = series_template.get(series_def)
-                    if not template:
-                        return asset_parse_error(asset_name, f"Could not find series template '{series_def}'")
-                    config = template
+                if isinstance(series_def, dict):
+                    config = dict(series_def)
                 else:
-                    config = series_def
+                    config = {}
+                    template_list = series_def if isinstance(series_def, list) else [series_def]
+                    for name in template_list:
+                        template = series_template.get(name)
+                        if template is None:
+                            return asset_parse_error(asset_name, f"Could not find series template '{name}'")
+                        config = deep_merge(config, template)
                 require(config, "interval", context)
                 series = Series.create(asset=asset, code=code, config=config)
                 series_list.append(series)

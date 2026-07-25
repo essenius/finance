@@ -2,12 +2,14 @@
 # Licensed under the Apache License, Version 2.0. See the LICENSE file for details.
 # File: tests/timeseries/conftest.py
 
+from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
-from unittest.mock import MagicMock, Mock
+from unittest.mock import MagicMock, Mock, patch
 
 import pytest
 
-from finance.common.model import Retention, SeriesPoint
+from finance.common.model import Series, SeriesPoint
+from finance.common.string_enums import Retention
 from finance.timeseries.timescale_backend import TimescaleBackend, TimescaleConfig
 
 
@@ -70,3 +72,43 @@ def make_entries(make_entry):
         return [make_entry(fields={"v": i}, timestamp=i) for i in range(n)]
 
     return _make
+
+
+@pytest.fixture
+def make_backend_context():
+    def series_by_id(id: int) -> Series:
+        return None
+
+    @contextmanager
+    def _make_backend(config, execute_error=False):  # returns Result[TimescaleBackend]
+        fake_cursor = MagicMock()
+        fake_cursor.execute.return_value = None
+
+        fake_conn = MagicMock()
+        fake_conn.cursor.return_value.__enter__.return_value = fake_cursor
+
+        if execute_error:
+            fake_cursor.execute.side_effect = Exception("Execute boom!")
+
+        with patch("psycopg.connect", return_value=fake_conn) as mock_connect:
+            result = TimescaleBackend.from_config(config, series_by_id)
+
+            if result.ok:
+                backend = result.payload
+                backend.mock_connect = mock_connect
+                backend.mock_conn = fake_conn
+                backend.mock_cursor = fake_cursor
+
+            yield result
+
+    return _make_backend
+
+
+@pytest.fixture
+def unwrapped_backend(make_backend_context):
+    @contextmanager
+    def _unwrapped_backend(config, execute_error=False):
+        with make_backend_context(config, execute_error) as result:
+            yield result.payload
+
+    return _unwrapped_backend

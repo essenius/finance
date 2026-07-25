@@ -6,7 +6,7 @@ import os
 
 import pytest
 
-from finance.common.model import BACKEND, BACKEND_UPPER
+from finance.common.model import BACKEND
 from finance.config.loader import ConfigLoader
 
 
@@ -20,12 +20,13 @@ def clean_env(monkeypatch):
 
 def test_load_env_secrets_timescaledb(tmp_path, unwrap):
     env = tmp_path / ".env"
-    env.write_text(f"{BACKEND_UPPER}_URL=http://x\n{BACKEND_UPPER}_DB=db\nFRED_API_KEY=abc\n")
+    backend_upper = BACKEND.upper()
+    env.write_text(f"{backend_upper}_URL=http://x\n{backend_upper}_DB=db\nFRED_API_KEY=abc\n")
 
     fake_env = {
         "FINANCE_CONFIG": "my_config.yaml",
-        f"{BACKEND_UPPER}_USER": "u",
-        f"{BACKEND_UPPER}_PASSWORD": "p",
+        f"{backend_upper}_USER": "u",
+        f"{backend_upper}_PASSWORD": "p",
         "YAHOO_API_KEY": "yahoo123",
         "FRED_API_KEY": "overwritten",  # should be overridden by .env
     }

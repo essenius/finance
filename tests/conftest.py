@@ -2,15 +2,16 @@
 # Licensed under the Apache License, Version 2.0. See the LICENSE file for details.
 # File: tests/conftest.py
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, time
 from pathlib import Path
 from unittest.mock import Mock
 
 import pytest
 
-from finance.common.model import Asset, CompletionPolicy, Result, Retention, Series, SeriesState, SeriesType
+from finance.common.model import Asset, Series
+from finance.common.result import Result
+from finance.common.string_enums import Retention, SeriesType
 from finance.state.state import State
-from finance.state.storage import StateStorage
 from finance.state.wal import JsonlWAL
 from finance.timeseries.timescale_backend import TimescaleBackend
 
@@ -27,28 +28,27 @@ class MockStorage:
 
 
 @pytest.fixture
-def state_deps(tmp_path):
+def state_deps():
     wal = Mock()
     backend = Mock()
-    storage = StateStorage(tmp_path / "state.json")
 
     wal.peek.return_value = None
     wal.read_all.return_value = []
     wal.dequeue_multiple.side_effect = lambda n: n
     wal.enqueue.return_value = None
 
-    return backend, wal, storage
+    return backend, wal
 
 
 @pytest.fixture
-def state_env(state_deps) -> tuple[State, TimescaleBackend, JsonlWAL, StateStorage]:
+def state_env(state_deps) -> tuple[State, TimescaleBackend, JsonlWAL]:
     """Provides a State with mocked WAL + TS client + resolved path."""
 
-    backend, wal, storage = state_deps
-    state = State(backend, wal, storage)
-    state._rebuild_measurement_state = lambda series_id: SeriesState()
+    backend, wal = state_deps
+    state = State(backend, wal)
+    # state._rebuild_measurement_state = lambda series_id: SeriesState()
 
-    return state, backend, wal, storage
+    return state, backend, wal
 
 
 @pytest.fixture
@@ -58,7 +58,7 @@ def fixed_now():
 
 @pytest.fixture
 def state(state_env) -> State:
-    state, _, _, _ = state_env
+    state, _, _ = state_env
     return state
 
 
@@ -139,7 +139,12 @@ def make_series(make_asset):
             "series_type": SeriesType.VALUE,
             "retention": Retention.SHORT_LIVED,
             "bootstrap_history": "5d",
-            "completion_policy": CompletionPolicy.INTERVAL_CLOSE,
+            "timezone": UTC,
+            "publication_offset": None,
+            "market_open": time.min,
+            "market_close": time.max,
+            "week_start": "mon",
+            "week_end": "fri",
         }
         params = defaults | overrides
         params["name"] = f"{asset.name}:{params['code']}"

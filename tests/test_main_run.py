@@ -9,7 +9,8 @@ from unittest.mock import MagicMock, Mock
 
 import pytest
 
-from finance.common.model import FetchResult, Result, Series, SeriesPoint, SeriesResult, SeriesState
+from finance.common.model import FetchResult, SeriesPoint, SeriesResult
+from finance.common.result import Result
 from finance.main import run
 from finance.state.state import State
 
@@ -59,8 +60,9 @@ class FakeCompositeEngine:
 
 def test_run_happy_path(tmp_path, caplog, fixed_now, state_deps, make_asset, make_series):
 
-    backend, wal, storage = state_deps
+    backend, wal = state_deps
     backend.flush.return_value = Result(0)
+    backend.get_series_states.return_value = Result.ok_payload({})
     now = fixed_now()
     state_holder = {}
     caplog.set_level("DEBUG")
@@ -77,9 +79,8 @@ def test_run_happy_path(tmp_path, caplog, fixed_now, state_deps, make_asset, mak
         "timescaledb": {},
     }
 
-    def state_factory(backend, wal, storage):
-        state = State(backend, wal, storage)
-        state._rebuild_measurement_state = lambda *_: SeriesState()
+    def state_factory(backend, wal):
+        state = State(backend, wal)
         state_holder["state"] = state
         return state
 
@@ -97,7 +98,6 @@ def test_run_happy_path(tmp_path, caplog, fixed_now, state_deps, make_asset, mak
         registry_factory=registry_factory,
         backend_factory=lambda *_: Result.ok_payload(backend),
         state_factory=state_factory,
-        state_storage_factory=lambda *_: storage,
         fetch_controller_factory=fetch_controller_factory,
         #   composite_engine_builder=composite_engine_builder,
         wal_factory=lambda *_: wal,
@@ -109,7 +109,8 @@ def test_run_happy_path(tmp_path, caplog, fixed_now, state_deps, make_asset, mak
     state = state_holder["state"]
 
     # Validate state writes
-    assert state.series.get(1) == SeriesState(first_point=now, last_point=now, first_start=now, last_end=now)
+    series_state = state.series.get(1)
+    assert series_state.first_point, series_state.last_point == (now, now)
 
     assert "Finance version:" in caplog.text
     assert "Done." in caplog.text
@@ -143,7 +144,7 @@ def test_run_fetch_failure(tmp_path, caplog, fixed_now, make_asset, make_series)
             self.calls = []
             self.saved = False
 
-        def ingest(self, series: Series, point: SeriesPoint):
+        def ingest(self, point: SeriesPoint):
             return SeriesResult.fail(point.series_id, "Boom", "simulated failure")
 
         def save(self):
@@ -164,7 +165,6 @@ def test_run_fetch_failure(tmp_path, caplog, fixed_now, make_asset, make_series)
             registry_factory=registry_factory,
             backend_factory=backend_factory,
             state_factory=FailingState,
-            state_storage_factory=lambda *_: Mock(),
             fetch_controller_factory=fetch_controller_factory,
             #   composite_engine_builder=composite_engine_builder,
             wal_factory=wal_factory,

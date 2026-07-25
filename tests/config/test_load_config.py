@@ -4,7 +4,8 @@
 
 from datetime import timedelta
 
-from finance.common.model import Asset, ProviderConfig, Retention, Series, SeriesType
+from finance.common.model import Asset, ProviderConfig, Series
+from finance.common.string_enums import Retention, SeriesType
 from finance.config.loader import ConfigLoader, check_series_templates, load_business_config, load_yaml_config
 
 
@@ -23,12 +24,18 @@ def test_load_config_end_to_end(tmp_path, unwrap):
 environment:
   paths:
     wal: mywal.jsonl
-    state: state.json
 
 business:
   providers:
     yahoo:
-      timezone: UTC
+      timeout: 10s
+
+  series_templates:
+    daily:
+      interval: 1d
+    24x7:
+      week_start: sun
+      week_end: sat
 
   assets:
     spx:
@@ -40,8 +47,7 @@ business:
         instrument: index
         exchange: NYSE
       series:
-        daily:
-          interval: 1d
+        daily: [daily, 24x7]
 
   composites:
     spread:
@@ -59,7 +65,7 @@ business:
     cfg = unwrap(result)
 
     # providers
-    assert cfg["providers"]["yahoo"].timezone == "UTC"
+    assert cfg["providers"]["yahoo"].timeout == "10s"
 
     # assets
     assert len(cfg["assets"]) == 1
@@ -99,10 +105,8 @@ business:
     assert cfg["secrets"]["timescaledb"]["db"] == "db1"
 
     assert cfg["paths"]["wal"].is_absolute()
-    assert cfg["paths"]["state"].is_absolute()
 
     assert cfg["paths"]["wal"].name == "mywal.jsonl"
-    assert cfg["paths"]["state"].name == "state.json"
 
 
 def test_load_config_missing_file(tmp_path, assert_error):
@@ -123,7 +127,6 @@ def test_load_config_dev_mode(monkeypatch, tmp_path, unwrap):
     result = loader.load()
     cfg = unwrap(result)
     expected_params = {
-        "timezone": "UTC",
         "timeout": "10s",
         "history_limits": {},
     }
@@ -144,7 +147,6 @@ business: {}
 environment:
   paths:
     wal: "data/mywal.jsonl"
-    state: "data/mystate.json"
 """)
 
     env_file.write_text("TIMESCALEDB_URL=http://x\nTIMESCALEDB_DB=db\nFINANCE_CONFIG=my_config.yaml")
@@ -154,7 +156,6 @@ environment:
     cfg = unwrap(result)
 
     assert cfg["paths"]["wal"] == tmp_path / "data" / "mywal.jsonl"
-    assert cfg["paths"]["state"] == tmp_path / "data" / "mystate.json"
 
 
 def test_load_check_series_templates_minimal(unwrap):
@@ -171,18 +172,12 @@ def test_load_check_series_templates_maximal(unwrap):
             "series_type": "value",
             "retention": "short_lived",
             "bootstrap_history": "30d",
-            "completion_policy": "next_day",
+            "publication_offset": "16h",
         }
     }
     result = check_series_templates(input)
     output = unwrap(result)
     assert input == output
-
-
-def test_load_check_series_missing_interval(assert_error):
-    input = {"t1": {}}
-    result = check_series_templates(input)
-    assert_error(result, "Could not parse series template 't1'", "Missing required field 'interval'")
 
 
 def test_load_business_config_template_error(assert_error):

@@ -5,84 +5,14 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field, replace
-from datetime import UTC, datetime, timedelta
-from enum import StrEnum
-from typing import Generic, TypeVar
+from datetime import UTC, datetime, time, timedelta
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from finance.common.time_utils import check_duration_in, parse_duration
+from finance.common.result import MeasurementResult
+from finance.common.string_enums import Candle, Retention, SeriesType
+from finance.common.time_utils import check_duration_in, parse_duration, parse_time, parse_weekday
 
 BACKEND = "timescaledb"
-BACKEND_UPPER = BACKEND.upper()
-BACKEND_LEN = len(BACKEND)
-RESOLUTION = "resolution"
-
-
-class StringEnum(StrEnum):
-    @classmethod
-    def contains(cls, value: str) -> bool:
-        return value in cls._value2member_map_
-
-    @classmethod
-    def values(cls) -> list[str]:
-        return [entry.value for entry in cls]
-
-    @classmethod
-    def validate(cls, value: str, context: str = "") -> str:
-        if context != "":
-            context = f" in {context}"
-        try:
-            return cls(value).value
-        except ValueError:
-            raise ValueError(f"Invalid {cls.__name__}{context}: {value!r}. Allowed: {cls.values()}") from None
-
-
-"""
-class Resolution(StringEnum):
-    INTRADAY = "intraday"
-    DAILY = "daily"
-
-
-INTRADAY = Resolution.INTRADAY
-DAILY = Resolution.DAILY
-"""
-
-
-class Candle(StringEnum):
-    OPEN = "open"
-    HIGH = "high"
-    LOW = "low"
-    CLOSE = "close"
-    VOLUME = "volume"
-
-    @classmethod
-    def ordered(cls) -> list[Candle]:
-        return [cls.OPEN, cls.HIGH, cls.LOW, cls.CLOSE, cls.VOLUME]
-
-
-PRICE = ["price"]
-
-
-class Retention(StringEnum):
-    # note: defined in setup.sql too
-    SHORT_LIVED = "short_lived"
-    LONG_LIVED = "long_lived"
-
-
-class SeriesType(StringEnum):
-    # note: defined in setup.sql too
-    CANDLE = "candle"
-    VALUE = "value"
-
-
-class SupportedProviders(StringEnum):
-    YAHOO = "yahoo"
-    ECB = "ecb"
-    FRED = "fred"
-
-
-class CompletionPolicy(StringEnum):
-    INTERVAL_CLOSE = "interval_close"
-    NEXT_DAY = "next_day"
 
 
 @dataclass(frozen=True)
@@ -109,23 +39,6 @@ class SeriesPoint:
 
         return result
 
-    # @staticmethod
-    # def fields() -> list[str]:
-    #    return [Candle.CLOSE]
-
-    # @staticmethod
-    # def map(raw_fields: dict):
-    #    return {"value": raw_fields.get(Candle.CLOSE)}
-
-    # @classmethod
-    # def normalize_time(cls, dt: datetime) -> datetime:
-    #    """Snap to midnight UTC. Good for daily points; must be overridden for intraday"""
-    #    return datetime(dt.year, dt.month, dt.day, 0, 0, tzinfo=UTC)
-
-    # @staticmethod
-    # def factory(series: Series) -> Callable[..., SeriesPoint]:
-    #    return partial(SeriesPoint, series_id=series.id)
-
     @staticmethod
     def from_dict(data: dict) -> SeriesPoint:
 
@@ -149,193 +62,6 @@ class SeriesPoint:
         return result
 
 
-'''
-@dataclass(frozen=True)
-class CandlePoint(SeriesPoint):
-    """
-    Point for daily candles. The time is the start of the day (UTC) of publication.
-    so e.g. 26-Jun-2026T00:00:00Z means the daily value published June 26
-    """
-
-    close: float
-    open: float | None = None
-    high: float | None = None
-    low: float | None = None
-    volume: float | None = None
-
-    def to_dict(self) -> dict:
-        return {
-            **super().to_dict(),
-            "type": "candle",
-            "open": self.open,
-            "high": self.high,
-            "low": self.low,
-            "close": self.close,
-            "volume": self.volume,
-        }
-
-    @staticmethod
-    def fields() -> list[str]:
-        return Candle.values()
-
-    @staticmethod
-    def map(raw_fields: dict):
-        return {k: raw_fields[k] for k in raw_fields if k in Candle.values()}
-
-    @classmethod
-    def from_base(cls, base: SeriesPoint, data: dict) -> CandlePoint:
-        return cls(
-            series_id=base.series_id,
-            time=base.time,
-            open=data["open"],
-            high=data["high"],
-            low=data["low"],
-            close=data["close"],
-            volume=data["volume"],
-        )
-
-    def __repr__(self):
-        parent = super().__repr__()
-        return f"{parent[:-1]}, open={self.open}, high={self.high}, low={self.low}, close={self.close}, volume={self.volume})"
-
-
-@dataclass(frozen=True)
-class DailyValuePoint(SeriesPoint):
-    """
-    Point for daily values. The time is the start of the day (UTC) of publication.
-    so e.g. 26-Jun-2026T00:00:00Z means the daily value published June 26
-    """
-
-    value: float
-
-    def to_dict(self) -> dict:
-        return {
-            **super().to_dict(),
-            "type": "daily_value",
-            "value": self.value,
-        }
-
-    @classmethod
-    def from_base(cls, base: SeriesPoint, data: dict) -> DailyValuePoint:
-        return cls(
-            series_id=base.series_id,
-            time=base.time,
-            value=data["value"],
-        )
-
-    def __repr__(self):
-        parent = super().__repr__()
-        return f"{parent[:-1]}, value={self.value})"
-
-
-@dataclass(frozen=True)
-class IntradayPoint(SeriesPoint):
-    """
-    Point for intraday values. The time is the published time of the value.
-    """
-
-    value: float
-
-    @classmethod
-    def normalize_time(cls, dt: datetime) -> datetime:
-        """round to seconds"""
-        return datetime.fromtimestamp(round(dt.timestamp()), tz=dt.tzinfo)
-
-    def to_dict(self) -> dict:
-        return {
-            **super().to_dict(),
-            "type": "intraday",
-            "value": self.value,
-        }
-
-    @classmethod
-    def from_base(cls, base: SeriesPoint, data: dict) -> IntradayPoint:
-        return cls(
-            series_id=base.series_id,
-            time=base.time,
-            value=data["value"],
-        )
-
-    def __repr__(self):
-        parent = super().__repr__()
-        return f"{parent[:-1]}, value={self.value})"
-
-'''
-T = TypeVar("T")
-
-
-@dataclass
-class Result(Generic[T]):
-    ok: bool
-    payload: T | None = None
-    reason: str | None = None
-    error: str | None = None
-    warnings: list[str] | None = None
-    meta: dict | None = None
-
-    @staticmethod
-    def parse_warnings(warnings: list[str]) -> str | None:
-        if warnings is None or warnings == []:
-            return None
-        return warnings
-
-    @staticmethod
-    def ok_payload(payload: T, warnings: list[str] | None = None, meta: dict | None = None) -> Result[T]:
-        return Result(ok=True, payload=payload, warnings=Result.parse_warnings(warnings), meta=meta)
-
-    @staticmethod
-    def fail(
-        reason: str, error: str | None = None, warnings: list[str] | None = None, meta: dict | None = None
-    ) -> Result[None]:
-        return Result(
-            ok=False,
-            reason=reason,
-            error=None if error is None else str(error),
-            meta=meta,
-            warnings=Result.parse_warnings(warnings),
-        )
-
-    def with_measurement(self, measurement: str) -> MeasurementResult[T]:
-        return MeasurementResult.from_result(self, measurement)
-
-    def with_meta(self, meta: dict) -> Result:
-        return replace(self, meta=meta)
-
-
-@dataclass
-class MeasurementResult(Result[T]):
-    # Python quirk: this cannot be non-defaulted as there are defaults in the parent
-    series_name: str | None = None
-
-    @staticmethod
-    def from_result(result: Result[T], series_name: str) -> MeasurementResult[T]:
-        return MeasurementResult(
-            ok=result.ok,
-            series_name=series_name,
-            payload=result.payload,
-            reason=result.reason,
-            error=result.error,
-            warnings=result.warnings,
-            meta=result.meta,
-        )
-
-    @staticmethod
-    def ok_payload(
-        series_name: str, payload: T, warnings: list[str] | None = None, meta: dict | None = None
-    ) -> MeasurementResult[T]:
-        return Result.ok_payload(payload, warnings, meta).with_measurement(series_name)
-
-    @staticmethod
-    def fail(
-        series_name: str,
-        reason: str,
-        error: str | None = None,
-        warnings: list[str] | None = None,
-        meta: dict | None = None,
-    ) -> MeasurementResult[None]:
-        return Result.fail(reason, error, warnings, meta).with_measurement(series_name)
-
-
 FetchResult = MeasurementResult[list[SeriesPoint]]
 SeriesResult = MeasurementResult[SeriesPoint | None]
 
@@ -343,10 +69,10 @@ SeriesResult = MeasurementResult[SeriesPoint | None]
 @dataclass(frozen=True)
 class ProviderConfig:
     name: str
-    timezone: str
+    # timezone: str
     timeout: str = "10s"
     history_limits: dict[timedelta, timedelta | None] = field(default_factory=dict)
-    overlap: dict[timedelta, timedelta | None] = field(default_factory=dict)
+    sweep: dict[timedelta, SweepConfig] = field(default_factory=dict)
 
     def timeout_delta(self) -> timedelta:
         return parse_duration(self.timeout, f"timeout for {self.name}")
@@ -355,16 +81,24 @@ class ProviderConfig:
     def create(cls, content: dict) -> ProviderConfig:
         raw_history_limits = content.get("constraints", {}).get("history_limits", {})
         history_limits: dict[timedelta, timedelta | None] = ProviderConfig.parse_duration_table(raw_history_limits)
-        raw_overlap = content.get("overlap", {})
-        overlap: dict[timedelta, timedelta | None] = ProviderConfig.parse_duration_table(raw_overlap)
+        sweep: dict[timedelta, SweepConfig] = ProviderConfig.parse_sweep_table(content.get("sweep", {}))
 
         return cls(
             name=content["name"],
             timeout=check_duration_in(content, "timeout", "10s"),
-            timezone=content.get("timezone", "UTC"),
+            # timezone=content.get("timezone", "UTC"),
             history_limits=history_limits,
-            overlap=overlap,
+            sweep=sweep,
         )
+
+    @staticmethod
+    def parse_sweep_table(config: dict) -> dict[timedelta, SweepConfig | None]:
+        sweeps = {}
+        for key, sweep_config in config.items():
+            sweep_key = timedelta(0) if key == "default" else parse_duration(key, "key")
+            sweep = SweepConfig.from_config(sweep_config or {}, f"sweep of key '{key}'")
+            sweeps[sweep_key] = sweep
+        return sweeps
 
     @staticmethod
     def parse_duration_table(config: dict) -> dict[timedelta, timedelta | None]:
@@ -376,7 +110,9 @@ class ProviderConfig:
         return limits
 
     @staticmethod
-    def get_from_duration_table(delta: timedelta, table: dict[timedelta, timedelta] | None) -> timedelta:
+    def get_from_duration_table(
+        delta: timedelta, table: dict[timedelta, timedelta | SweepConfig] | None
+    ) -> timedelta | SweepConfig:
         if not table:
             return None  # unlimited
         chosen = None
@@ -390,8 +126,10 @@ class ProviderConfig:
     def get_history_limit(self, interval: timedelta) -> timedelta | None:
         return self.get_from_duration_table(interval, self.history_limits)
 
-    def get_overlap(self, interval: timedelta) -> timedelta | None:
-        return self.get_from_duration_table(interval, self.overlap) or timedelta(0)
+    def get_sweep(self, interval: timedelta) -> SweepConfig:
+        return self.get_from_duration_table(interval, self.sweep) or SweepConfig(
+            window=timedelta(0), cadence=timedelta(0)
+        )
 
 
 @dataclass(frozen=True)
@@ -472,7 +210,12 @@ class Series:
     retention: Retention
     series_type: SeriesType
     bootstrap_history: str
-    completion_policy: CompletionPolicy
+    timezone: ZoneInfo
+    market_open: time
+    market_close: time
+    week_start: str
+    week_end: str
+    publication_offset: str | None
 
     # assigned by backend
     id: int | None = None
@@ -482,6 +225,9 @@ class Series:
 
     def bootstrap_history_delta(self) -> timedelta:
         return parse_duration(self.bootstrap_history, f"bootstrap history for {self.name}")
+
+    def retention_delta(self) -> timedelta:
+        return timedelta(days=30) if self.retention == Retention.SHORT_LIVED else None
 
     @classmethod
     def create(cls, asset: Asset, code: str, config: dict) -> Series:
@@ -505,11 +251,21 @@ class Series:
         if bootstrap_history is None:
             bootstrap_history = "10y" if retention == Retention.LONG_LIVED else "30d"
 
-        completion_policy = config.get("completion_policy")
-        if completion_policy is None:
-            completion_policy = CompletionPolicy.INTERVAL_CLOSE if is_intraday else CompletionPolicy.NEXT_DAY
-        else:
-            completion_policy = CompletionPolicy.validate(completion_policy)
+        raw_timezone = config.get("timezone", "UTC")
+        try:
+            timezone = ZoneInfo(raw_timezone)
+        except ZoneInfoNotFoundError:
+            raise ValueError(f"Cannot understand timezone '{raw_timezone}'.") from None
+        market_open = parse_time(config.get("market_open", "min"))
+        market_close = parse_time(config.get("market_close", "max"))
+
+        week_start = config.get("week_start", "mon")
+        # check and raise error if wrong, but keep string representation
+        parse_weekday(week_start)
+
+        week_end = config.get("week_end", "fri")
+        parse_weekday(week_end)
+        publication_offset = check_duration_in(config, "publication_offset", None)
 
         return cls(
             name=name,
@@ -520,7 +276,12 @@ class Series:
             series_type=SeriesType.validate(config.get("series_type", SeriesType.CANDLE), context()),
             retention=retention,
             bootstrap_history=bootstrap_history,
-            completion_policy=completion_policy,
+            timezone=timezone,
+            market_open=market_open,
+            market_close=market_close,
+            week_start=week_start,
+            week_end=week_end,
+            publication_offset=publication_offset,
         )
 
     def with_id(self, new_id: id) -> Series:
@@ -534,7 +295,11 @@ class Series:
             and self.series_type == other.series_type
             and self.interval == other.interval
             and self.bootstrap_history == other.bootstrap_history
-            and self.completion_policy == other.completion_policy
+            and self.week_start == other.week_start
+            and self.week_end == other.week_end
+            and self.market_close == other.market_close
+            and self.market_open == other.market_open
+            and self.publication_offset == other.publication_offset
         )
 
     def differs_from(self, other: Series) -> bool:
@@ -547,7 +312,7 @@ class Series:
         return self.code != other.code or not self.same_semantics(other)
 
     def __repr__(self):
-        return f"Series(id={self.id}, name={self.name}, asset_id={self.asset_id}, retention={self.retention}, series_type={self.series_type}, interval={self.interval})"
+        return f"Series(id={self.id}, name={self.name}, asset_id={self.asset_id}, retention={self.retention}, series_type={self.series_type}, interval={self.interval}, week={self.week_start}-{self.week_end})"
 
     @staticmethod
     def is_intraday_interval(interval: timedelta):
@@ -556,13 +321,17 @@ class Series:
     def is_intraday(self):
         return self.is_intraday_interval(self.interval_delta())
 
+    def is_daily(self):
+        return not self.is_intraday()
+
 
 @dataclass
 class SeriesState:
     first_point: datetime | None = None
     last_point: datetime | None = None
-    first_start: datetime | None = None
-    last_end: datetime | None = None
+    next_sweep: datetime | None = None
+    sweep_start: datetime | None = None
+    needs_save: bool = False
 
     @staticmethod
     def is_none_or_smaller(left, right):
@@ -572,41 +341,6 @@ class SeriesState:
     def is_none_or_greater(left, right):
         return left is None or left > right
 
-    def get_start(self, fetch_time, limit, overlap)-> tuple[datetime, bool]:
-        """
-        Calculate the start moment for the next fetch, and return if it is an incremental or full fetch
-        """
-        is_incremental = True
-        window_start = fetch_time - limit
-
-        # No history yet, get maximum
-        if self.first_point is None or self.last_point is None:
-            return window_start, not is_incremental
-
-        # History needed before first saved point (so get maximum and let the ingestion handle duplicates)
-        if self.is_none_or_greater(self.first_start, window_start):
-            return window_start, not is_incremental
-
-        start_point = self.last_point - overlap
-
-        # Start point is too far in the past, so limit to the allowed window
-        if start_point < window_start:
-            return window_start, not is_incremental
-
-        # Normal incremental fetch → fetch after last_saved - overlap
-        return start_point, is_incremental
-
-    def set_window(self, fetch_time: datetime, limit: timedelta, overlap:timedelta) -> tuple[datetime, bool]:
-        """
-        Calculate the fetch window, and update the first start and last end accordingly
-        """
-        window_start, is_incremental = self.get_start(fetch_time, limit, overlap)
-        if self.is_none_or_smaller(self.last_end, fetch_time):
-            self.last_end = fetch_time
-        if self.is_none_or_greater(self.first_start, window_start):
-            self.first_start = window_start
-        return window_start, is_incremental
-
     def update_point_range(self, first: datetime, last: datetime):
         # update the captured point range
         if self.is_none_or_smaller(self.last_point, last):
@@ -615,34 +349,14 @@ class SeriesState:
         if self.is_none_or_greater(self.first_point, first):
             self.first_point = first
 
-        # Match the fetch ranges if necessary
-        self.update_fetch_range(self.first_point, self.last_point)
 
-    def update_fetch_range(self, start: datetime, end: datetime):
-        if self.is_none_or_greater(self.first_start, start):
-            self.first_start = start
-        if self.is_none_or_smaller(self.last_end, end):
-            self.last_end = end
-
-    def to_dict(self):
-        def serialize(s: datetime | None) -> str | None:
-            return None if s is None else s.isoformat(timespec="seconds")
-
-        return {
-            "first_point": serialize(self.first_point),
-            "last_point": serialize(self.last_point),
-            "first_start": serialize(self.first_start),
-            "last_end": serialize(self.last_end)
-        }
+@dataclass
+class SweepConfig:
+    window: timedelta
+    cadence: timedelta
 
     @classmethod
-    def from_dict(cls, input: dict):
-        def parse(s: str) -> datetime | None:
-            return datetime.fromisoformat(s) if s is not None else None
-
-        return cls(
-            first_point=parse(input.get("first_point")),
-            last_point=parse(input.get("last_point")),
-            first_start=parse(input.get("first_start")),
-            last_end=parse(input.get("last_end")),
-        )
+    def from_config(cls, config: dict, context: str = "") -> SweepConfig:
+        window = parse_duration(config.get("window", "0"), context)
+        cadence = parse_duration(config.get("cadence", "0"), context)
+        return cls(window=window, cadence=cadence)

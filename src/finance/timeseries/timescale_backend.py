@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta
 
 # import side-effectful functions like 'connect' via module (so you can easily mock)
 import psycopg
@@ -15,14 +15,10 @@ import psycopg
 from psycopg import sql
 
 from finance.common.applogger import AppLogger
-from finance.common.model import (
-    BACKEND,
-    Asset,
-    Result,
-    Retention,
-    Series,
-    SeriesPoint,
-)
+from finance.common.model import BACKEND, Asset, Series, SeriesPoint, SeriesState
+from finance.common.result import Result
+from finance.common.string_enums import Retention
+from finance.common.time_utils import now_second_precision, parse_time, parse_timezone, write_time, write_timezone
 
 logger = AppLogger()
 
@@ -52,10 +48,10 @@ class TimescaleBackend:
     ) -> None:
         self._config: TimescaleConfig = config
         self._series_by_id = series_by_id
+        self.now = now or now_second_precision
         self._connection = None
         self._pending: list[SeriesPoint] = []
         self._last_flush: datetime | None = None
-        self.now = now or (lambda: datetime.now(UTC))
         self._short_lived_series_ids: set[int] = set()
 
     @classmethod
@@ -377,14 +373,21 @@ class TimescaleBackend:
             series.series_type,
             series.retention,
             series.bootstrap_history,
-            series.completion_policy,
+            write_timezone(series.timezone),
+            series.publication_offset,
+            write_time(series.market_open),
+            write_time(series.market_close),
+            series.week_start,
+            series.week_end,
         )
 
         if series.id is None:
             # INSERT
             sql = """
-                INSERT INTO series (code, asset_id, interval, series_type, retention, bootstrap_history, completion_policy)
-                VALUES (%s, %s, %s, %s, %s, %s, %s)
+                INSERT INTO series (
+                    code, asset_id, interval, series_type, retention, bootstrap_history,
+                    timezone, publication_offset, market_open, market_close, week_start, week_end)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 RETURNING id;
             """
             params = base_fields
@@ -392,7 +395,12 @@ class TimescaleBackend:
         else:
             # UPDATE
             sql = """
-                UPDATE series SET code=%s, asset_id=%s, interval=%s, series_type=%s, retention=%s, bootstrap_history=%s, completion_policy=%s WHERE id=%s RETURNING id;
+                UPDATE series
+                SET code=%s, asset_id=%s, interval=%s, series_type=%s, retention=%s,
+                    bootstrap_history=%s, timezone=%s, publication_offset=%s,
+                    market_open=%s, market_close=%s, week_start=%s, week_end=%s
+                WHERE id=%s
+                RETURNING id;
             """
 
             params = (*base_fields, series.id)
@@ -462,7 +470,9 @@ class TimescaleBackend:
                 cursor.execute(
                     """
                     SELECT s.id, s.code, s.asset_id, a.name as asset_name, a.name || ':' || s.code AS name,
-                           s.interval, s.series_type, s.retention, s.bootstrap_history, s.completion_policy FROM series s
+                           s.interval, s.series_type, s.retention, s.bootstrap_history, s.timezone,
+                           s.market_open, s.market_close, s.week_start, s.week_end, s.publication_offset
+                             FROM series s
                     JOIN asset a ON s.asset_id = a.id
                     ORDER BY s.id;
                     """
@@ -481,10 +491,70 @@ class TimescaleBackend:
                         series_type=row[6],
                         retention=row[7],
                         bootstrap_history=row[8],
-                        completion_policy=row[9],
+                        timezone=parse_timezone(row[9]),
+                        publication_offset=row[10],
+                        market_open=parse_time(row[11]),
+                        market_close=parse_time(row[12]),
+                        week_start=row[13],
+                        week_end=row[14],
                     )
                     for row in rows
                 ]
             )
 
         return self._database_operation(operation, "get_series")
+
+    def get_series_states(self) -> Result[dict[int, SeriesState]]:
+
+        def load_min_max(table: str) -> list[psycopg.rows.Row]:
+            sql = f"SELECT series_id, MIN(time), MAX(time) FROM {table} GROUP BY series_id;"
+            return self._execute_read(sql)
+
+        def get_range() -> Result[dict[int, SeriesState]]:
+            cold_rows = load_min_max("series_data_cold")
+            hot_rows = load_min_max("series_data_hot")
+
+            state: dict[int, SeriesState] = {}
+
+            for row in cold_rows + hot_rows:
+                id = int(row[0])
+                # needs_save will be reset if we find sweep data, and will stay True if not
+                state[id] = SeriesState(first_point=row[1], last_point=row[2], needs_save=True)
+
+            return Result.ok_payload(state)
+
+        result = self._database_operation(get_range, "get_series_states_range")
+        if not result.ok:
+            return result
+        state = result.payload
+
+        def get_sweep_info(state: dict[int, SeriesState]) -> Result[dict[int, SeriesState]]:
+            sql = "SELECT series_id, next_sweep, sweep_start FROM series_state;"
+            rows = self._execute_read(sql)
+            for row in rows:
+                series_id = row[0]
+                if series_id not in state:
+                    state[series_id] = SeriesState(next_sweep=row[1], sweep_start=row[2], needs_save=False)
+                else:
+                    state[series_id].next_sweep = row[1]
+                    state[series_id].sweep_start = row[2]
+                    state[series_id].needs_save = False
+            return Result.ok_payload(state)
+
+        return self._database_operation(lambda: get_sweep_info(state), "get_series_states_sweep_info")
+
+    def save_sweep(self, series_id: int, next_sweep: datetime, sweep_start: datetime) -> Result[int]:
+        """
+        Persist the next sweep and sweep start timestamps for a series.
+        Creates a new row if none exists, updates otherwise.
+        """
+        sql = """
+            INSERT INTO series_state (series_id, next_sweep, sweep_start)
+            VALUES (%s, %s, %s)
+            ON CONFLICT (series_id)
+            DO UPDATE SET next_sweep = EXCLUDED.next_sweep, sweep_start = EXCLUDED.sweep_start
+            RETURNING series_id;
+        """
+
+        params = (series_id, next_sweep, sweep_start)
+        return self._execute_write(sql, params)

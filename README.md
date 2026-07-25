@@ -1,7 +1,5 @@
 # **Finance Data Pipeline**  
-A modular Python pipeline that fetches financial and macro‑economic data from multiple public sources (Yahoo Finance, FRED, ECB, etc.) and writes normalized time‑series metrics into TimescaleDB.  The system supports both base metrics (direct API fetches) and composite metrics (Python expressions computed from other metrics).
-
-The goal is a **deterministic, reliable, and extensible ingestion layer** for dashboards such as Grafana.
+A modular Python pipeline that fetches financial and macro‑economic data from multiple public sources (Yahoo Finance, FRED, ECB, etc.) and writes normalized time‑series metrics into TimescaleDB.  The system supports both base metrics (direct API fetches) and composite metrics (Python expressions computed from other metrics). Its intended use is dashboards like Grafana, or analytics.
 
 ---
 
@@ -31,7 +29,7 @@ Everything except the secrets (API keys, credentials) and `FINANCE_CONFIG` can a
 This section contains settings that determine the technical setup and operation, such as like logging level, paths, and TimescaleDB settings.
 Most of the timescaledb settings can also be set in .env or environment variables. If they are set in both, the yaml configuration wins.
 
-```
+```yaml
 environment:
   logging:
     level: info
@@ -55,30 +53,35 @@ This section contains the definitions of `providers` (providing the series), `as
 #### Providers
 Three providers are currently supported: Yahoo (chart API), Fred and ECB. 
 The config looks as follows:
-```
+```yaml
 business:
   providers:
     yahoo:
       timeout: 10s
-      timezone: UTC
-      overlap:
-        default: 2h
-        1d: 7d
+      sweep: 
+        default: 
+          window: 2h
+          cadence: 30m
+        1d: 
+          window: 1w
+          cadence: 1d
       constraints:
         history_limits:
-          default: 7d
+          default: 1w
           5m: 60d
           1h: 730d
           1d: null
 ```
-Read this as follows: for the provider Yahoo, the request timeout is 10 seconds, and the default timezone is UTC.
-Fetch requests will take an overlap of 2 hours for intervals of less than a day, and 7 days for intervals of a day or longer.
-A series with an interval of less than 5 minutes has a 7 day history limit, then for less than an hour it's 60 days, 
+Read this as follows: for the provider Yahoo, the request timeout is 10 seconds. Fetch requests will take a sweep window of 
+2 hours and will run a sweep every 30 minutes for intervals of less than a day, and a week window every day for intervals of a day or longer.
+A series with an interval of less than 5 minutes has a week history limit, then for less than an hour it's 60 days, 
 then for less than a day it's 730 days, and above that there is no limit.
 
-Overlap means that already retrieved data will be retrieved again, to catch later corrections.
+Durations  are specified by a number and a letter, where allowed values are `m` (minutes), `h` (hours)or `d` (days) `w` (weeks) or `y` (years of 365.25 days). Internally they are translated to time deltas, so e.g. `7d` is equivalent to `1w`. 
+
+A sweep means that already retrieved data will be retrieved again, to catch later corrections.
 For ECB, the interval is 0, because ECB has a mode where you can retrieve everything that changed since a certain timestamp.
-That makes the overlap unnecessary.
+That makes the sweep unnecessary.
 
 #### Series templates
 
@@ -87,20 +90,60 @@ Every asset can have one or more (usually max 2) series, a longer term one (inte
 
 You define as them follows:
 
+```yaml
 business:
   series_templates:
-    intraday_candle:
+    daily:
+      interval: 1d
+      retention: long_lived
+      bootstrap_history: 10y
+
+    intraday:
       interval: 5m
-      series_type: candle
       retention: short_lived
       bootstrap_history: 30d
-      completion_policy: interval_close
 
-This means we define a re-usable series template named `intraday_candle` which defines an interval of 5 minutes, a candle type [`open`, `high`, `low`, `close`, `volume`], and stored in the short lived table. On first fetch, it will try and fetch 30 days of history. 
-For series type, you can also use `value`. In that case, only the `close` field will be populated. This is useful for instruments that don't have the full candle like the ECB USD/EUR rate, and the FRED interest rates. All except the interval can be defaulted. For series type, the default is `candle`. The other two have defaults that depend on the interval. If the interval is less than a day, the default retention is `short_lived`, else `long_lived`. For bootstrap_history it's `30d` (30 days) and `10y` (10 years), respectively. Completion policy defines when a measurement is complete: `interval_close` means at the end of an interval (i.e. no fetch before it ends) and `next_day` means 
-that we wait until tomorrow to fetch today's measurement. The latter value is useful with intervals of a day or more, to prevent fetching partial Yahoo results (it returns a candle for the current day while the market is still open). Default for `completion_policy` is `interval_close` for intervals less than a day, and `next_day` for intervals of a day or more.
+    candle: {}
 
-The `interval` amd `bootstrap_history` are durations. They are specified by a number and a letter, where allowed values are `m` (minutes), `h` (hours)or `d` (days) `w` (weeks) or `y` (years of 365.25 days). Internally they are translated to time deltas, so e.g. `7d` is equivalent to `1w`. 
+    value: 
+      series_type: value
+
+    24x7:
+      week_start: sun
+      week_end: sat
+
+    us_equities:
+      timezone: America/New_York
+      market_open: 09:30
+      market_close: 16:00
+
+    ecb:
+      timezone: Europe/Berlin
+      publication_offset: 16h
+      market_open: 15:55
+      market_close: 16:05
+    
+```
+
+This means we define a re-usable series template named `daily` which defines an interval of a day, is long lived, and the initial fetch will be for 10 years, and another template called `intraday` with an interval of 5 minutes, short lived, and having an initial fetch of 30 days. Short-lived and long-lived determine which back-end table the series is stored into: one without retention policy or one with. 
+
+Then we have template `candle` which only uses default values (amongst which a series_type of `candle`, which means having values [`open`, `high`, `low`, `close`, `volume`]). This can be useful to make choices explicit. Alternatively, template `value` supports only one value, which will only populate the `close` field. This is useful for instruments that don't have the full candle like the ECB USD/EUR rate, and the FRED interest rates. 
+
+The template `24x7` defines the start of the week is Sunday and end of week is Saturday, and template `us_equities` defining a timezone, market open time and market close time (in local time). 
+
+The `ecb` template shows the use of `publication_offset`. Normally, values are published when a series interval has completed. So e.g. the 9am interval of 5 minutes ends at 9:05 and the point is published then. For daily series, this is on the next day. However, some daily series (for example the ECB EUR/USD rates) are published at a certain time during the day (16:00 local time). That is what the publication offset specifies. If there is no publication offset, the value of the interval is taken. If there is one, it specifies the offset from midnight local time when the publication happens. It seems inconsistent to take local time, but this was done to be able to cater for daylight savings. 
+
+You can make combined templates as well, for example 
+
+```yaml
+business:
+  series_templates:
+    daily_value_24x7:
+      interval: 1d
+      series_type: value
+      week_start: sun
+      week_end: sat
+```
 
 #### Assets
 
@@ -108,7 +151,7 @@ The asset entries specify the assets in scope along with their series.
 
 Example:
 
-```
+```yaml
 business:
   assets:
     gold:
@@ -123,12 +166,12 @@ business:
         currency: USD
         unit: 100_troy_ounce
       series:
-        intraday: intraday_candle
-        daily: daily_candle
+        intraday: [intraday, 24x7]
+        daily: [daily, 24x7]
 ```
 
 In this example, `gold` is the asset key, which must be unique and should not be changed after it has been ingested into the database. 
-The `provider` section specifies which provider to use  and which provider code to use for fetching. The symbol here is `GOLD`. You can also omit it, and then the key (in this case `gold`) will be used instead. The tags are metadata that you can use for querying. The series section defines the series, using the series templates as defined earlier. You can also make this a section with the same entries as the template instead of a reference. 
+The `provider` section specifies which provider to use  and which provider code to use for fetching. The symbol here is `GOLD`. You can also omit it, and then the key (in this case `gold`) will be used instead. The tags are metadata that you can use for querying. The series section defines the series, using the series templates as defined earlier. So e.g. the `intraday` series will use the values as specified in the `intraday` and `24x7` templates. You can also make this a section with the same entries as the template instead of a reference, but for consistency and ease of usedit is recommended to use templates. 
 
 #### Composites
 
@@ -191,7 +234,7 @@ ruff.toml            # ruff (static analysis) config
 A makefile is provided. `make help` will provide the targets
 
 Define `.env.prod` and `.env.acc` for production and acceptance environments. Examples are provided. Contents are simple:
-```
+```bash
 ENV_ROOT=/home/pi/acc/finance
 ENV_USER=pi
 ```

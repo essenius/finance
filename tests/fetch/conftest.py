@@ -7,7 +7,8 @@ from datetime import datetime
 import pytest
 import requests
 
-from finance.common.model import FetchResult, ProviderConfig, SupportedProviders
+from finance.common.model import FetchResult, ProviderConfig
+from finance.common.string_enums import SupportedProviders
 from finance.fetch.ecb import EcbProvider
 from finance.fetch.fred import FredProvider
 from finance.fetch.provider import MarketDataProvider
@@ -75,7 +76,7 @@ def ecb_provider(fixed_now, fake_session):
     def _make():
         return EcbProvider(
             api_key=None,
-            provider_config=ProviderConfig(name=SupportedProviders.ECB, timezone="Europe/Berlin"),
+            provider_config=ProviderConfig(name=SupportedProviders.ECB),
             now_provider=fixed_now,
             session=fake_session(),
         )
@@ -88,7 +89,7 @@ def fred_provider(fixed_now, fake_session):
     def _make(api_key="TESTKEY"):
         return FredProvider(
             api_key=api_key,
-            provider_config=ProviderConfig(name=SupportedProviders.FRED, timezone="America/Chicago"),
+            provider_config=ProviderConfig(name=SupportedProviders.FRED),
             now_provider=fixed_now,
             session=fake_session(),
         )
@@ -101,7 +102,7 @@ def yahoo_provider(fixed_now, fake_session):
     def _make(now_provider=fixed_now):
         return YahooProvider(
             asset_config={},
-            provider_config=ProviderConfig(name=SupportedProviders.YAHOO, timezone="UTC"),
+            provider_config=ProviderConfig(name=SupportedProviders.YAHOO),
             now_provider=now_provider,
             session=fake_session(),
         )
@@ -113,7 +114,7 @@ def yahoo_provider(fixed_now, fake_session):
 def dummy_provider():
     def _make():
         return MarketDataProvider(
-            provider_config=ProviderConfig(name="dummy", timezone="UTC"),
+            provider_config=ProviderConfig(name="dummy"),
         )
 
     return _make

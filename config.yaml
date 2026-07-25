@@ -7,7 +7,6 @@ environment:
     level: info
   paths:
     wal: wal.jsonl
-    state: state.json
   timescaledb:
     host: localhost
     port: 5432
@@ -20,13 +19,16 @@ business:
   providers:
     yahoo:
       timeout: 10s
-      timezone: UTC
-      overlap: 
-        default: 2h
-        1d: 7d
+      sweep: 
+        default: 
+          window: 2h
+          cadence: 30m
+        1d: 
+          window: 1w
+          cadence: 1d
       constraints:
         history_limits:
-          default: 7d
+          default: 1w
           5m: 60d
           1h: 730d
           1d: null
@@ -35,42 +37,87 @@ business:
       timeout: 20s
       timezone: Europe/Berlin
       overlap:
-        default: 0
+        default:
+          window: 0
       constraints: {}
-    
+
     fred:
       timeout: 10s
       timezone: America/Chicago
-      overlap: 
-        default: 30d
+      sweep: 
+        default: 
+          window: 30d
+          cadence: 1w
       constraints: 
         rate_limit:
           # not used as way beyond usage, just capturing 
           requests_per_minute: 120
 
   series_templates:
-    daily_candle:
+
+    daily:
       interval: 1d
-      # default series_type is candle, default completion_policy is next_day
-      # for >=1d, default retention is long lived, bootstrap_history 10y, completion_policy next_day
+      # default puplication_offset is same as interval
+      # for >=1d, default retention is long lived, bootstrap_history 10y
       # long lived means stored in table without retention policy
 
-    daily_value:
-      interval: 1d
-      series_type: value
-      # daily values are usually published entities like the daily EUR/USR rate of ECB or FRED interest rates
-      # we don't need to wait for the next day to fetch them.
-      completion_policy: interval_close
-
-    intraday_value:
+    intraday:
       interval: 5m
-      series_type: value
-      # for <1d, default retention is short lived, bootstrap_history 30d, completion_policy interval_close
+      # for <1d, default retention is short lived, bootstrap_history 30d
       # short lived means stored in table with retention policy
 
-    intraday_candle:
-      interval: 5m
-  
+    candle: {}
+      # default series_type is candle
+
+    value:
+      series_type: value
+      # values are usually published entities like the daily EUR/USR rate of ECB or FRED interest rates.
+      # So, we don't need to wait for the next day to fetch them.
+
+    # Calendar templates. 
+    # Default: week_start=mon, week_end=fri, timezone UTC, market open min, market_close max (i.e. 24x5)
+
+    24x7:
+      week_start: sun
+      week_end: sat
+
+    24x5: {}
+      # defaults are correct
+
+    eu_equities:
+      timezone: Europe/Amsterdam
+      # if used without quotes, yaml converts this to a sexagesimal number.
+      # As that is ambiguous betweeh hh:mm:ss (hour*3600+minutes*60+seconds) 
+      # and hh:mm (hours*60+minutes), only hh:mm is supported here,
+      # since for open and close times, seconds are not likely to be needed.
+      # if you need hh:mm:ss nonetheless, put it in quotes: "09:30:25"
+      market_open: 09:00
+      market_close: 17:30
+
+    us_equities:
+      timezone: America/New_York
+      market_open: 09:30
+      market_close: 16:00
+
+    cboe_equities:
+      timezone: America/Chicago
+      market_open: 08:30
+      market_close: 15:00
+
+    cme_futures:
+      timezone: America/Chicago
+      market_open: 17:00
+      market_close: 16:00  # next day, with daily maintenance break
+
+    us_treasury:
+      timezone: America/New_York
+
+    ecb:
+      timezone: Europe/Berlin
+      publication_offset: 16h
+      market_open: 15:55
+      market_close: 16:05
+
   assets:
 
     # -------------------------
@@ -88,7 +135,7 @@ business:
         currency: USD
         unit: ratio
       series:
-        daily: daily_candle
+        daily: [daily, 24x5]
 
     # -------------------------
     # FOREX: EURUSD (ECB)
@@ -105,7 +152,7 @@ business:
         currency: USD
         unit: ratio
       series:
-        daily: daily_value
+        daily: [daily, value, ecb]
 
     # -------------------------
     # COMMODITIES
@@ -122,8 +169,8 @@ business:
         currency: USD
         unit: 100_troy_ounce
       series:
-        intraday: intraday_candle
-        daily: daily_candle
+        intraday: [intraday, 24x7]
+        daily: [daily, 24x7]
 
     wti:
       provider:
@@ -137,8 +184,8 @@ business:
         currency: USD
         unit: barrel
       series:
-        intraday: intraday_candle
-        daily: daily_candle
+        intraday: [intraday, 24x7]
+        daily: [daily, 24x7]
 
     brent:
       provider:
@@ -152,8 +199,8 @@ business:
         currency: USD
         unit: barrel
       series:
-        intraday: intraday_candle
-        daily: daily_candle
+        intraday: [intraday, 24x7]
+        daily: [daily, 24x7]
 
     # -------------------------
     # EQUITIES
@@ -170,8 +217,8 @@ business:
         currency: USD
         unit: share
       series:
-        intraday: intraday_candle
-        daily: daily_candle
+        intraday: [intraday, us_equities]
+        daily: [daily, us_equities]
 
     shell_as:
       provider:
@@ -185,8 +232,8 @@ business:
         currency: EUR
         unit: share
       series:
-        intraday: intraday_candle
-        daily: daily_candle
+        intraday: [intraday, eu_equities]
+        daily: [daily, eu_equities]
 
     # -------------------------
     # INDEXES
@@ -203,7 +250,7 @@ business:
         currency: USD
         unit: index_point
       series:
-        daily: daily_candle
+        daily: [daily, us_equities]
 
     vix:
       provider:
@@ -217,7 +264,7 @@ business:
         currency: USD
         unit: index_point
       series:
-        daily: daily_candle
+        daily: [daily, cboe_equities]
 
     # -------------------------
     # CRYPTO
@@ -234,8 +281,8 @@ business:
         currency: USD
         unit: coin
       series:
-        intraday: intraday_candle
-        daily: daily_candle
+        intraday: [intraday, 24x7]
+        daily: [daily, 24x7]
 
     # -------------------------
     # MACRO (FRED + Treasury)
@@ -250,7 +297,7 @@ business:
         region: US
         unit: percent
       series:
-        daily: daily_value
+        daily: [daily, value]
 
     fred_10y_breakeven:
       provider:
@@ -262,7 +309,7 @@ business:
         region: US
         unit: percent
       series:
-        daily: daily_value
+        daily: [daily, value, us_treasury]
 
     fed_balance_sheet:
       provider:
@@ -274,7 +321,7 @@ business:
         region: US
         unit: billions_usd
       series:
-        daily: daily_value
+        daily: [daily, value, us_treasury]
 
    # treasury_avg:
    #   provider: treasury

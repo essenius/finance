@@ -5,7 +5,8 @@
 
 from datetime import UTC, datetime
 
-from finance.common.model import Retention, SeriesPoint, SeriesType
+from finance.common.model import SeriesPoint
+from finance.common.string_enums import Retention, SeriesType
 
 # ----------------------------------------------------------------------
 # _extract_candles() tests (new provider)
@@ -16,10 +17,13 @@ def normalize(input: int) -> datetime:
     return datetime.fromtimestamp(input, tz=UTC)
 
 
-def test_extract_candles_valid_output_structure(yahoo_provider, unwrap, make_asset, make_series, fixed_now):
+def test_extract_candles_valid_output_structure(yahoo_provider, unwrap, make_asset, make_series):
     """Full candle set → all fields extracted correctly."""
 
-    now = fixed_now()
+    def fake_now():
+        return datetime(2026, 7, 23, tzinfo=UTC)
+
+    now = fake_now()
     asset = make_asset()
     series = make_series(asset, retention=Retention.LONG_LIVED, series_type=SeriesType.CANDLE, interval="1d")
     result = {
@@ -37,12 +41,12 @@ def test_extract_candles_valid_output_structure(yahoo_provider, unwrap, make_ass
         },
     }
 
-    candles = unwrap(yahoo_provider()._extract_candles(series, normalize, result))
+    candles = unwrap(yahoo_provider(now_provider=fake_now)._extract_candles(series, normalize, result))
 
     assert len(candles) == 1
     point = candles[0]
     assert isinstance(point, SeriesPoint)
-    assert point.time == fixed_now()  # because of the custom normalize
+    assert point.time == fake_now()  # because of the custom normalize
     assert point.open == 1.0
     assert point.high == 2.0
     assert point.low == 0.5
@@ -53,8 +57,9 @@ def test_extract_candles_valid_output_structure(yahoo_provider, unwrap, make_ass
 def test_extract_candles_skips_invalid(yahoo_provider, assert_warning, make_asset, make_series):
     """Invalid candle (None value) → skipped with warning."""
 
+    timestamp = datetime(2026, 7, 23, tzinfo=UTC).timestamp()
     result = {
-        "timestamp": [1000],
+        "timestamp": [timestamp],
         "indicators": {
             "quote": [
                 {
@@ -79,8 +84,10 @@ def test_extract_candles_skips_invalid(yahoo_provider, assert_warning, make_asse
 def test_extract_candles_signals_incomplete(yahoo_provider, assert_warning, make_asset, make_series):
     """Invalid candle (None value) → skipped with warning."""
 
+    timestamp = datetime(2026, 7, 23, tzinfo=UTC).timestamp()
+
     result = {
-        "timestamp": [1000],
+        "timestamp": [timestamp],
         "indicators": {
             "quote": [
                 {

@@ -3,12 +3,15 @@
 # File: src/finance/fetch/yahoo.py
 
 from collections.abc import Callable
-from datetime import UTC, datetime, time
+from datetime import datetime
 from functools import partial
-from urllib.parse import quote, urlencode
+from urllib.parse import quote
 from zoneinfo import ZoneInfo
 
-from ..common.model import Asset, Candle, FetchResult, MeasurementResult, Result, Series, SeriesPoint
+from finance.common.result import Result
+from finance.common.string_enums import Candle
+
+from ..common.model import Asset, FetchResult, MeasurementResult, Series, SeriesPoint
 from .provider import MarketDataProvider
 
 
@@ -26,11 +29,13 @@ class YahooProvider(MarketDataProvider):
     ) -> FetchResult:
         name = series.name
         url, params = self._build_url(asset.provider_code, series.interval, start_time, end_time)
-        result = self._safe_call(measurement=name, fn=lambda: self._fetch_impl(url, name, params), context="Yahoo fetch")
+        result = self._safe_call(
+            measurement=name, fn=lambda: self._fetch_impl(url, name, params), context="Yahoo fetch"
+        )
 
         if not result.ok:
             return result
-
+        """
         def normalize_yahoo(timestamp: int, is_intraday: bool, zone_info: ZoneInfo) -> datetime | None:
             result = self.normalize_timestamp(timestamp, is_intraday, zone_info)
             # invalidate timestamps for today with daily intervals or less frequently (day not done yet)
@@ -38,10 +43,11 @@ class YahooProvider(MarketDataProvider):
             if not is_intraday and result >= today_midnight:
                 return None
             return result
+        """
 
         def bind_normalizer(is_intraday: bool, timezone: str):
             zone_info = ZoneInfo(timezone)
-            return partial(normalize_yahoo, is_intraday=is_intraday, zone_info=zone_info)
+            return partial(self.normalize_timestamp, is_intraday=is_intraday, zone_info=zone_info)
 
         meta = result.payload.get("meta", {})
         timezone = meta.get("exchangeTimezoneName")
@@ -73,7 +79,9 @@ class YahooProvider(MarketDataProvider):
     def _fetch_impl(self, url, name, params) -> MeasurementResult[dict]:
         """fetch the response from the provider. Is called from a _safe_call wrapper so can throw"""
         headers = {"User-Agent": "Mozilla/5.0"}
-        response = self.session.get(url, params=params, headers=headers, timeout=self.provider_config.timeout_delta().seconds)
+        response = self.session.get(
+            url, params=params, headers=headers, timeout=self.provider_config.timeout_delta().seconds
+        )
         response.raise_for_status()
         data = response.json()
 
@@ -99,6 +107,11 @@ class YahooProvider(MarketDataProvider):
     # -----------------------------
     # Extract candles with helpers
     # -----------------------------
+
+    def is_aligned(self, ts: float, series: Series) -> bool:
+        # Yahoo's last candle time isn't aligned, it's the last data so far.
+        seconds = int(series.interval_delta().total_seconds())
+        return int(ts) % seconds == 0
 
     def _extract_arrays(self, payload: dict) -> Result[tuple[list[int], dict[str, list]]]:
 
@@ -132,9 +145,7 @@ class YahooProvider(MarketDataProvider):
                 continue
             values = {}
             time = normalize(ts)
-            # including today for daily candles (day not done yet)
-            if time is None:
-                continue
+
             incomplete = False
             for field in Candle.values():
                 arr = arrays[field]
@@ -164,6 +175,12 @@ class YahooProvider(MarketDataProvider):
             return FetchResult.from_result(arrays_result, name)
 
         timestamps, arrays = arrays_result.payload
+        if timestamps != [] and not self.is_aligned(timestamps[-1], series):
+            # remove last element from timestamps and arrays
+            timestamps.pop()
+            for key in arrays:
+                if arrays[key] != []:
+                    arrays[key].pop()
         candles, warnings = self._build_candles(timestamps, arrays, point_factory, normalize)
 
         return FetchResult.ok_payload(name, candles, warnings)

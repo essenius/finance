@@ -22,12 +22,36 @@ class WAL(ABC):
     def dequeue_multiple(self) -> SeriesPoint | None: ...
 
 
+class WALCorruptionError(Exception):
+    pass
+
+
 class JsonlWAL(WAL):
     def __init__(self, path: Path):
         self.path = path
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self.path.touch(exist_ok=True)
 
+    def _parse_line(self, line: str) -> SeriesPoint | None:
+        stripped = line.strip()
+        if not stripped:
+            return None
+
+        try:
+            data = json.loads(stripped)
+            return SeriesPoint.from_dict(data)
+        except Exception as exc:
+            raise WALCorruptionError(f"Invalid WAL entry: {stripped}") from exc
+
+    def _iter_parsed_lines(self) -> Iterable[SeriesPoint]:
+        with self.path.open() as wal_file:
+            for line in wal_file:
+                result = self._parse_line(line)
+                if result is None:
+                    continue
+                yield result
+
+    '''
     def _iter_valid_entries(self) -> Iterable[SeriesPoint]:
         """Yield valid JSON entries from the WAL in order."""
         with self.path.open() as wal_file:
@@ -41,6 +65,7 @@ class JsonlWAL(WAL):
                 except Exception:
                     # ignore corrupt lines
                     continue
+    '''
 
     def enqueue(self, point: SeriesPoint) -> None:
         """Append a new entry to the WAL."""
@@ -49,12 +74,12 @@ class JsonlWAL(WAL):
 
     def read_all(self) -> Iterable[SeriesPoint]:
         """Yield all valid entries in order."""
-        yield from self._iter_valid_entries()
+        yield from self._iter_parsed_lines()
 
     def peek(self) -> SeriesPoint | None:
         """Return the oldest valid entry without removing it."""
-        for entry in self._iter_valid_entries():
-            return entry
+        for point in self._iter_parsed_lines():
+            return point
         return None
 
     def is_empty(self) -> bool:
@@ -72,16 +97,13 @@ class JsonlWAL(WAL):
 
         with self.path.open() as source_file, temporary_path.open("w") as destination_file:
             for line in source_file:
-                stripped = line.strip()
+                point = self._parse_line(line)
+                if not point:
+                    continue
 
                 if removed < count:
-                    try:
-                        json.loads(stripped)
-                        removed += 1
-                        continue  # don't save this item
-                    except Exception:
-                        # skip corrupt lines before first valid entry
-                        continue
+                    removed += 1
+                    continue
 
                 # After removing `count` valid entries, copy the rest
                 destination_file.write(line)

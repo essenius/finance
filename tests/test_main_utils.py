@@ -7,7 +7,8 @@ from unittest.mock import MagicMock, Mock
 
 import pytest
 
-from finance.common.model import FetchResult, Result, Retention, Series, SeriesPoint, SeriesResult, SeriesState
+from finance.common.model import FetchResult, Retention, SeriesPoint, SeriesResult, SeriesState
+from finance.common.result import Result
 from finance.main_utils import process_result, reconcile_registry, unwrap
 from finance.registry.registry import Registry
 
@@ -54,20 +55,20 @@ class FakeState:
 
     def __init__(self):
         self.calls = []
-        self.series={}
+        self.series = {}
 
-    def ingest(self, series: Series, point: SeriesPoint):
+    def ingest(self, point: SeriesPoint):
         self.calls.append(point)
         return SeriesResult.ok_payload("spx", point)  # success
 
-    def update_range(self, series_id: int, first: int, last: int) -> None:
+    def update_state(self, series_id: int, first: int, last: int) -> None:
         self.series[series_id] = SeriesState(first_point=first, last_point=last)
 
 
 class SkipState(FakeState):
     """State that returns skip (payload=None)."""
 
-    def ingest(self, series: Series, point: SeriesPoint):
+    def ingest(self, point: SeriesPoint):
         self.calls.append(point)
         return SeriesResult.ok_payload("spx", None)  # skip
 
@@ -75,7 +76,7 @@ class SkipState(FakeState):
 class FailingState(FakeState):
     """State that returns failure."""
 
-    def ingest(self, series: Series, point: SeriesPoint):
+    def ingest(self, point: SeriesPoint):
         self.calls.append(point)
         return SeriesResult.fail("spx", "ingest failed")
 

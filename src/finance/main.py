@@ -3,15 +3,17 @@
 # File: src/finance/main.py
 
 from collections.abc import Callable, Iterable
-from datetime import UTC, datetime
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
 import finance
-from finance.common.model import BACKEND, Asset, ProviderConfig, Result, Series
+from finance.common.dict_utils import deep_merge
+from finance.common.model import BACKEND, Asset, ProviderConfig, Series
+from finance.common.result import Result
+from finance.common.time_utils import now_second_precision
 from finance.fetch.provider import MarketDataProvider
 from finance.registry.registry import Registry
-from finance.state.storage import StateStorage
 from finance.timeseries.timescale_backend import TimescaleBackend
 
 from .common.applogger import AppLogger
@@ -40,7 +42,6 @@ def run(
     ] = TimescaleBackend.from_config,
     provider_factory: Callable[[dict[str, Any], dict[str, Any]], dict[str, MarketDataProvider]] = create_providers,
     state_factory: Callable[..., State] = State,
-    state_storage_factory: Callable[[str], StateStorage] = StateStorage,
     fetch_controller_factory: Callable[
         [Iterable[Series], Callable[[int], Asset], Callable[[str], ProviderConfig]], FetchController
     ] = FetchController,
@@ -52,7 +53,7 @@ def run(
     try:
         # these two have arguments, so shouldn't be used in defaults
         load_config = load_config or ConfigLoader(cwd=Path.cwd(), config_path=config_path).load
-        now = now or (lambda: datetime.now(UTC))
+        now = now or now_second_precision
         now_str = now().astimezone().isoformat(timespec="seconds")
         logger.info(f"Finance version: {finance.__version__} started at {now_str}")
 
@@ -69,7 +70,7 @@ def run(
         registry.load_yaml_assets(asset_list)
         registry.load_yaml_series(series_list)
 
-        backend_result = backend_factory(secrets[BACKEND] | config[BACKEND], registry.get_series_by_id)
+        backend_result = backend_factory(deep_merge(secrets[BACKEND], config[BACKEND]), registry.get_series_by_id)
         if not backend_result.ok:
             logger.error(reason=backend_result.reason, error=backend_result.error)
             raise SystemExit(1)
@@ -81,8 +82,7 @@ def run(
 
         logger.debug("Loading state")
         wal = wal_factory(paths.get("wal"))
-        storage = state_storage_factory(paths.get("state"))
-        state = state_factory(backend=backend_result.payload, wal=wal, storage=storage)
+        state = state_factory(backend=backend_result.payload, wal=wal)
         # load the state and load/flush the wal
         flush_count = unwrap(state.load(), throw=False)
         logger.debug(f"Flushed {flush_count} items from the WAL")

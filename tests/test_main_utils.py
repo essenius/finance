@@ -17,26 +17,26 @@ from finance.registry.registry import Registry
 # ---------------------------------------------------------------------------
 
 
-def test_unwrap_success_no_warning(caplog):
-    caplog.set_level("DEBUG")
+def test_unwrap_success_no_warning(json_caplog):
+    json_caplog.set_level("DEBUG")
     r = Result.ok_payload(123)
     assert unwrap(r, throw=False) == 123
     # no warnings logged
-    assert "warnings=" not in caplog.text
+    assert "warnings=" not in json_caplog.text
 
 
-def test_unwrap_success_with_warning(caplog):
-    caplog.set_level("WARNING")
+def test_unwrap_success_with_warning(json_caplog):
+    json_caplog.set_level("WARNING")
     r = Result(ok=True, payload=42, warnings=["careful"])
     assert unwrap(r, throw=False) == 42
-    assert "warnings=careful" in caplog.text
+    assert '"warnings": ["careful"]}' in json_caplog.text
 
 
-def test_unwrap_failure_no_throw(caplog):
-    caplog.set_level("ERROR")
+def test_unwrap_failure_no_throw(json_caplog):
+    json_caplog.set_level("ERROR")
     r = Result.fail("x", "broken")
     assert unwrap(r, throw=False) is None
-    assert "reason=x | error=broken" in caplog.text
+    assert '"reason": "x", "error": "broken"}' in json_caplog.text
 
 
 def test_unwrap_failure_with_throw():

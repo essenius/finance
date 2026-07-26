@@ -115,7 +115,7 @@ business:
 
     ecb:
       timezone: Europe/Berlin
-      offset: 16h
+      publication_offset: 16h
       market_open: 15:55
       market_close: 16:05
 

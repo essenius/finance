@@ -5,9 +5,8 @@
 from collections.abc import Iterable
 from datetime import datetime
 
-from finance.common.result import Result
-
 from ..common.model import SeriesPoint, SeriesState
+from ..common.result import Result
 from ..state.wal import JsonlWAL
 from ..timeseries.timescale_backend import TimescaleBackend
 

@@ -7,12 +7,12 @@ from dataclasses import asdict
 from pathlib import Path
 from typing import TypeVar
 
-from finance.common.applogger import AppLogger
-from finance.common.model import FetchResult, Series
-from finance.common.result import Result
-from finance.registry.registry import Registry
-from finance.state.state import State
-from finance.timeseries.timescale_backend import TimescaleBackend
+from .common.applogger import AppLogger
+from .common.model import FetchResult, Series
+from .common.result import Result
+from .registry.registry import Registry
+from .state.state import State
+from .timeseries.timescale_backend import TimescaleBackend
 
 logger = AppLogger()
 

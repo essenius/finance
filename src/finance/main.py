@@ -8,22 +8,22 @@ from pathlib import Path
 from typing import Any
 
 import finance
-from finance.common.dict_utils import deep_merge
-from finance.common.model import BACKEND, Asset, ProviderConfig, Series
-from finance.common.result import Result
-from finance.common.time_utils import now_second_precision
-from finance.fetch.provider import MarketDataProvider
-from finance.registry.registry import Registry
-from finance.timeseries.timescale_backend import TimescaleBackend
 
-from .common.applogger import AppLogger
+from .common.applogger import AppLogger, LogConfig
+from .common.dict_utils import deep_merge
+from .common.model import BACKEND, Asset, ProviderConfig, Series
+from .common.result import Result
+from .common.time_utils import now_second_precision
 
 # from .composites.engine import CompositeEngine
 from .config.loader import ConfigLoader
 from .fetch.controller import FetchController, create_providers
+from .fetch.provider import MarketDataProvider
 from .main_utils import parse_args, process_result, reconcile_registry, unwrap
+from .registry.registry import Registry
 from .state.state import State
 from .state.wal import JsonlWAL
+from .timeseries.timescale_backend import TimescaleBackend
 
 logger = AppLogger()
 
@@ -54,10 +54,19 @@ def run(
         # these two have arguments, so shouldn't be used in defaults
         load_config = load_config or ConfigLoader(cwd=Path.cwd(), config_path=config_path).load
         now = now or now_second_precision
-        now_str = now().astimezone().isoformat(timespec="seconds")
-        logger.info(f"Finance version: {finance.__version__} started at {now_str}")
 
-        config = unwrap(load_config())
+        log_config = LogConfig()
+        # bootstrap logger is a minimal text logger, so if an exception happens
+        # before the json logger is configured, we can still log it.
+        log_config.bootstrap()
+        # Config loader can have errors, but is also needed to setup logging.
+        # So if the config loader fails, we take default logging settings.
+        config_result = load_config()
+        log_section = {} if not config_result.ok else config_result.payload.get("logging")
+        log_config.setup(log_section)
+        # Now we have a valid json logger, and we can start logging.
+        logger.info(f"Finance version: {finance.__version__} started.")
+        config = unwrap(config_result)
 
         paths = config["paths"]
         asset_list = config["assets"]
@@ -126,5 +135,5 @@ def run(
 
     # catch the unwrap errors
     except Exception as e:
-        logger.error("Exiting due to error", error=e)
+        logger.error("Exiting due to error", error=str(e))
         raise SystemExit(2) from None

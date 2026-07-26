@@ -5,12 +5,11 @@
 from collections.abc import Callable, Iterable
 from datetime import datetime, timedelta
 
-from finance.common.series_calendar import SeriesCalendar
-from finance.common.string_enums import SupportedProviders
-from finance.common.time_utils import now_second_precision
-from finance.fetch.provider import MarketDataProvider
-
 from ..common.model import Asset, FetchResult, ProviderConfig, Series, SeriesState, SweepConfig
+from ..common.series_calendar import SeriesCalendar
+from ..common.string_enums import SupportedProviders
+from ..common.time_utils import now_second_precision
+from ..fetch.provider import MarketDataProvider
 from ..state.state import State
 from .ecb import EcbProvider
 from .fred import FredProvider

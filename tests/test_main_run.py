@@ -9,6 +9,7 @@ from unittest.mock import MagicMock, Mock
 
 import pytest
 
+from finance.common.applogger import JsonFormatter
 from finance.common.model import FetchResult, SeriesPoint, SeriesResult
 from finance.common.result import Result
 from finance.main import run
@@ -58,17 +59,18 @@ class FakeCompositeEngine:
 # ---------------------------------------------------------------------------
 
 
-def test_run_happy_path(tmp_path, caplog, fixed_now, state_deps, make_asset, make_series):
+def test_run_happy_path(tmp_path, json_caplog, fixed_now, state_deps, make_asset, make_series):
 
     backend, wal = state_deps
     backend.flush.return_value = Result(0)
     backend.get_series_states.return_value = Result.ok_payload({})
     now = fixed_now()
     state_holder = {}
-    caplog.set_level("DEBUG")
+    json_caplog.set_level("DEBUG")
     asset = make_asset()
     fake_config = {
         "paths": {"wal": tmp_path / "wal.jsonl", "state": tmp_path / "state.json"},
+        "logging": {"json": True, "level": "info"},
         "secrets": {"timescaledb": {"url": "x", "db": "y"}, "api_keys": {"yahoo": "YKEY"}},
         "assets": {"spx": asset},
         "series": {"spx_daily": make_series(asset)},
@@ -112,16 +114,20 @@ def test_run_happy_path(tmp_path, caplog, fixed_now, state_deps, make_asset, mak
     series_state = state.series.get(1)
     assert series_state.first_point, series_state.last_point == (now, now)
 
-    assert "Finance version:" in caplog.text
-    assert "Done." in caplog.text
+    # {"timestamp": "2026-07-26 13:55:16,506", "level": "INFO", "logger": "applogger", "message": "Finance version: 0.2.2 started."}
+    # {"timestamp": "2026-07-26T13:55:34+0200", "level": "INFO", "logger": "applogger", "message": "Done."}
+    assert '"message": "Finance version: ' in json_caplog.text
+    assert '"message": "Done."' in json_caplog.text
 
 
-def test_run_fetch_failure(tmp_path, caplog, fixed_now, make_asset, make_series):
-    caplog.set_level("ERROR")
+def test_run_fetch_failure(tmp_path, json_caplog, fixed_now, make_asset, make_series):
+    json_caplog.set_level("ERROR")
+    json_caplog.handler.setFormatter(JsonFormatter())
 
     asset = make_asset()
     fake_config = {
-        "paths": {"wal": tmp_path / "wal.jsonl", "state": tmp_path / "state.json"},
+        "paths": {"wal": tmp_path / "wal.jsonl"},
+        "logging": {"json": True, "level": "info"},
         "secrets": {"timescaledb": {"url": "x", "db": "y"}, "api_keys": {}},
         "assets": {"boom": asset},
         "series": {"boom_daily": make_series(asset)},
@@ -174,8 +180,9 @@ def test_run_fetch_failure(tmp_path, caplog, fixed_now, make_asset, make_series)
         )
 
     assert se.value.code == 1
-    assert "reason=Boom" in caplog.text
-    assert "Fetch completed with 1 failures" in caplog.text
+
+    assert '"reason": "Boom", "error": "simulated failure"' in json_caplog.text
+    assert '"message": "Fetch completed with 1 failures"' in json_caplog.text
 
 
 """
@@ -238,7 +245,7 @@ def test_run_composite_failure(tmp_path, caplog, fixed_now, state):
 """
 
 
-def test_run_crash(caplog):
+def test_run_crash(clean_logging, caplog):
     def load_config():
         raise ValueError("Boom!")
 
@@ -246,13 +253,13 @@ def test_run_crash(caplog):
         run(load_config=load_config)
 
     assert se.value.code == 2
-    assert "Exiting due to error" in caplog.text
-    assert "Boom!" in caplog.text
+    assert "ERROR | Exiting due to error | error=Boom!" in caplog.messages
 
 
-def test_run_backend_failure(tmp_path, caplog, fixed_now):
+def test_run_backend_failure(tmp_path, json_caplog, fixed_now):
     fake_config = {
         "paths": {"wal": tmp_path / "wal.jsonl", "state": tmp_path / "state.json"},
+        "logging": {"json": True, "level": "info"},
         "assets": {},
         "series": {},
         "composites": {},
@@ -274,7 +281,7 @@ def test_run_backend_failure(tmp_path, caplog, fixed_now):
     # def composite_engine_builder(*_):
     #    return Result.ok_payload(FakeCompositeEngine([]))
 
-    caplog.set_level("ERROR")
+    json_caplog.set_level("ERROR")
 
     with pytest.raises(SystemExit) as se:
         run(
@@ -289,5 +296,5 @@ def test_run_backend_failure(tmp_path, caplog, fixed_now):
         )
 
     assert se.value.code == 1
-    assert "Backend initialization failed" in caplog.text
-    assert "boom" in caplog.text
+    assert "Backend initialization failed" in json_caplog.text
+    assert "boom" in json_caplog.text

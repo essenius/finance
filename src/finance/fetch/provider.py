@@ -8,10 +8,9 @@ from zoneinfo import ZoneInfo
 
 import requests
 
-from finance.common.result import Result, T
-from finance.common.time_utils import now_second_precision
-
 from ..common.model import Asset, FetchResult, MeasurementResult, ProviderConfig, Series
+from ..common.result import Result, T
+from ..common.time_utils import now_second_precision
 
 
 class MarketDataProvider:

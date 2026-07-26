@@ -8,9 +8,9 @@ from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime, time, timedelta
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from finance.common.result import MeasurementResult
-from finance.common.string_enums import Candle, Retention, SeriesType
-from finance.common.time_utils import check_duration_in, parse_duration, parse_time, parse_weekday
+from ..common.result import MeasurementResult
+from ..common.string_enums import Candle, Retention, SeriesType
+from ..common.time_utils import check_duration_in, parse_duration, parse_time, parse_weekday
 
 BACKEND = "timescaledb"
 

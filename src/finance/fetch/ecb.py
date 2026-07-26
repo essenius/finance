@@ -91,9 +91,7 @@ class EcbProvider(MarketDataProvider):
         return points
 
     def _fetch(self, series: Series, provider_code: str, params: dict) -> FetchResult:
-        """
-        provider_code: e.g. 'USD_EUR'
-        """
+        """provider_code: e.g. 'USD_EUR'"""
 
         name = series.name
         url = self._make_url(provider_code)

@@ -2,12 +2,14 @@
 # Licensed under the Apache License, Version 2.0. See the LICENSE file for details.
 # File: tests/conftest.py
 
+import logging
 from datetime import UTC, datetime, time
 from pathlib import Path
 from unittest.mock import Mock
 
 import pytest
 
+from finance.common.applogger import JsonFormatter, LogConfig
 from finance.common.model import Asset, Series
 from finance.common.result import Result
 from finance.common.string_enums import Retention, SeriesType
@@ -152,3 +154,37 @@ def make_series(make_asset):
         return Series(**params)
 
     return _make
+
+
+@pytest.fixture
+def setup_logging():
+    cfg = {
+        "level": "debug",
+        "json": True,
+    }
+
+    log_config = LogConfig()
+    log_config.bootstrap()
+    log_config.setup(cfg)
+    yield
+
+
+@pytest.fixture
+def json_caplog(caplog, setup_logging):
+    caplog.handler.setFormatter(JsonFormatter())
+    return caplog
+
+
+@pytest.fixture
+def clean_logging():
+    root = logging.getLogger()
+
+    # Remove all handlers
+    for h in list(root.handlers):
+        root.removeHandler(h)
+
+    root.handlers.clear()
+    root.setLevel(logging.NOTSET)
+
+    # After test, restore pytest logging
+    yield

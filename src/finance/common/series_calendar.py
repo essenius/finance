@@ -8,8 +8,8 @@ from dataclasses import dataclass
 from datetime import UTC, date, datetime, time, timedelta
 from zoneinfo import ZoneInfo
 
-from finance.common.model import Series
-from finance.common.time_utils import parse_duration, parse_weekday, snap_to
+from ..common.model import Series
+from ..common.time_utils import parse_duration, parse_weekday, snap_to
 
 
 @dataclass

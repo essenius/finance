@@ -177,24 +177,6 @@ def test_ingest_before_range(state_env, make_entry):
     wal.enqueue.assert_called_once()
 
 
-"""
-def test_ingest_misaligned_timestamp(state_env, make_entry):
-    state, backend, wal = state_env
-    backend.add.return_value = Result.ok_payload(1)
-    state.series[1] = make_series_state(start=1200, end=1800)
-
-    # interval is 10m, i.e. 600s
-    args = make_entry(timestamp=500)
-    write = replace(args["point"], close=1.09)
-    result = state.ingest(write)
-
-    assert result.ok is True
-    assert result.payload == 0
-    wal.enqueue.assert_not_called()
-    backend.sync_backend .assert_not_called()
-"""
-
-
 def test_sync_backend_different_counts(state_env, make_entry, unwrap):
     state, backend, wal = state_env
     backend.add.return_value = Result.ok_payload(1)

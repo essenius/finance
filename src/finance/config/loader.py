@@ -2,7 +2,6 @@
 # Licensed under the Apache License, Version 2.0. See the LICENSE file for details.
 # File: src/finance/config/loader.py
 
-import logging
 import os
 from dataclasses import dataclass
 from pathlib import Path
@@ -11,15 +10,13 @@ from zoneinfo import ZoneInfo
 import yaml
 from dotenv import dotenv_values
 
-from finance.common.dict_utils import deep_merge
-from finance.common.result import Result
-from finance.common.string_enums import Retention, SeriesType, SupportedProviders
-from finance.common.time_utils import check_duration_in
-
-from ..common.applogger import LOG_LEVELS
+from ..common.dict_utils import deep_merge
 from ..common.introspection import here
 from ..common.model import BACKEND, Asset, ProviderConfig, Series
 from ..common.paths import resolve_config_path
+from ..common.result import Result
+from ..common.string_enums import Retention, SeriesType, SupportedProviders
+from ..common.time_utils import check_duration_in
 
 
 @dataclass
@@ -110,12 +107,6 @@ def require(cfg: dict, key: str, context: str) -> str | dict:
     if key not in cfg:
         raise ValueError(f"Missing required field '{key}'")
     return cfg[key]
-
-
-def apply_logging_config(config: dict) -> None:
-    level_name = config.get("logging", {}).get("level", "info").lower()
-    py_level = LOG_LEVELS.get(level_name, logging.INFO)
-    logging.basicConfig(level=py_level, format="%(message)s")
 
 
 # ---------------------------------
@@ -276,14 +267,11 @@ def normalize_composites(raw_composites: dict) -> Result[dict]:
 
 
 def load_environment_config(env_cfg: dict, project_root: Path) -> dict:
-    #    context = {"location": here()}
-
-    apply_logging_config(env_cfg)
-
     paths_cfg = env_cfg.get("paths", {})
     paths = {key: resolve_config_path(value, key, project_root) for key, value in paths_cfg.items()}
     timescaledb_cfg = env_cfg.get(BACKEND, {})
-    return {"paths": paths, BACKEND: timescaledb_cfg}
+    logging_cfg = env_cfg.get("logging", {})
+    return {"paths": paths, BACKEND: timescaledb_cfg, "logging": logging_cfg}
 
 
 def load_business_config(biz_cfg: dict) -> Result[dict]:

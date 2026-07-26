@@ -14,11 +14,11 @@ import psycopg
 # import helpers directly
 from psycopg import sql
 
-from finance.common.applogger import AppLogger
-from finance.common.model import BACKEND, Asset, Series, SeriesPoint, SeriesState
-from finance.common.result import Result
-from finance.common.string_enums import Retention
-from finance.common.time_utils import now_second_precision, parse_time, parse_timezone, write_time, write_timezone
+from ..common.applogger import AppLogger
+from ..common.model import BACKEND, Asset, Series, SeriesPoint, SeriesState
+from ..common.result import Result
+from ..common.string_enums import Retention
+from ..common.time_utils import now_second_precision, parse_time, parse_timezone, write_time, write_timezone
 
 logger = AppLogger()
 

@@ -8,10 +8,9 @@ from functools import partial
 from urllib.parse import quote
 from zoneinfo import ZoneInfo
 
-from finance.common.result import Result
-from finance.common.string_enums import Candle
-
 from ..common.model import Asset, FetchResult, MeasurementResult, Series, SeriesPoint
+from ..common.result import Result
+from ..common.string_enums import Candle
 from .provider import MarketDataProvider
 
 
@@ -35,15 +34,6 @@ class YahooProvider(MarketDataProvider):
 
         if not result.ok:
             return result
-        """
-        def normalize_yahoo(timestamp: int, is_intraday: bool, zone_info: ZoneInfo) -> datetime | None:
-            result = self.normalize_timestamp(timestamp, is_intraday, zone_info)
-            # invalidate timestamps for today with daily intervals or less frequently (day not done yet)
-            today_midnight = datetime.combine(self.now().date(), time.min, tzinfo=UTC)
-            if not is_intraday and result >= today_midnight:
-                return None
-            return result
-        """
 
         def bind_normalizer(is_intraday: bool, timezone: str):
             zone_info = ZoneInfo(timezone)

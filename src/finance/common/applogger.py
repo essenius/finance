@@ -3,30 +3,113 @@
 # File: src/finance/common/applogger.py
 
 import inspect
+import json
 import logging
+from collections.abc import Mapping
+from typing import Any
 
-LOG_LEVELS = {
-    "debug": logging.DEBUG,
-    "info": logging.INFO,
-    "warning": logging.WARNING,
-    "error": logging.ERROR,
-}
+RESERVED_LOG_KEYS = (
+    "args",
+    "asctime",
+    "created",
+    "exc_info",
+    "exc_text",
+    "filename",
+    "funcName",
+    "levelname",
+    "levelno",
+    "lineno",
+    "module",
+    "msecs",
+    "message",
+    "msg",
+    "name",
+    "pathname",
+    "process",
+    "processName",
+    "relativeCreated",
+    "stack_info",
+    "taskName",
+    "thread",
+    "threadName",
+)
+
+
+class JsonFormatter(logging.Formatter):
+    def format(self, record: logging.LogRecord) -> str:
+        payload = {
+            "timestamp": self.formatTime(record, self.datefmt),
+            "level": record.levelname,
+            "logger": record.name,
+        }
+        message = record.getMessage()
+        if message != "None":
+            payload["message"] = message
+        # Merge extra fields (record.__dict__ contains them)
+        for key, value in record.__dict__.items():
+            if key not in RESERVED_LOG_KEYS:
+                payload[key] = value
+
+        return json.dumps(payload)
+
+
+class LogConfig:
+    LOG_LEVELS = {
+        "debug": logging.DEBUG,
+        "info": logging.INFO,
+        "warning": logging.WARNING,
+        "error": logging.ERROR,
+        "critical": logging.CRITICAL,
+    }
+
+    DEFAULT_FORMAT = "%(asctime)s %(levelname)s %(name)s %(message)s"
+
+    def __init__(self):
+        self.root = logging.getLogger()
+
+    def bootstrap(self) -> None:
+        # If loader or orchestrator logs early, logging must not fail (optional).
+        if not self.root.handlers:
+            handler = logging.StreamHandler()
+            handler.setFormatter(logging.Formatter("%(message)s"))
+            self.root.addHandler(handler)
+
+        # Safe default level before config is loaded
+        self.root.setLevel(logging.INFO)
+
+    def setup(self, config: Mapping[str, Any]) -> None:
+        root = logging.getLogger()
+
+        handler = logging.StreamHandler()
+        formatter = JsonFormatter(datefmt=config.get("date_format", "%Y-%m-%dT%H:%M:%S%z"))
+        handler.setFormatter(formatter)
+
+        # Mark this handler as yours
+        handler._is_app_handler = True
+
+        root.addHandler(handler)
+
+        # Set level
+        level_name = config.get("level", "info").lower()
+        root.setLevel(self.LOG_LEVELS.get(level_name, logging.INFO))
+
+
+def _is_json_active() -> bool:
+    root = logging.getLogger()
+    return any(getattr(h, "_is_app_handler", False) for h in root.handlers)
 
 
 class AppLogger:
     @property
-    def logger(self):
-        # Each class gets its own logger name
-        return logging.getLogger(self.__class__.__name__)
+    def logger(self, module_name: str | None = None):
+        prefix = f"{module_name}." if module_name else ""
+        self.name = f"{prefix}applogger"
+        return logging.getLogger(self.name)
 
-    def log(self, level: str, msg: str = None, **context) -> dict:
+    def log(self, level: str, msg: str | None = None, **context: Any) -> dict[str, Any]:
+        py_level = LogConfig.LOG_LEVELS[level]
 
-        py_level = LOG_LEVELS[level]
-
-        if not self.logger.isEnabledFor(py_level):
-            return {}
-
-        # Find the first frame *outside* this class
+        # Determine correct stacklevel (skip wrapper frames)
         frame = inspect.currentframe()
         stacklevel = 1
 
@@ -37,50 +120,25 @@ class AppLogger:
             stacklevel += 1
             frame = frame.f_back
 
-        # Remove ok if present
+        # Clean context (remove None values)
         context.pop("ok", None)
-        # remove entries that are None
+        clean_context = {k: v for k, v in context.items() if v is not None}
 
-        # flatten nested dicts one level deep
-        flat = {}
-        multi = []
-        for key, value in context.items():
-            if value is None:
-                continue
-            if isinstance(value, dict):
-                for subkey, subval in value.items():
-                    flat[f"{key}.{subkey}"] = subval
-            # this assumes there is no more than one of those
-            elif isinstance(value, list):
-                for entry in value:
-                    multi.append(f"{key}={entry}")
-            else:
-                flat[key] = value
+        if not _is_json_active():
+            # Fallback: safe text logging
+            line = f"{level.upper()} | {msg or ''}"
+            for k, v in context.items():
+                line += f" | {k}={v}"
+            self.logger.log(py_level, line)
+            return
 
-        # build final message
-        parts = [level.upper()]
-        if msg:
-            parts.append(msg)
-        parts += [f"{k}={v}" for k, v in flat.items()]
+        # Build structured payload for JSON logging
+        payload = {"level": level, "message": msg, **clean_context}
 
-        line = " | ".join(parts)
+        # Emit JSON log (formatter handles serialization)
+        self.logger.log(py_level, msg, extra=clean_context, stacklevel=stacklevel)
 
-        log_lines = self._get_lines(line, multi)
-
-        for log_line in log_lines:
-            self.logger.log(py_level, log_line, stacklevel=stacklevel)
-
-        return {"level": level, "logline": line, **context}
-
-    def _get_lines(self, line_part, multi):
-        lines = []
-        if multi:
-            for entry in multi:
-                line = f"{line_part} | {entry}"
-                lines.append(line)
-        else:
-            lines.append(line_part)
-        return lines
+        return payload
 
     def error(self, msg=None, **context):
         return self.log("error", msg, **context)

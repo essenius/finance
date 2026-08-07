@@ -209,7 +209,7 @@ CREATE TABLE IF NOT EXISTS series (
     market_close TIME WITHOUT TIME ZONE NOT NULL,
     week_start week_day NOT NULL,
     week_end week_day NOT NULL,
-    publication_offset TEXT NOT NULL,
+    publication_offset TEXT,
 
     UNIQUE(asset_id, code)
 );

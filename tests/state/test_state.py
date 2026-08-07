@@ -59,8 +59,7 @@ def test_iter_metrics(state, fixed_now):
         1: SeriesState(first_point=first, last_point=between),
         2: SeriesState(first_point=between, last_point=last),
     }
-
-    items = list(state.iter_series_state())
+    items = list(state.series.items())
 
     assert (1, SeriesState(first_point=first, last_point=between)) in items
     assert (2, SeriesState(first_point=between, last_point=last)) in items

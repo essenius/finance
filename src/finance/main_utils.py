@@ -12,7 +12,7 @@ from .common.model import FetchResult, Series
 from .common.result import Result
 from .registry.registry import Registry
 from .state.state import State
-from .timeseries.timescale_backend import TimescaleBackend
+from .timeseries.series_backend import SeriesBackend
 
 logger = AppLogger()
 
@@ -45,7 +45,7 @@ def unwrap(result: Result[T], throw: bool | None = True) -> T | None:
     return result.payload
 
 
-def reconcile_registry(registry: Registry, backend: TimescaleBackend):
+def reconcile_registry(registry: Registry, backend: SeriesBackend):
     saved_assets = unwrap(backend.get_assets())
     registry.load_db_assets(saved_assets)
 

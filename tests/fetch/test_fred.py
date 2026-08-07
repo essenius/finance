@@ -41,16 +41,10 @@ MALFORMED_CASES = [
         {"observations": [{"value": "2.34", "date": "2024-05-09"}]},
         "FRED requires an API key",
     ),
-    # Observations missing entirely
+    # Observations missing
     (
         "TESTKEY",
         {"foo": "bar"},
-        "no 'observations' in response",
-    ),
-    # Observations empty
-    (
-        "TESTKEY",
-        {"observations": []},
         "no 'observations' in response",
     ),
 ]

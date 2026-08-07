@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 import finance
+from finance.timeseries.backend_protocol import BackendProtocol
 
 from .common.applogger import AppLogger, LogConfig
 from .common.dict_utils import deep_merge
@@ -23,12 +24,13 @@ from .main_utils import parse_args, process_result, reconcile_registry, unwrap
 from .registry.registry import Registry
 from .state.state import State
 from .state.wal import JsonlWAL
-from .timeseries.timescale_backend import TimescaleBackend
+from .timeseries.series_backend import SeriesBackend
+from .timeseries.timescale_sql import TimescaleSqlClient
 
 logger = AppLogger()
 
 
-def main(argv: list[str] | None = None):
+def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     return run(args.config)
 
@@ -37,9 +39,10 @@ def run(
     config_path: Path | None = None,
     load_config: Callable[[], Result[dict[str, Any]]] = None,
     registry_factory: Callable[..., Registry] = Registry,
+    sql_factory: Callable[..., BackendProtocol ] = TimescaleSqlClient,
     backend_factory: Callable[
-        [dict[str, Any], Callable[[int], Series]], Result[TimescaleBackend]
-    ] = TimescaleBackend.from_config,
+        [dict[str, Any], Callable[..., BackendProtocol]], Result[SeriesBackend]
+    ] = SeriesBackend.from_config,
     provider_factory: Callable[[dict[str, Any], dict[str, Any]], dict[str, MarketDataProvider]] = create_providers,
     state_factory: Callable[..., State] = State,
     fetch_controller_factory: Callable[
@@ -47,7 +50,7 @@ def run(
     ] = FetchController,
     # composite_engine_builder: Callable[[dict[str, Any], State], Result[CompositeEngine]] = CompositeEngine.build,
     wal_factory: Callable[[Path], JsonlWAL] = JsonlWAL,
-    reconcile: Callable[[Registry, TimescaleBackend], None] = reconcile_registry,
+    reconcile: Callable[[Registry, SeriesBackend], None] = reconcile_registry,
     now: Callable[[], datetime] = None,
 ) -> None:
     try:
@@ -79,12 +82,12 @@ def run(
         registry.load_yaml_assets(asset_list)
         registry.load_yaml_series(series_list)
 
-        backend_result = backend_factory(deep_merge(secrets[BACKEND], config[BACKEND]), registry.get_series_by_id)
+        backend_result = backend_factory(deep_merge(secrets[BACKEND], config[BACKEND]), sql_factory)
         if not backend_result.ok:
             logger.error(reason=backend_result.reason, error=backend_result.error)
-            raise SystemExit(1)
+            return 1
 
-        backend: TimescaleBackend = backend_result.payload
+        backend: SeriesBackend = backend_result.payload
 
         logger.debug("Reconciling loaded config with backend")
         reconcile(registry, backend)
@@ -129,11 +132,11 @@ def run(
         state.save()
 
         if fetch_failures:  # or composite_failures:
-            raise SystemExit(1)
+            return 1
         logger.info("Done.")
-        return
+        return 0
 
     # catch the unwrap errors
-    except Exception as e:
-        logger.error("Exiting due to error", error=str(e))
-        raise SystemExit(2) from None
+    except Exception:
+        logger.exception("Exiting due to error")
+        return 2

@@ -21,10 +21,7 @@ class EcbProvider(MarketDataProvider):
         start_date = start_time.date().isoformat()
         end_date = end_time.date().isoformat()
 
-        if is_incremental:
-            params = {"updatedAfter": start_date}
-        else:
-            params = {"startPeriod": start_date, "endPeriod": end_date}
+        params = {"updatedAfter": start_date} if is_incremental else {"startPeriod": start_date, "endPeriod": end_date}
         params = params | {"format": "jsondata", "detail": "dataonly"}
 
         return self._safe_call(

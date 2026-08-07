@@ -5,6 +5,8 @@
 import inspect
 import json
 import logging
+import sys
+import traceback
 from collections.abc import Mapping
 from typing import Any
 
@@ -72,6 +74,7 @@ class LogConfig:
         if not self.root.handlers:
             handler = logging.StreamHandler()
             handler.setFormatter(logging.Formatter("%(message)s"))
+            handler._is_fallback_handler = True
             self.root.addHandler(handler)
 
         # Safe default level before config is loaded
@@ -88,6 +91,11 @@ class LogConfig:
         handler._is_app_handler = True
 
         root.addHandler(handler)
+
+        # remove fallback handler
+        for h in list(root.handlers):
+            if getattr(h, "_is_fallback_handler", False):
+                root.removeHandler(h)
 
         # Set level
         level_name = config.get("level", "info").lower()
@@ -151,3 +159,16 @@ class AppLogger:
 
     def debug(self, msg=None, **context):
         return self.log("debug", msg, **context)
+
+    def exception(self, msg=None, **context):
+        # Add structured fields
+        exc_type, exc_value, exc_tb = sys.exc_info()
+
+        context["exception.message"] = str(exc_value)
+        context["exception.type"] = exc_type.__name__
+        context["exception.trace"] = "".join(traceback.format_exception(exc_type, exc_value, exc_tb))
+        # Add exception info to context
+        context["exc_info"] = True
+
+        # Delegate to your log() wrapper
+        return self.log("error", msg, **context)

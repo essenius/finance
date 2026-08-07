@@ -41,8 +41,8 @@ class FredProvider(MarketDataProvider):
         response.raise_for_status()
 
         data = response.json()
-        observations = data.get("observations", [])
-        if not observations:
+        observations = data.get("observations")
+        if observations is None:
             return FetchResult.fail(series.name, "no 'observations' in response")
 
         points: list[SeriesPoint] = []

@@ -2,18 +2,17 @@
 # Licensed under the Apache License, Version 2.0. See the LICENSE file for details.
 # File: src/finance/state/state.py
 
-from collections.abc import Iterable
 from datetime import datetime
 
 from ..common.model import SeriesPoint, SeriesState
 from ..common.result import Result
 from ..state.wal import JsonlWAL
-from ..timeseries.timescale_backend import TimescaleBackend
+from ..timeseries.series_backend import SeriesBackend
 
 
 class State:
-    def __init__(self, backend: TimescaleBackend, wal: JsonlWAL):
-        self._backend: TimescaleBackend = backend
+    def __init__(self, backend: SeriesBackend, wal: JsonlWAL):
+        self._backend: SeriesBackend = backend
         self._wal: JsonlWAL = wal
         self.series: dict[int, SeriesState] = {}
 
@@ -92,7 +91,7 @@ class State:
         - receive number of written points
         - remove that number of points from the wal
         """
-        result = self._backend.add(point)
+        result = self._backend.add_point(point)
 
         if not result.ok:
             return result
@@ -107,16 +106,6 @@ class State:
         """
         self._wal.enqueue(point)
         return self.sync_backend(point)
-
-    def iter_series_state(self) -> Iterable[tuple[int, SeriesState]]:
-        """
-        Yield (metric_name, entry_dict) for all metrics currently in state.
-
-        This does NOT trigger lazy rebuild. It only iterates over what is
-        already present in _state. CompositeEngine uses this to build the
-        namespace for evaluation.
-        """
-        yield from self.series.items()
 
     '''
     TODO: re-introduce after V1

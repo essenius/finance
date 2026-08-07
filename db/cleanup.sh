@@ -18,5 +18,8 @@ docker exec -i "$CONTAINER" env PGUSER="$USER" PGPASSWORD="$PASS" bash -lc "psql
 
 -- the cascade causes series and the series_data tables to be truncated too
 
+SELECT current_database();
+SELECT current_user;
+
 TRUNCATE TABLE asset RESTART IDENTITY CASCADE;
 EOF

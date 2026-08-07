@@ -2,6 +2,6 @@
 # Licensed under the Apache License, Version 2.0. See the LICENSE file for details.
 # File: src/finance/timeseries/__init__.py
 
-from .timescale_backend import TimescaleBackend
+from .series_backend import SeriesBackend
 
-__all__ = ["TimescaleBackend"]
+__all__ = ["SeriesBackend"]

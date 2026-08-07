@@ -15,7 +15,7 @@ from finance.common.result import Result
 from finance.common.string_enums import Retention, SeriesType
 from finance.state.state import State
 from finance.state.wal import JsonlWAL
-from finance.timeseries.timescale_backend import TimescaleBackend
+from finance.timeseries.series_backend import SeriesBackend
 
 
 class MockStorage:
@@ -43,7 +43,7 @@ def state_deps():
 
 
 @pytest.fixture
-def state_env(state_deps) -> tuple[State, TimescaleBackend, JsonlWAL]:
+def state_env(state_deps) -> tuple[State, SeriesBackend, JsonlWAL]:
     """Provides a State with mocked WAL + TS client + resolved path."""
 
     backend, wal = state_deps

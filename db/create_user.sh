@@ -22,7 +22,7 @@ BEGIN
    IF NOT EXISTS (
       SELECT 1 FROM pg_roles WHERE rolname = '${USER}'
    ) THEN
-      EXECUTE format('CREATE USER ${USER} WITH PASSWORD %L', ${PASS});
+      EXECUTE format('CREATE USER %I WITH PASSWORD %L', '${USER}','${PASS}');      
    END IF;
 END
 \$\$;

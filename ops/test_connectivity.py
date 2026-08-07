@@ -10,7 +10,13 @@ from finance.common.time_utils import now_second_precision
 from finance.config.loader import ConfigLoader
 from finance.main_utils import reconcile_registry, unwrap
 from finance.registry.registry import Registry
-from finance.timeseries import TimescaleBackend
+from finance.timeseries import SeriesBackend
+
+
+def print_list(input_list: list, caption: str) -> None:
+    print(caption)
+    for entry in input_list:
+        print(f"{entry}")
 
 
 def main():
@@ -26,12 +32,8 @@ def main():
     full_cfg = cfg_result.payload
     asset_list = full_cfg["assets"]
     series_list = full_cfg["series"]
-    print("loaded assets: ")
-    for entry in asset_list:
-        print(f"{entry}")
-    print("loaded series: ")
-    for entry in series_list:
-        print(f"{entry}")
+    print_list(asset_list, "loaded assets")
+    print_list(series_list, "loaded series: ")
 
     if len(series_list) == 0:
         print("Terminating as there are no series")
@@ -47,8 +49,8 @@ def main():
     registry.load_yaml_assets(asset_list)
     registry.load_yaml_series(series_list)
 
-    backend_result = TimescaleBackend.from_config(
-        config=deep_merge(secrets, env_cfg), series_by_id=registry.get_series_by_id
+    backend_result = SeriesBackend.from_config(
+        config=deep_merge(secrets, env_cfg),  # series_by_id=registry.get_series_by_id
     )
     if not backend_result.ok:
         print("Backend creation failed:", backend_result.reason, backend_result.error)
@@ -59,29 +61,20 @@ def main():
     print("reconciling registry")
     reconcile_registry(registry, backend)
 
-    print("registry assets")
-    for entry in registry.all_assets():
-        print(entry)
+    print_list(registry.all_assets(), "registry assets")
+    print_list(registry.all_series(), "registry series")
 
-    print("registry series")
-    for entry in registry.all_series():
-        print(entry)
-
-    print("backend get_assets():")
     assets = unwrap(backend.get_assets())
-    for entry in assets:
-        print(entry)
+    print_list(assets, "backend get_assets()")
 
-    print("backend get_series():")
     series = unwrap(backend.get_series())
-    for entry in series:
-        print(entry)
+    print_list(series, "backend get_series()")
 
     now = now_second_precision()
     print(f"writing point at {now}")
     id = registry.all_series()[0].id
     point = SeriesPoint(id, now, close=123.48)
-    result = backend.add(point)
+    result = backend.add_point(point)
     if not result.ok:
         print(f"Write failed: {result.reason}, {result.error}")
         return

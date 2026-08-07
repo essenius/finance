@@ -2,12 +2,8 @@
 # Licensed under the Apache License, Version 2.0. See the LICENSE file for details.
 # File: tests/test_main_run.py
 
-# File: tests/test_run.py
-
 from collections.abc import Iterable
 from unittest.mock import MagicMock, Mock
-
-import pytest
 
 from finance.common.applogger import JsonFormatter
 from finance.common.model import FetchResult, SeriesPoint, SeriesResult
@@ -95,6 +91,8 @@ def test_run_happy_path(tmp_path, json_caplog, fixed_now, state_deps, make_asset
     # def composite_engine_builder(composites, state):
     #    return Result.ok_payload(FakeCompositeEngine([("spread", {"value": 10}, 200)]))
 
+    # note that sql_factory was not mocked so it takes the original.
+
     run(
         load_config=load_config,
         registry_factory=registry_factory,
@@ -114,8 +112,6 @@ def test_run_happy_path(tmp_path, json_caplog, fixed_now, state_deps, make_asset
     series_state = state.series.get(1)
     assert series_state.first_point, series_state.last_point == (now, now)
 
-    # {"timestamp": "2026-07-26 13:55:16,506", "level": "INFO", "logger": "applogger", "message": "Finance version: 0.2.2 started."}
-    # {"timestamp": "2026-07-26T13:55:34+0200", "level": "INFO", "logger": "applogger", "message": "Done."}
     assert '"message": "Finance version: ' in json_caplog.text
     assert '"message": "Done."' in json_caplog.text
 
@@ -165,21 +161,20 @@ def test_run_fetch_failure(tmp_path, json_caplog, fixed_now, make_asset, make_se
     # def composite_engine_builder(composites, state):
     #    return Result.ok_payload(FakeCompositeEngine([]))
 
-    with pytest.raises(SystemExit) as se:
-        run(
-            load_config=load_config,
-            registry_factory=registry_factory,
-            backend_factory=backend_factory,
-            state_factory=FailingState,
-            fetch_controller_factory=fetch_controller_factory,
-            #   composite_engine_builder=composite_engine_builder,
-            wal_factory=wal_factory,
-            reconcile=lambda *_: None,
-            now=fixed_now,
-            provider_factory=lambda api_keys, providers_config: {},
-        )
+    exit_value = run(
+        load_config=load_config,
+        registry_factory=registry_factory,
+        backend_factory=backend_factory,
+        state_factory=FailingState,
+        fetch_controller_factory=fetch_controller_factory,
+        #   composite_engine_builder=composite_engine_builder,
+        wal_factory=wal_factory,
+        reconcile=lambda *_: None,
+        now=fixed_now,
+        provider_factory=lambda api_keys, providers_config: {},
+    )
 
-    assert se.value.code == 1
+    assert exit_value == 1
 
     assert '"reason": "Boom", "error": "simulated failure"' in json_caplog.text
     assert '"message": "Fetch completed with 1 failures"' in json_caplog.text
@@ -249,11 +244,10 @@ def test_run_crash(clean_logging, caplog):
     def load_config():
         raise ValueError("Boom!")
 
-    with pytest.raises(SystemExit) as se:
-        run(load_config=load_config)
+    result = run(load_config=load_config)
 
-    assert se.value.code == 2
-    assert "ERROR | Exiting due to error | error=Boom!" in caplog.messages
+    assert result == 2
+    assert any(m.startswith("ERROR | Exiting due to error | exception.message=Boom!") for m in caplog.messages)
 
 
 def test_run_backend_failure(tmp_path, json_caplog, fixed_now):
@@ -283,8 +277,7 @@ def test_run_backend_failure(tmp_path, json_caplog, fixed_now):
 
     json_caplog.set_level("ERROR")
 
-    with pytest.raises(SystemExit) as se:
-        run(
+    result = run(
             load_config=load_config,
             backend_factory=backend_factory,
             state_factory=Mock,
@@ -295,6 +288,6 @@ def test_run_backend_failure(tmp_path, json_caplog, fixed_now):
             provider_factory=lambda api_keys, providers_config: {},
         )
 
-    assert se.value.code == 1
+    assert result == 1
     assert "Backend initialization failed" in json_caplog.text
     assert "boom" in json_caplog.text

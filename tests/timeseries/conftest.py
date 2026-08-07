@@ -4,18 +4,14 @@
 
 from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
-from unittest.mock import MagicMock, Mock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
-from finance.common.model import Series, SeriesPoint
+from finance.common.model import SeriesPoint
 from finance.common.string_enums import Retention
-from finance.timeseries.timescale_backend import TimescaleBackend, TimescaleConfig
-
-
-@pytest.fixture
-def session():
-    return Mock()
+from finance.timeseries.series_backend import SeriesBackend, TimescaleConfig
+from finance.timeseries.timescale_sql import TimescaleSqlClient
 
 
 class FakeClock:
@@ -34,9 +30,64 @@ class FakeConnection:
 
 
 @pytest.fixture
-def make_backend():
+def sql_with_fake_connection(make_backend_config):
+    def _make(connected: bool = True, **kwargs):
+
+        config = make_backend_config()
+        sql = TimescaleSqlClient(config)
+        sql._connection = MagicMock()
+        sql._connection.closed = not connected
+
+        sql.mock_cursor = MagicMock()
+        fetch_one = kwargs.get("fetchone")
+        sql.mock_cursor.fetchone.return_value = fetch_one
+        fetch_all = kwargs.get("fetchall")
+        sql.mock_cursor.fetchall.return_value = fetch_all
+        execute = kwargs.get("execute")
+        sql.mock_cursor.execute.return_value = execute
+        sql._connection.cursor.return_value.__enter__.return_value = sql.mock_cursor
+        return sql, sql.mock_cursor
+
+    return _make
+
+
+@pytest.fixture
+def sql_with_fake_psycopg(make_backend_config):
+    @contextmanager
+    def _sql_with_fake_psycopg(execute_error=False):
+        config = make_backend_config()
+
+        fake_cursor = MagicMock()
+        fake_cursor.execute.return_value = None
+        fake_cursor.executemany.return_value = None
+
+        fake_conn = MagicMock()
+        fake_conn.closed = False
+        fake_conn.cursor.return_value.__enter__.return_value = fake_cursor
+        fake_conn.cursor.return_value.__exit__.return_value = False
+        fake_conn.cursor.return_value.execute = fake_cursor.execute
+        fake_conn.cursor.return_value.fetchone = fake_cursor.fetchone
+        fake_conn.cursor.return_value.fetchall = fake_cursor.fetchall
+
+        if execute_error:
+            fake_cursor.execute.side_effect = Exception("Execute boom!")
+
+        with patch("psycopg.connect", return_value=fake_conn) as mock_connect:
+            sql = TimescaleSqlClient(config)
+
+            sql.mock_connect = mock_connect
+            sql.mock_conn = fake_conn
+            sql.mock_cursor = fake_cursor
+
+            yield sql
+
+    return _sql_with_fake_psycopg
+
+
+@pytest.fixture
+def make_backend_config():
     def _make(max_batch_size: int = 2, max_batch_age_seconds: int = 2):
-        cfg = TimescaleConfig(
+        return TimescaleConfig(
             host="x",
             dbname="finance",
             user="u",
@@ -45,13 +96,17 @@ def make_backend():
             max_batch_age=timedelta(seconds=max_batch_age_seconds),
         )
 
-        def series_by_id(id: int):
-            return None
+    return _make
 
-        backend = TimescaleBackend(cfg, series_by_id, now=FakeClock())
-        backend._connection = MagicMock()
-        # make it connected
-        backend._connection.closed = False
+
+@pytest.fixture
+def make_backend(make_backend_config, sql_with_fake_connection):
+    def _make(max_batch_size: int = 2, max_batch_age_seconds: int = 2, connected: bool = True, **kwargs):
+        cfg = make_backend_config(max_batch_size=max_batch_size, max_batch_age_seconds=max_batch_age_seconds)
+
+        sql_client, _ = sql_with_fake_connection(connected=connected, **kwargs)
+
+        backend = SeriesBackend(config=cfg, sql_client=sql_client, now=FakeClock())
 
         return backend
 
@@ -74,36 +129,7 @@ def make_entries(make_entry):
     return _make
 
 
-@pytest.fixture
-def make_backend_context():
-    def series_by_id(id: int) -> Series:
-        return None
-
-    @contextmanager
-    def _make_backend(config, execute_error=False):  # returns Result[TimescaleBackend]
-        fake_cursor = MagicMock()
-        fake_cursor.execute.return_value = None
-
-        fake_conn = MagicMock()
-        fake_conn.cursor.return_value.__enter__.return_value = fake_cursor
-
-        if execute_error:
-            fake_cursor.execute.side_effect = Exception("Execute boom!")
-
-        with patch("psycopg.connect", return_value=fake_conn) as mock_connect:
-            result = TimescaleBackend.from_config(config, series_by_id)
-
-            if result.ok:
-                backend = result.payload
-                backend.mock_connect = mock_connect
-                backend.mock_conn = fake_conn
-                backend.mock_cursor = fake_cursor
-
-            yield result
-
-    return _make_backend
-
-
+"""
 @pytest.fixture
 def unwrapped_backend(make_backend_context):
     @contextmanager
@@ -112,3 +138,4 @@ def unwrapped_backend(make_backend_context):
             yield result.payload
 
     return _unwrapped_backend
+"""

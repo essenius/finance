@@ -57,7 +57,7 @@ def make_fetch_controller(
     fake_provider = make_fake_provider(fetch_result)
 
     # Build provider registry based on assets
-    providers = {name: fake_provider for name in PROVIDER_REGISTRY}
+    providers = dict.fromkeys(PROVIDER_REGISTRY, fake_provider)
 
     return FetchController(series, get_asset, providers.get, now_provider=now_provider)
 

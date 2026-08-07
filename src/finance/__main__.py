@@ -4,4 +4,4 @@
 
 from .main import main
 
-main()
+raise SystemExit(main())

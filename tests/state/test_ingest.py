@@ -19,7 +19,7 @@ def test_ingest_enqueues_and_does_not_update_state(state_env, make_entry):
     state, backend, wal = state_env
 
     args = make_entry()
-    backend.add.return_value = Result.ok_payload(0)
+    backend.add_point.return_value = Result.ok_payload(0)
 
     result = state.ingest(args["point"])
 
@@ -36,7 +36,7 @@ def test_ingest_enqueues_and_removes_wal_entry(state_env, make_entry):
     state, backend, wal = state_env
 
     args = make_entry()
-    backend.add.return_value = Result.ok_payload(1)
+    backend.add_point.return_value = Result.ok_payload(1)
 
     result = state.ingest(args["point"])
 
@@ -56,13 +56,13 @@ def test_load_flushes_fifo_until_empty(state_env, two_wal_entries, unwrap):
         two_wal_entries(),  # second call
         [],  # second call
     ]
-    backend.add.side_effect = [Result.ok_payload(1), Result.ok_payload(0)]
+    backend.add_point.side_effect = [Result.ok_payload(1), Result.ok_payload(0)]
     backend.get_series_states.return_value = Result.ok_payload({})
     backend.flush.return_value = Result.ok_payload(1)
     flush_count = unwrap(state.load())
     assert flush_count == 2, "flush count"
     assert wal.is_empty(), "Wal is empty"
-    assert backend.add.call_count == 2, "add call count"
+    assert backend.add_point.call_count == 2, "add call count"
     assert wal.dequeue_multiple.call_count == 3, "dequeue called 3 times (1, 0, 1)"
 
 
@@ -71,7 +71,7 @@ def test_load_stops_on_first_failure(state_env, two_wal_entries, assert_error):
 
     wal.read_all.return_value = two_wal_entries()
 
-    backend.add.return_value = Result.fail(reason="down", error="x", meta={"failed_timestamp": 600})
+    backend.add_point.return_value = Result.fail(reason="down", error="x", meta={"failed_timestamp": 600})
     backend.get_series_states.return_value = Result.ok_payload({})
 
     result = state.load()
@@ -82,7 +82,7 @@ def test_load_stops_on_first_failure(state_env, two_wal_entries, assert_error):
 
 def test_ingest_first_point(state_env, make_entry, unwrap):
     state, backend, wal = state_env
-    backend.add.return_value = Result.ok_payload(0)
+    backend.add_point.return_value = Result.ok_payload(0)
 
     args = make_entry(timestamp=1200)
     write = replace(args["point"], close=1.11)
@@ -97,7 +97,7 @@ def test_ingest_first_point(state_env, make_entry, unwrap):
 
 def test_ingest_no_first_timestamp(state_env, make_entry):
     state, backend, wal = state_env
-    backend.add.return_value = Result.ok_payload(0)
+    backend.add_point.return_value = Result.ok_payload(0)
     # inconsistent state, should treat last as None
     state.series[1] = SeriesState(last_point=1200)
     args = make_entry(timestamp=1200)
@@ -113,7 +113,7 @@ def test_ingest_no_first_timestamp(state_env, make_entry):
 
 def test_ingest_no_last_timestamp(state_env, make_entry):
     state, backend, wal = state_env
-    backend.add.return_value = Result.ok_payload(0)
+    backend.add_point.return_value = Result.ok_payload(0)
     # inconsistent state, should treat last as None
     state.series[1] = SeriesState(first_point=0)
 
@@ -130,7 +130,7 @@ def test_ingest_no_last_timestamp(state_env, make_entry):
 
 def test_ingest_new_write_with_flush(state_env, make_entry):
     state, backend, wal = state_env
-    backend.add.return_value = Result.ok_payload(1)
+    backend.add_point.return_value = Result.ok_payload(1)
 
     state.series[1] = make_series_state()
 
@@ -146,7 +146,7 @@ def test_ingest_new_write_with_flush(state_env, make_entry):
 
 def test_ingest_in_range(state_env, make_entry):
     state, backend, wal = state_env
-    backend.add.return_value = Result.ok_payload(2)
+    backend.add_point.return_value = Result.ok_payload(2)
 
     state.series[1] = make_series_state(start=0, end=1800)
 
@@ -163,7 +163,7 @@ def test_ingest_in_range(state_env, make_entry):
 
 def test_ingest_before_range(state_env, make_entry):
     state, backend, wal = state_env
-    backend.add.return_value = Result.ok_payload(1)
+    backend.add_point.return_value = Result.ok_payload(1)
     state.series[1] = make_series_state(start=1200, end=1800)
 
     args = make_entry(timestamp=600)
@@ -179,7 +179,7 @@ def test_ingest_before_range(state_env, make_entry):
 
 def test_sync_backend_different_counts(state_env, make_entry, unwrap):
     state, backend, wal = state_env
-    backend.add.return_value = Result.ok_payload(1)
+    backend.add_point.return_value = Result.ok_payload(1)
     wal.dequeue_multiple.side_effect = None
     wal.dequeue_multiple.return_value = 0
     args = make_entry(timestamp=1200)

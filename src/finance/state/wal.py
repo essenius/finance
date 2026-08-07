@@ -51,22 +51,6 @@ class JsonlWAL(WAL):
                     continue
                 yield result
 
-    '''
-    def _iter_valid_entries(self) -> Iterable[SeriesPoint]:
-        """Yield valid JSON entries from the WAL in order."""
-        with self.path.open() as wal_file:
-            for line in wal_file:
-                stripped = line.strip()
-                if not stripped:
-                    continue
-                try:
-                    data = json.loads(stripped)
-                    yield SeriesPoint.from_dict(data)
-                except Exception:
-                    # ignore corrupt lines
-                    continue
-    '''
-
     def enqueue(self, point: SeriesPoint) -> None:
         """Append a new entry to the WAL."""
         with self.path.open("a") as wal_file:

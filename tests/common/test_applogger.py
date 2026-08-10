@@ -86,7 +86,6 @@ def test_ok_field_removed(json_caplog):
 
     with json_caplog.at_level(logging.INFO):
         log.info("msg", ok=False, x=4)
-        # '{"timestamp": "2026-07-26 11:58:28,954", "level": "INFO", "logger": "finance.common.applogger", "message": "msg", "x": 4}\n'
     assert ' "level": "INFO", "logger": "applogger", "message": "msg", "x": 4}' in json_caplog.text
 
 

@@ -69,7 +69,6 @@ SeriesResult = MeasurementResult[SeriesPoint | None]
 @dataclass(frozen=True)
 class ProviderConfig:
     name: str
-    # timezone: str
     timeout: str = "10s"
     history_limits: dict[timedelta, timedelta | None] = field(default_factory=dict)
     sweep: dict[timedelta, SweepConfig] = field(default_factory=dict)
@@ -86,7 +85,6 @@ class ProviderConfig:
         return cls(
             name=content["name"],
             timeout=check_duration_in(content, "timeout", "10s"),
-            # timezone=content.get("timezone", "UTC"),
             history_limits=history_limits,
             sweep=sweep,
         )
@@ -127,9 +125,7 @@ class ProviderConfig:
         return self.get_from_duration_table(interval, self.history_limits)
 
     def get_sweep(self, interval: timedelta) -> SweepConfig:
-        return self.get_from_duration_table(interval, self.sweep) or SweepConfig(
-            window=timedelta(0), cadence=timedelta(0)
-        )
+        return self.get_from_duration_table(interval, self.sweep) or SweepConfig.zero()
 
 
 @dataclass(frozen=True)
@@ -208,6 +204,7 @@ class Series:
     # meta-data
     interval: str
     retention: Retention
+    retention_period: str
     series_type: SeriesType
     bootstrap_history: str
     timezone: ZoneInfo
@@ -227,7 +224,7 @@ class Series:
         return parse_duration(self.bootstrap_history, f"bootstrap history for {self.name}")
 
     def retention_delta(self) -> timedelta:
-        return timedelta(days=30) if self.retention == Retention.SHORT_LIVED else None
+        return parse_duration(self.retention_period)
 
     @classmethod
     def create(cls, asset: Asset, code: str, config: dict) -> Series:
@@ -247,6 +244,7 @@ class Series:
             retention = Retention.SHORT_LIVED if is_intraday else Retention.LONG_LIVED
         else:
             retention = Retention.validate(retention)
+        retention_period = check_duration_in(config, "retention_period")
         bootstrap_history = check_duration_in(config, "bootstrap_history")
         if bootstrap_history is None:
             bootstrap_history = "10y" if retention == Retention.LONG_LIVED else "30d"
@@ -275,6 +273,7 @@ class Series:
             interval=config["interval"],
             series_type=SeriesType.validate(config.get("series_type", SeriesType.CANDLE), context()),
             retention=retention,
+            retention_period=retention_period,
             bootstrap_history=bootstrap_history,
             timezone=timezone,
             market_open=market_open,
@@ -292,6 +291,7 @@ class Series:
         return (
             self.asset_id == other.asset_id
             and self.retention == other.retention
+            and self.retention_period == other.retention_period
             and self.series_type == other.series_type
             and self.interval == other.interval
             and self.bootstrap_history == other.bootstrap_history
@@ -360,3 +360,7 @@ class SweepConfig:
         window = parse_duration(config.get("window", "0"), context)
         cadence = parse_duration(config.get("cadence", "0"), context)
         return cls(window=window, cadence=cadence)
+
+    @classmethod
+    def zero(cls) -> SweepConfig:
+        return cls(window=timedelta(0), cadence=timedelta(0))

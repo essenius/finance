@@ -142,7 +142,15 @@ def test_from_config_success_no_defaults(unwrap):
     assert timescale_config.max_batch_age == timedelta(seconds=2.5)
 
     connect_config = backend._sql_client._config.connect_config()
-    assert connect_config == {'host': 'myhost', 'port': 1234, 'dbname': 'fin1', 'user': 'finuser', 'password': 'secret', 'sslmode': 'verify-full', 'sslrootcert': 'system'}
+    assert connect_config == {
+        "host": "myhost",
+        "port": 1234,
+        "dbname": "fin1",
+        "user": "finuser",
+        "password": "secret",
+        "sslmode": "verify-full",
+        "sslrootcert": "system",
+    }
 
     result = backend.flush()
     assert result.ok

@@ -33,6 +33,7 @@ def series_from_row(row: tuple, columns: dict[str, int]) -> Series:
         interval=row[columns["interval"]],
         series_type=SeriesType.validate(row[columns["series_type"]]),
         retention=Retention.validate(row[columns["retention"]]),
+        retention_period=row[columns["retention_period"]],
         bootstrap_history=row[columns["bootstrap_history"]],
         timezone=parse_timezone(row[columns["timezone"]]),
         market_open=parse_time(row[columns["market_open"]]),

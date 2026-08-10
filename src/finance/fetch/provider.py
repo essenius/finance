@@ -22,7 +22,6 @@ class MarketDataProvider:
         # not taking requests.session as the default, to avoid unnecessary construction
         self.session = kwargs.pop("session", None) or requests.Session()
         self.now = kwargs.pop("now_provider", now_second_precision)
-        # self.timezone = ZoneInfo(provider_config.timezone)
 
     def _safe_call(
         self, measurement: str, fn: Callable[[], MeasurementResult[T]], context: str

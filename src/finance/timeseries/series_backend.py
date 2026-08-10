@@ -110,7 +110,7 @@ class SeriesBackend:
     def get_series(self) -> Result[list[Series]]:
         query = """
             SELECT s.id, s.code, s.asset_id, a.name as asset_name, a.name || ':' || s.code AS name,
-                s.interval, s.series_type, s.retention, s.bootstrap_history, s.timezone,
+                s.interval, s.series_type, s.retention, s.retention_period, s.bootstrap_history, s.timezone,
                 s.market_open, s.market_close, s.week_start, s.week_end, s.publication_offset
             FROM series s
             JOIN asset a ON s.asset_id = a.id

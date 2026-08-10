@@ -168,7 +168,7 @@ class AppLogger:
         context["exception.type"] = exc_type.__name__
         context["exception.trace"] = "".join(traceback.format_exception(exc_type, exc_value, exc_tb))
         # Add exception info to context
-        context["exc_info"] = True
+        # context["exc_info"] = True
 
         # Delegate to your log() wrapper
         return self.log("error", msg, **context)

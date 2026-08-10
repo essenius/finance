@@ -39,7 +39,7 @@ def run(
     config_path: Path | None = None,
     load_config: Callable[[], Result[dict[str, Any]]] = None,
     registry_factory: Callable[..., Registry] = Registry,
-    sql_factory: Callable[..., BackendProtocol ] = TimescaleSqlClient,
+    sql_factory: Callable[..., BackendProtocol] = TimescaleSqlClient,
     backend_factory: Callable[
         [dict[str, Any], Callable[..., BackendProtocol]], Result[SeriesBackend]
     ] = SeriesBackend.from_config,
@@ -74,7 +74,7 @@ def run(
         paths = config["paths"]
         asset_list = config["assets"]
         series_list = config["series"]
-        # composites = config["composites"]
+        # CO: composites = config["composites"]
         secrets = config["secrets"]
         provider_cfg = config["providers"]
 
@@ -114,19 +114,19 @@ def run(
         if fetch_failures:
             logger.error(f"Fetch completed with {fetch_failures} failures")
 
-        ## calculate and save composites -- removed from V1 scope. TODO: re-introduce
-        # engine = unwrap(composite_engine_builder(composites, state))
+        # CO:# calculate and save composites -- removed from V1 scope. TODO: re-introduce
+        # CO: engine = unwrap(composite_engine_builder(composites, state))
 
-        # composite_failures = 0
+        # CO: composite_failures = 0
 
-        # for result in engine.evaluate_incrementally():
-        #    cfg = composites[result.series_name]
-        #    #bucket = buckets[cfg["timeseries"]]
-        #    if not process_result(result, state, cfg.get("tags")):
-        #        composite_failures += 1
+        # CO: for result in engine.evaluate_incrementally():
+        # CO:    cfg = composites[result.series_name]
+        # CO:    #bucket = buckets[cfg["timeseries"]]
+        # CO:    if not process_result(result, state, cfg.get("tags")):
+        # CO:        composite_failures += 1
 
-        # if composite_failures:
-        #    logger.error(f"Composite evaluation completed with {composite_failures} failures")
+        # CO: if composite_failures:
+        # CO:    logger.error(f"Composite evaluation completed with {composite_failures} failures")
 
         # Persist state
         state.save()

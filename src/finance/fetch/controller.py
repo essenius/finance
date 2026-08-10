@@ -5,6 +5,8 @@
 from collections.abc import Callable, Iterable
 from datetime import datetime, timedelta
 
+from finance.common.candle_identity import CandleIdentity
+
 from ..common.model import Asset, FetchResult, ProviderConfig, Series, SeriesState, SweepConfig
 from ..common.series_calendar import SeriesCalendar
 from ..common.string_enums import SupportedProviders
@@ -64,90 +66,97 @@ class FetchController:
                     series.name, f"no provider '{asset.provider}'", f"Skipped series '{series.name}'"
                 )
                 continue
-            range = self.compute_fetch_range(series=series, provider=provider, state=state_entry)
+            range = self.get_fetch_range(series=series, provider=provider, state=state_entry)
             if range is None:
                 continue
             start, end, is_incremental = range
-            yield provider.fetch(series, asset, start, end, is_incremental)
+            print(
+                f"series: {series.name} ({series.id}) Store range: {start.store_label()} - {end.store_label()} Publish range: {start.publish_label()} - {end.publish_label()} {'/I' if is_incremental else ''}"
+            )
+            yield provider.fetch(series, asset, start.publish_label(), end.publish_label(), is_incremental)
 
-    def get_sweep_start(self, state: SeriesState, sweep: SweepConfig, last: datetime):
+    def get_sweep_start(self, state: SeriesState, sweep: SweepConfig, last: CandleIdentity) -> datetime:
         if sweep.window <= timedelta(0):
             return None
-        if state.next_sweep is not None and state.next_sweep > last:
+        if state.next_sweep is not None and state.next_sweep > last.store_label():
             return None
         return state.sweep_start
 
-    def update_sweep_state(self, state: SeriesState, sweep: SweepConfig, last: datetime):
-        state.next_sweep = last + sweep.cadence
-        state.sweep_start = last - sweep.window
+    def update_sweep_state(self, state: SeriesState, sweep: SweepConfig, last: CandleIdentity):
+        store_label = last.store_label()
+        state.next_sweep = store_label + sweep.cadence
+        state.sweep_start = store_label - sweep.window
         state.needs_save = True
 
     @staticmethod
-    def compute_label_window(
+    def get_required_range(
         series: Series, calendar: SeriesCalendar, now: datetime
-    ) -> tuple[datetime, datetime] | None:
+    ) -> tuple[CandleIdentity, CandleIdentity] | None:
         horizon = series.bootstrap_history_delta()
         if series.retention_delta() is not None:
             horizon = min(horizon, series.retention_delta())
 
-        first_req = calendar.next_label_time(now - horizon)
+        # store label is UTC, we want that.
+        first_identity = calendar.snap_forward_identity(now - horizon)
 
-        # the last one we need is the last one that could be published
-        pub_offset_utc = calendar.publication_delta(now)
-        last_req = calendar.previous_label_time(now - pub_offset_utc)
-        return first_req, last_req
+        # the last one we need is the last one that could have been published
+        snap_identity = calendar.snap_back_identity(now)
+        last_identity = calendar.snap_back_on_publish_time(now, snap_identity)
+
+        print(f"series: {series.name} ({series.id}): {first_identity.store_label()} - {last_identity.store_label()}")
+        return first_identity, last_identity
 
     @staticmethod
-    def compute_prepend_range(
-        calendar: SeriesCalendar, state: SeriesState, first_req: datetime
-    ) -> tuple[datetime, datetime | None] | None:
+    def get_prepend_range(
+        calendar: SeriesCalendar, state: SeriesState, first_req: CandleIdentity
+    ) -> tuple[CandleIdentity, CandleIdentity | None] | None:
         if state.first_point is None:
             return first_req, None  # full history
 
-        last_missing = calendar.last_label_time_before(state.first_point)
+        last_missing = calendar.last_identity_before(state.first_point)
         if last_missing >= first_req:
             return first_req, last_missing
         return None
 
-    def compute_fetch_range(
+    def get_fetch_range(
         self, series: Series, provider: MarketDataProvider, state: SeriesState | None
-    ) -> tuple[datetime, datetime, bool] | None:
+    ) -> tuple[CandleIdentity, CandleIdentity, bool] | None:
         """
         Unified fetch decision: if fetch needed → return (start, end, is_incremental), else None
         """
 
         calendar = SeriesCalendar.from_series(series)
         now = self.now()
-        first_req, last_req = self.compute_label_window(series, calendar, now)
+        first_req, last_req = self.get_required_range(series, calendar, now)
 
         # edge case. e.g. when retention horizon lands in a weekend
         if first_req > last_req:
             return None
 
-        sweep = provider.provider_config.get_sweep(series.interval_delta())
+        sweep_config = provider.provider_config.get_sweep(series.interval_delta())
 
         # if we have missing history, grab that first
         # This can mean we skip a daily publication (but that will be picked up next run)
         # we won't do the sweep now either
-        prepend_range = self.compute_prepend_range(calendar, state, first_req)
+        prepend_range = self.get_prepend_range(calendar, state, first_req)
         if prepend_range is not None:
             start, end = prepend_range
             if end is None:
                 # Full history update, is also a sweep
-                self.update_sweep_state(state, sweep, last_req)
+                self.update_sweep_state(state, sweep_config, last_req)
                 end = last_req
             return (start, end, False)
 
-        sweep_start = self.get_sweep_start(state, sweep, last_req)
+        sweep_start = self.get_sweep_start(state, sweep_config, last_req)
         if sweep_start is not None:
             retention = series.retention_delta()
             if retention is not None:
                 sweep_start = max(sweep_start, now - retention)
-            first_point = calendar.next_label_time(sweep_start)
-            self.update_sweep_state(state, sweep, last_req)
-            return (first_point, last_req, False)
+            first_identity = calendar.snap_forward_identity(sweep_start)
+            self.update_sweep_state(state, sweep_config, last_req)
+            return (first_identity, last_req, False)
 
-        if last_req > state.last_point:
-            first_point = state.last_point + series.interval_delta()
-            return (first_point, last_req, True)
+        if last_req.store_label() > state.last_point:
+            first_identity = calendar.snap_forward_identity(state.last_point + series.interval_delta())
+            return (first_identity, last_req, True)
         return None

@@ -48,8 +48,6 @@ def state_env(state_deps) -> tuple[State, SeriesBackend, JsonlWAL]:
 
     backend, wal = state_deps
     state = State(backend, wal)
-    # state._rebuild_measurement_state = lambda series_id: SeriesState()
-
     return state, backend, wal
 
 
@@ -126,9 +124,7 @@ def make_asset():
 
 @pytest.fixture
 def make_series(make_asset):
-    def _make(
-        asset: Asset | None, **overrides
-    ):  # interval="10m", history_limit="5d", resolution=INTRADAY, series_type=SeriesType.VALUE, id=1):
+    def _make(asset: Asset | None, **overrides):
         if asset is None:
             asset = make_asset()
 
@@ -140,6 +136,7 @@ def make_series(make_asset):
             "interval": "10m",
             "series_type": SeriesType.VALUE,
             "retention": Retention.SHORT_LIVED,
+            "retention_period": "30d",
             "bootstrap_history": "5d",
             "timezone": UTC,
             "publication_offset": None,

@@ -19,11 +19,13 @@ DURATION_UNITS = {
 WEEKDAY_ABBR_MAP = {abbr.lower(): i for i, abbr in enumerate(calendar.day_abbr)}
 
 
-def parse_duration(text: str, context: str | None = None) -> timedelta:
+def parse_duration(text: str, context: str | None = None) -> timedelta | None:
     """
     Convert interval strings like '10m', '1h', '1d', '30s' into seconds.
     Raises ValueError on invalid formats.
     """
+    if text is None:
+        return None
     if text == "0":
         return timedelta(0)
     match = re.fullmatch(r"(\d+)([smhdwy])", text)
@@ -66,10 +68,10 @@ def parse_weekday(name: str) -> int:
     return WEEKDAY_ABBR_MAP[key]
 
 
-def snap_to(timestamp: datetime, range: timedelta) -> datetime:
+def snap_to(time_point: datetime, range: timedelta) -> datetime:
     delta = range.total_seconds()
-    snapped = (timestamp.timestamp() // delta) * delta
-    return datetime.fromtimestamp(snapped, tz=timestamp.tzinfo)
+    snapped = (time_point.astimezone(UTC).timestamp() // delta) * delta
+    return datetime.fromtimestamp(snapped, tz=UTC)
 
 
 def parse_time(value):

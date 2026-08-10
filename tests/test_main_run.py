@@ -70,9 +70,9 @@ def test_run_happy_path(tmp_path, json_caplog, fixed_now, state_deps, make_asset
         "secrets": {"timescaledb": {"url": "x", "db": "y"}, "api_keys": {"yahoo": "YKEY"}},
         "assets": {"spx": asset},
         "series": {"spx_daily": make_series(asset)},
-        # "composites": {"spread": {"tags": {"c": "s"}, RESOLUTION: DAILY}},
-        # "measurements": {"spread": {"bucket": DAILY}},
-        # "buckets": {"intraday": "finance_intraday", "daily": "finance_daily"},
+        # CO: "composites": {"spread": {"tags": {"c": "s"}, RESOLUTION: DAILY}},
+        # CO: "measurements": {"spread": {"bucket": DAILY}},
+        # CO: "buckets": {"intraday": "finance_intraday", "daily": "finance_daily"},
         "providers": {},
         "timescaledb": {},
     }
@@ -88,8 +88,8 @@ def test_run_happy_path(tmp_path, json_caplog, fixed_now, state_deps, make_asset
     def fetch_controller_factory(series, get_assets, get_providers):
         return FakeFetchController([(1, 4321, now)])
 
-    # def composite_engine_builder(composites, state):
-    #    return Result.ok_payload(FakeCompositeEngine([("spread", {"value": 10}, 200)]))
+    # CO: def composite_engine_builder(composites, state):
+    # CO:    return Result.ok_payload(FakeCompositeEngine([("spread", {"value": 10}, 200)]))
 
     # note that sql_factory was not mocked so it takes the original.
 
@@ -158,8 +158,8 @@ def test_run_fetch_failure(tmp_path, json_caplog, fixed_now, make_asset, make_se
     def fetch_controller_factory(series, get_assets, get_providers):
         return FakeFetchController([(1, 1, fixed_now())])
 
-    # def composite_engine_builder(composites, state):
-    #    return Result.ok_payload(FakeCompositeEngine([]))
+    # CO: def composite_engine_builder(composites, state):
+    # CO:    return Result.ok_payload(FakeCompositeEngine([]))
 
     exit_value = run(
         load_config=load_config,
@@ -272,21 +272,21 @@ def test_run_backend_failure(tmp_path, json_caplog, fixed_now):
     def fetch_controller_factory(*_):
         return FakeFetchController([])
 
-    # def composite_engine_builder(*_):
-    #    return Result.ok_payload(FakeCompositeEngine([]))
+    # CO: def composite_engine_builder(*_):
+    # CO:    return Result.ok_payload(FakeCompositeEngine([]))
 
     json_caplog.set_level("ERROR")
 
     result = run(
-            load_config=load_config,
-            backend_factory=backend_factory,
-            state_factory=Mock,
-            fetch_controller_factory=fetch_controller_factory,
-            # composite_engine_builder=composite_engine_builder,
-            wal_factory=Mock,
-            now=fixed_now,
-            provider_factory=lambda api_keys, providers_config: {},
-        )
+        load_config=load_config,
+        backend_factory=backend_factory,
+        state_factory=Mock,
+        fetch_controller_factory=fetch_controller_factory,
+        # CO: composite_engine_builder=composite_engine_builder,
+        wal_factory=Mock,
+        now=fixed_now,
+        provider_factory=lambda api_keys, providers_config: {},
+    )
 
     assert result == 1
     assert "Backend initialization failed" in json_caplog.text

@@ -64,6 +64,8 @@ business:
 
     intraday:
       interval: 5m
+      # retention period is defined in the database. Keep aligned.
+      retention_period: 30d
       # for <1d, default retention is short lived, bootstrap_history 30d
       # short lived means stored in table with retention policy
 
@@ -324,18 +326,18 @@ business:
       series:
         daily: [daily, value, us_treasury]
 
-   # treasury_avg:
-   #   provider: treasury
-   #   provider_code: avg_interest_rate
-   #   symbol: AVG_INTEREST_RATE
-   #   tags:
-   #     instrument: macro
-   #     region: US
-   #     unit: percent
-   #     provider: treasury
-   #   series:
-   #     daily:
-   #       interval: 1d
+   # CO: treasury_avg:
+   # CO:   provider: treasury
+   # CO:   provider_code: avg_interest_rate
+   # CO:   symbol: AVG_INTEREST_RATE
+   # CO:   tags:
+   # CO:     instrument: macro
+   # CO:     region: US
+   # CO:     unit: percent
+   # CO:     provider: treasury
+   # CO:   series:
+   # CO:     daily:
+   # CO:       interval: 1d
 
   # -------------------------
   # COMPOSITES

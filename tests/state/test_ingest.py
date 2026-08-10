@@ -91,7 +91,6 @@ def test_ingest_first_point(state_env, make_entry, unwrap):
 
     payload = unwrap(result)
     assert payload == 0
-    #    assert result.meta == {"skipped": False, "reason": "first"}
     wal.enqueue.assert_called_once()
 
 
@@ -107,7 +106,6 @@ def test_ingest_no_first_timestamp(state_env, make_entry):
 
     assert result.ok is True
     assert result.payload == 0
-    #   assert result.meta == {"skipped": False, "reason": "first"}
     wal.enqueue.assert_called_once()
 
 
@@ -124,7 +122,6 @@ def test_ingest_no_last_timestamp(state_env, make_entry):
 
     assert result.ok is True
     assert result.payload == 0
-    #  assert result.meta == {"skipped": False, "reason": "first"}
     wal.enqueue.assert_called_once()
 
 
@@ -140,7 +137,6 @@ def test_ingest_new_write_with_flush(state_env, make_entry):
 
     assert result.ok is True
     assert result.payload == 1
-    # assert result.meta == {"skipped": False, "reason": "new"}
     wal.enqueue.assert_called_once()
 
 
@@ -157,7 +153,6 @@ def test_ingest_in_range(state_env, make_entry):
 
     assert result.ok is True
     assert result.payload == 2
-    # assert result.meta == {"skipped": True, "reason": "inside-window"}
     wal.enqueue.assert_called_once()
 
 
@@ -173,7 +168,6 @@ def test_ingest_before_range(state_env, make_entry):
 
     assert result.ok is True
     assert result.payload == 1
-    #    assert result.meta == {"skipped": False, "reason": "before-window"}
     wal.enqueue.assert_called_once()
 
 
@@ -191,5 +185,4 @@ def test_sync_backend_different_counts(state_env, make_entry, unwrap):
     # dequeue_multiple reported 0 were removed
     assert payload == 0
     assert result.warnings[0] == "Requested to remove 1 entries from the WAL but removed 0"
-    # assert result.meta == {"skipped": False, "reason": "first"}
     wal.enqueue.assert_called_once()

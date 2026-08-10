@@ -8,6 +8,7 @@ from datetime import UTC, datetime, time, timedelta
 from unittest.mock import Mock
 from zoneinfo import ZoneInfo
 
+from finance.common.candle_identity import CandleIdentity
 from finance.common.model import Asset, FetchResult, MeasurementResult, ProviderConfig, Series, SeriesState, SweepConfig
 from finance.common.string_enums import Retention, SupportedProviders
 from finance.common.time_utils import snap_to
@@ -175,13 +176,13 @@ def test_controller_skips_fetch_with_offset(state, make_asset, make_series):
     # should not retrieve as publication time not passed yet
     state.series[1] = SeriesState(first_point=last_week, last_point=yesterday)
     results = list(fc.fetch_incrementally(state))
-    assert len(results) == 0
+    assert len(results) == 0, "no result as publication time not passed"
     fc.get_provider("yahoo").fetch.assert_not_called()
 
     # should retrieve as publication time passed passed
     fake_hour = 15
     results = list(fc.fetch_incrementally(state))
-    assert len(results) == 1
+    assert len(results) == 1, "result as publication time passed"
 
 
 def test_controller_unknown_provider(assert_error, state, fixed_now, make_asset, make_series):
@@ -284,18 +285,18 @@ def test_compute_fetch_range_intraday(make_series, make_asset):
         first_point=datetime(2026, 6, 15, tzinfo=UTC), last_point=datetime(2026, 7, 15, 15, 10, tzinfo=UTC)
     )
 
-    result = fc.compute_fetch_range(series=series, provider=fake_provider, state=state_entry_1)
+    result = fc.get_fetch_range(series=series, provider=fake_provider, state=state_entry_1)
     assert result is not None, "1st: intraday publication expected"
     first, last, is_incremental = result
     assert is_incremental, "1st: is incremental"
-    assert first == datetime(2026, 7, 15, 15, 20, tzinfo=UTC)
-    assert last == datetime(2026, 7, 15, 15, 20, tzinfo=UTC)
+    assert first.store_label() == datetime(2026, 7, 15, 15, 20, tzinfo=UTC)
+    assert last.store_label() == datetime(2026, 7, 15, 15, 20, tzinfo=UTC)
 
     # No new points
     state_entry_2 = SeriesState(
         first_point=datetime(2026, 6, 15, tzinfo=UTC), last_point=datetime(2026, 7, 15, 15, 20, tzinfo=UTC)
     )
-    result = fc.compute_fetch_range(series=series, provider=fake_provider, state=state_entry_2)
+    result = fc.get_fetch_range(series=series, provider=fake_provider, state=state_entry_2)
     assert result is None, "2nd: intraday publication not expected"
 
     # older history to fetch
@@ -303,15 +304,15 @@ def test_compute_fetch_range_intraday(make_series, make_asset):
         first_point=datetime(2026, 7, 13, tzinfo=UTC), last_point=datetime(2026, 7, 15, 15, 20, tzinfo=UTC)
     )
 
-    result = fc.compute_fetch_range(series=series, provider=fake_provider, state=state_entry_3)
+    result = fc.get_fetch_range(series=series, provider=fake_provider, state=state_entry_3)
     assert result is not None, "3rd: intraday publication expected"
     first, last, is_incremental = result
     assert not is_incremental, "3rd: not incremental"
-    assert first == datetime(2026, 7, 10, 15, 30, tzinfo=UTC), "3rd: first is before saved range"
-    assert last == datetime(2026, 7, 10, 23, 50, tzinfo=UTC), "3rd: last is before saved range"
+    assert first.store_label() == datetime(2026, 7, 10, 15, 30, tzinfo=UTC), "3rd: first is before saved range"
+    assert last.store_label() == datetime(2026, 7, 10, 23, 50, tzinfo=UTC), "3rd: last is before saved range"
 
     long_lived_series = replace(series, retention=Retention.LONG_LIVED)
-    result = fc.compute_fetch_range(series=long_lived_series, provider=fake_provider, state=state_entry_3)
+    result = fc.get_fetch_range(series=long_lived_series, provider=fake_provider, state=state_entry_3)
     assert result is not None, "3rd: intraday insufficient history"
 
     # start with the point that didn't expect publication and enable sweeps
@@ -320,13 +321,13 @@ def test_compute_fetch_range_intraday(make_series, make_asset):
     )
     state_entry_2.next_sweep = state_entry_2.last_point
     state_entry_2.sweep_start = datetime(2026, 7, 13, 15, 30, tzinfo=UTC)  # a Saturday
-    result = fc.compute_fetch_range(series=series, provider=fake_provider, state=state_entry_2)
+    result = fc.get_fetch_range(series=series, provider=fake_provider, state=state_entry_2)
 
     assert result is not None, "sweep: publication expected"
     first, last, is_incremental = result
     assert not is_incremental, "sweep: not incremental"
-    assert first == datetime(2026, 7, 13, 15, 30, tzinfo=UTC), "sweep: first == sweep start"
-    assert last == datetime(2026, 7, 15, 15, 20, tzinfo=UTC), "sweep: last == last_req"
+    assert first.store_label() == datetime(2026, 7, 13, 15, 30, tzinfo=UTC), "sweep: first == sweep start"
+    assert last.store_label() == datetime(2026, 7, 15, 15, 20, tzinfo=UTC), "sweep: last == last_req"
     assert state_entry_2.next_sweep == datetime(2026, 7, 15, 16, 20, tzinfo=UTC), "sweep: next == last + cadence"
     assert state_entry_2.sweep_start == datetime(2026, 7, 14, 15, 20, tzinfo=UTC), "sweep: start == last - window"
     assert state_entry_2.needs_save, "sweep: needs save"
@@ -339,7 +340,9 @@ def test_compute_fetch_range_daily(make_series, make_asset):
     assets = make_assets([asset])
 
     # Daily series
-    series_list = [make_series(asset, interval="1d", bootstrap_history="5y", retention=Retention.LONG_LIVED)]
+    series_list = [
+        make_series(asset, interval="1d", bootstrap_history="5y", retention=Retention.LONG_LIVED, retention_period=None)
+    ]
     providers = {"yahoo": fake_provider}
 
     def mock_now():
@@ -352,34 +355,34 @@ def test_compute_fetch_range_daily(make_series, make_asset):
     state_entry_1 = SeriesState(
         first_point=datetime(2021, 7, 13, tzinfo=UTC), last_point=datetime(2026, 7, 13, tzinfo=UTC)
     )
-    result = fc.compute_fetch_range(series=series, provider=fake_provider, state=state_entry_1)
+    result = fc.get_fetch_range(series=series, provider=fake_provider, state=state_entry_1)
 
     assert result is not None, "1st: daily publication expected"
     first, last, is_incremental = result
     assert is_incremental, "1 is incremental"
-    assert first == datetime(2026, 7, 14, tzinfo=UTC), "1st: 14th is first"
-    assert last == datetime(2026, 7, 14, tzinfo=UTC), "1st: 15th not yet, as not finished"
+    assert first.store_label() == datetime(2026, 7, 14, tzinfo=UTC), "1st: 14th is first"
+    assert last.store_label() == datetime(2026, 7, 14, tzinfo=UTC), "1st: 15th not yet, as not finished"
     assert not state_entry_1.needs_save, "needs save"
 
     # --- Publication NOT expected (last_point == today)
     state_entry_2 = SeriesState(
         first_point=datetime(2021, 7, 10, tzinfo=UTC), last_point=datetime(2026, 7, 14, tzinfo=UTC)
     )
-    result = fc.compute_fetch_range(series=series, provider=fake_provider, state=state_entry_2)
+    result = fc.get_fetch_range(series=series, provider=fake_provider, state=state_entry_2)
     assert result is None, "2nd: daily publication not expected"
 
     # Insufficient history (first_point too recent)
     state_entry_3 = SeriesState(
         first_point=datetime(2021, 7, 20, tzinfo=UTC), last_point=datetime(2026, 7, 14, tzinfo=UTC)
     )
-    # first_req is Mon 19-7-2021 == last_not_fetched, so one day history
-    result = fc.compute_fetch_range(series=series, provider=fake_provider, state=state_entry_3)
+    # first_req is Thu 15-7-2021 < last_not_fetched, so there is prepend history
+    result = fc.get_fetch_range(series=series, provider=fake_provider, state=state_entry_3)
 
     assert result is not None, "3rd: daily insufficient history"
     first, last, is_incremental = result
     assert not is_incremental, "3rd: not incremental"
-    assert first == datetime(2021, 7, 19, tzinfo=UTC), "3rd: first is before range"
-    assert last == datetime(2021, 7, 19, tzinfo=UTC), "3rd: last is before range"
+    assert first.store_label() == datetime(2021, 7, 15, tzinfo=UTC), "3rd: first is before range"
+    assert last.store_label() == datetime(2021, 7, 19, tzinfo=UTC), "3rd: last is before range"
 
     # start with the point that didn't expect publication and enable sweeps
     fake_provider.provider_config.get_sweep.return_value = SweepConfig(
@@ -387,13 +390,13 @@ def test_compute_fetch_range_daily(make_series, make_asset):
     )
     state_entry_2.next_sweep = state_entry_2.last_point
     state_entry_2.sweep_start = datetime(2026, 7, 11, tzinfo=UTC)  # a Saturday
-    result = fc.compute_fetch_range(series=series, provider=fake_provider, state=state_entry_2)
+    result = fc.get_fetch_range(series=series, provider=fake_provider, state=state_entry_2)
 
     assert result is not None, "sweep publication expected"
     first, last, is_incremental = result
     assert not is_incremental, "sweep is not incremental"
-    assert first == datetime(2026, 7, 13, tzinfo=UTC), "first is Monday after sweep start"
-    assert last == datetime(2026, 7, 14, tzinfo=UTC), "last is last_req"
+    assert first.store_label() == datetime(2026, 7, 13, tzinfo=UTC), "first is Monday after sweep start"
+    assert last.store_label() == datetime(2026, 7, 14, tzinfo=UTC), "last is last_req"
     assert state_entry_2.next_sweep == datetime(2026, 7, 15, tzinfo=UTC)  # last + cadence
     assert state_entry_2.sweep_start == datetime(2026, 7, 7, tzinfo=UTC)  # last - window
     assert state_entry_2.needs_save
@@ -421,7 +424,7 @@ def test_compute_fetch_range_first_after_last(make_asset, make_series):
     series = series_list[0]
 
     state_entry = SeriesState()
-    result = fc.compute_fetch_range(series=series, provider=fake_provider, state=state_entry)
+    result = fc.get_fetch_range(series=series, provider=fake_provider, state=state_entry)
 
     assert result is None, "no points found (last before first)"
 
@@ -439,11 +442,15 @@ def test_get_sweep_start(make_asset, make_series, fixed_now):
     fc = make_fetch_controller(series, assets.get, fixed_now)
     state = SeriesState()
     sweep = SweepConfig.from_config(config={})
-    assert fc.get_sweep_start(state=state, sweep=sweep, last=datetime.min) is None
+    last = CandleIdentity(value=datetime.min, is_daily=False)
+    assert fc.get_sweep_start(state=state, sweep=sweep, last=last) is None
     now = fixed_now()
     yesterday = now - timedelta(days=1)
     state.next_sweep = now
     state.sweep_start = yesterday
     sweep.window = timedelta(days=2)
-    assert fc.get_sweep_start(state=state, sweep=sweep, last=now - timedelta(days=1)) is None
-    assert fc.get_sweep_start(state=state, sweep=sweep, last=now + timedelta(days=1)) is state.sweep_start
+    assert fc.get_sweep_start(state=state, sweep=sweep, last=replace(last, value=now - timedelta(days=1))) is None
+    assert (
+        fc.get_sweep_start(state=state, sweep=sweep, last=replace(last, value=now + timedelta(days=1)))
+        is state.sweep_start
+    )

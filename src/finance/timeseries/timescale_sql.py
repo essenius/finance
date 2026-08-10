@@ -60,11 +60,10 @@ class TimescaleSqlClient:
             lambda cursor: (cursor.execute(query, params), cursor.fetchone()[0])[1], context
         )
 
-        # lambda: Result.ok_payload(self._execute_write(sql_query, params)), "write")
-
     def execute_many(self, query: str | sql.SQL, params: list[tuple], context: str) -> Result[None]:
-        return self._database_operation(lambda cur: cur.executemany(query, params), context)
-        # lambda: Result.ok_payload(self._execute_many(sql_query, params, context)), context
+        return self._database_operation(
+            lambda cur: cur.executemany(query, params), context
+        )  # lambda: Result.ok_payload(self._execute_many(sql_query, params, context)), context
 
     def is_connected(self) -> bool:
         conn = self._connection

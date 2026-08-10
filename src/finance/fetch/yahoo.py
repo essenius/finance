@@ -3,7 +3,7 @@
 # File: src/finance/fetch/yahoo.py
 
 from collections.abc import Callable
-from datetime import datetime
+from datetime import UTC, datetime
 from functools import partial
 from urllib.parse import quote
 from zoneinfo import ZoneInfo
@@ -134,7 +134,8 @@ class YahooProvider(MarketDataProvider):
                 invalid_count += 1
                 continue
             values = {}
-            time = normalize(ts)
+            normalized_time = normalize(ts)
+            print(f"time: {datetime.fromtimestamp(ts, tz=UTC)} -> {normalized_time}")
 
             incomplete = False
             for field in Candle.values():
@@ -147,7 +148,7 @@ class YahooProvider(MarketDataProvider):
 
             if incomplete:
                 incomplete_count += 1
-            point = point_factory(time=time, **values)
+            point = point_factory(time=normalized_time, **values)
             candles.append(point)
 
         warnings = []

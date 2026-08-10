@@ -65,7 +65,6 @@ class ConfigLoader:
         merged = {**self.environ, **env_file_values}
 
         api_keys = {}
-        # influx = {}
         timescaledb = {}
         config = None
 

@@ -3,10 +3,16 @@
 # File: tests/fetch/test_ecb.py
 
 import json
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from zoneinfo import ZoneInfo
 
 import pytest
+
+from finance.common.candle_identity import CandleIdentity
+
+
+def make_identity(label: datetime) -> CandleIdentity:
+    return CandleIdentity(label, is_daily=True, interval=timedelta(days=1))
 
 
 def test_ecb_fetch_real_fixture(ecb_provider, assert_ok, make_asset, make_series):
@@ -18,9 +24,9 @@ def test_ecb_fetch_real_fixture(ecb_provider, assert_ok, make_asset, make_series
 
     asset = make_asset(provider_code="USD_EUR")
     series = make_series(asset)
-    start_time = datetime(2026, 5, 8, tzinfo=ZoneInfo("Europe/Berlin"))
-    end_time = datetime(2026, 5, 8, 23, 59, 59, tzinfo=ZoneInfo("Europe/Berlin"))
-    result = provider.fetch(series, asset, start_time=start_time, end_time=end_time, is_incremental=False)
+    start = make_identity(datetime(2026, 5, 8, tzinfo=ZoneInfo("Europe/Berlin")))
+    end = make_identity(datetime(2026, 5, 8, 23, 59, 59, tzinfo=ZoneInfo("Europe/Berlin")))
+    result = provider.fetch(series, asset, start=start, end=end, is_incremental=False)
     assert provider.session.url == "https://data-api.ecb.europa.eu/service/data/EXR/D.USD.EUR.SP00.A"
     assert provider.session.params == {
         "format": "jsondata",
@@ -43,9 +49,9 @@ def test_ecb_fetch_ok(ecb_provider, assert_ok, make_asset, make_series):
     asset = make_asset(provider_code="USD_EUR")
     series = make_series(asset)
 
-    start_time = datetime(2026, 5, 8, tzinfo=ZoneInfo("Europe/Berlin"))
-    end_time = datetime(2026, 5, 8, 23, 59, 59, tzinfo=ZoneInfo("Europe/Berlin"))
-    result = provider.fetch(series, asset, start_time=start_time, end_time=end_time, is_incremental=True)
+    start = make_identity(datetime(2026, 5, 8, tzinfo=ZoneInfo("Europe/Berlin")))
+    end = make_identity(datetime(2026, 5, 8, 23, 59, 59, tzinfo=ZoneInfo("Europe/Berlin")))
+    result = provider.fetch(series, asset, start=start, end=end, is_incremental=True)
     assert_ok(result, time=datetime(2026, 5, 8, 0, 0, 0, tzinfo=UTC), close=1.1761)
     assert provider.session.url == "https://data-api.ecb.europa.eu/service/data/EXR/D.USD.EUR.SP00.A"
     assert provider.session.params == {"format": "jsondata", "updatedAfter": "2026-05-08", "detail": "dataonly"}
@@ -66,16 +72,16 @@ def test_ecb_fetch_wrong_provider_code(ecb_provider, make_series, make_asset, pr
     asset = make_asset(provider_code=provider_code)
     series = make_series(asset)
 
-    start_time = datetime(2026, 5, 8, tzinfo=ZoneInfo("Europe/Berlin"))
-    end_time = datetime(2026, 5, 8, 23, 59, 59, tzinfo=ZoneInfo("Europe/Berlin"))
-    result = provider.fetch(series, asset, start_time=start_time, end_time=end_time, is_incremental=True)
+    start = make_identity(datetime(2026, 5, 8, tzinfo=ZoneInfo("Europe/Berlin")))
+    end = make_identity(datetime(2026, 5, 8, 23, 59, 59, tzinfo=ZoneInfo("Europe/Berlin")))
+    result = provider.fetch(series, asset, start=start, end=end, is_incremental=True)
     assert not result.ok
     assert f"Could not split provider code '{provider_code}' into base_quote" in result.reason
     assert result.payload is None
 
 
 def test_ecb_fetch_non_200(ecb_provider, assert_error, make_asset, make_series, fixed_now):
-    now = fixed_now()
+    now = make_identity(fixed_now())
     provider = ecb_provider()
     provider.session.queue(500, "", "Internal Server Error")
 
@@ -105,7 +111,7 @@ MALFORMED_CASES = [
 def test_ecb_malformed_json(
     ecb_provider, make_asset, make_series, json_data, expected, context, assert_error, fixed_now
 ):
-    now = fixed_now()
+    now = make_identity(fixed_now())
     provider = ecb_provider()
     provider.session.queue(200, json_data)
 
@@ -151,13 +157,9 @@ def test_ecb_fetch_multiple_points_skip_invalid(unwrap, ecb_provider, make_serie
         },
     }
 
-    now = fixed_now()
+    now = make_identity(fixed_now())
     provider = ecb_provider()
-    provider.session.queue(
-        200,
-        fake_json,
-        make_series,
-    )
+    provider.session.queue(200, fake_json, make_series)
     asset = make_asset(provider_code="EUR_USD")
     series = make_series(asset)
     points = unwrap(provider.fetch(series, asset, now, now, True))

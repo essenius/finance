@@ -19,7 +19,7 @@ business:
   providers:
     yahoo:
       timeout: 10s
-      timezone: UTC
+      # CO: timezone: UTC
       sweep: 
         default: 
           window: 2h
@@ -36,7 +36,7 @@ business:
     
     ecb:
       timeout: 20s
-      timezone: Europe/Berlin
+      # CO: timezone: Europe/Berlin
       overlap:
         default:
           window: 0
@@ -44,7 +44,7 @@ business:
 
     fred:
       timeout: 10s
-      timezone: America/Chicago
+      # CO: timezone: America/Chicago
       sweep: 
         default: 
           window: 30d
@@ -54,6 +54,7 @@ business:
           # not used as way beyond usage, just capturing 
           requests_per_minute: 120
 
+  
   series_templates:
 
     daily:
@@ -115,6 +116,17 @@ business:
     us_treasury:
       timezone: America/New_York
 
+    us_commodities:
+      timezone: America/New_York
+      week_start: sun
+      week_end: sat
+
+    new_york:
+      timezone: America/New_York
+    
+    london:
+      timezone: Europe/London
+
     ecb:
       timezone: Europe/Berlin
       publication_offset: 16h
@@ -138,7 +150,7 @@ business:
         currency: USD
         unit: ratio
       series:
-        daily: [daily, 24x5]
+        daily: [daily, 24x5, london]
 
     # -------------------------
     # FOREX: EURUSD (ECB)
@@ -172,8 +184,8 @@ business:
         currency: USD
         unit: 100_troy_ounce
       series:
-        intraday: [intraday, 24x7]
-        daily: [daily, 24x7]
+        intraday: [intraday, us_commodities]
+        daily: [daily, us_commodities]
 
     wti:
       provider:
@@ -187,8 +199,8 @@ business:
         currency: USD
         unit: barrel
       series:
-        intraday: [intraday, 24x7]
-        daily: [daily, 24x7]
+        intraday: [intraday, us_commodities]
+        daily: [daily, us_commodities]
 
     brent:
       provider:
@@ -202,8 +214,8 @@ business:
         currency: USD
         unit: barrel
       series:
-        intraday: [intraday, 24x7]
-        daily: [daily, 24x7]
+        intraday: [intraday, us_commodities]
+        daily: [daily, us_commodities]
 
     # -------------------------
     # EQUITIES

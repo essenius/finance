@@ -121,7 +121,9 @@ def test_extract_candles_handles_missing_timestamp(yahoo_provider, assert_error,
     series = make_series(asset, series_type=SeriesType.VALUE)
 
     candles = yahoo_provider()._extract_candles(series, normalize, result)
-    assert_error(candles, "no timestamp in result", None)
+    assert candles.ok
+    assert candles.payload is None
+    assert candles.warnings[0] == "no timestamp in result"
 
 
 def test_extract_candles_handles_missing_quote(yahoo_provider, assert_error, make_asset, make_series):

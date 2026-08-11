@@ -3,9 +3,10 @@
 # File: tests/fetch/yahoo/test_fetch.py
 
 import json
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 from unittest.mock import Mock, patch
 
+from finance.common.candle_identity import CandleIdentity
 from finance.common.model import SeriesPoint
 from finance.common.string_enums import Retention, SeriesType
 from finance.fetch.yahoo import YahooProvider
@@ -77,19 +78,23 @@ def test_fetch_impl_yahoo_error_object(yahoo_provider, assert_error):
 # ----------------------------------------------------------------------
 
 
+def make_identity(label: datetime):
+    return CandleIdentity(label, False, timedelta(0))
+
+
 def test_fetch_success(yahoo_provider, unwrap, make_asset, make_series):
 
     def fake_now():
         return datetime(2026, 7, 23, 15, 00, tzinfo=UTC)
 
     response = Mock()
-    now = fake_now()
+    now = make_identity(fake_now())
     response.json.return_value = {
         "chart": {
             "result": [
                 {
                     "meta": {"exchangeTimezoneName": "UTC"},
-                    "timestamp": [now.timestamp()],
+                    "timestamp": [now.start_timestamp()],
                     "indicators": {"quote": [{"close": [10.0]}]},
                 }
             ],
@@ -110,7 +115,7 @@ def test_fetch_success(yahoo_provider, unwrap, make_asset, make_series):
 
 
 def test_impl_http_error(yahoo_provider, assert_error, make_asset, make_series, fixed_now):
-    now = fixed_now()
+    now = make_identity(fixed_now())
     response = Mock()
     response.raise_for_status.side_effect = Exception("boom")
     asset = make_asset()
@@ -123,14 +128,14 @@ def test_impl_http_error(yahoo_provider, assert_error, make_asset, make_series, 
 
 
 def test_fetch_missing_exchange_timezone(yahoo_provider, assert_error, make_asset, make_series, fixed_now):
-    now = fixed_now()
+    now = make_identity(fixed_now())
     response = Mock()
     response.json.return_value = {
         "chart": {
             "result": [
                 {
                     "meta": {},
-                    "timestamp": [now.timestamp()],
+                    "timestamp": [now.start_timestamp()],
                     "indicators": {"quote": [{"close": [10.0]}]},
                 }
             ],
@@ -149,20 +154,21 @@ def test_fetch_missing_exchange_timezone(yahoo_provider, assert_error, make_asse
     )
 
 
-def test_fetch_real_fixture_1d_eliminates_today(yahoo_provider, unwrap, make_asset, make_series):
-    with open("tests/data/yahoo_gold_5d.json") as f:
+def test_fetch_real_fixture_5m_eliminates_last(yahoo_provider, unwrap, make_asset, make_series):
+    with open("tests/data/yahoo_gold_intraday.json") as f:
         fake_json = json.load(f)
 
-    # now is the last day of the data, which should be eliminated as the day is not complete
-    provider: YahooProvider = yahoo_provider(now_provider=lambda: datetime(2026, 5, 22, 15, 6, 40, tzinfo=UTC))
+    # This is the time that data stored in the test file was fetched. Note that yahoo chart is 10-15 mins delayed.
+    # The timestamp of the last candle is 11:47:55 UTC
+    provider: YahooProvider = yahoo_provider(now_provider=lambda: datetime(2026, 8, 11, 12, tzinfo=UTC))
     provider.session.queue(200, fake_json)
 
     asset = make_asset(provider_code="gold")
-    series = make_series(asset, interval="1d")
-    start_time = datetime(2026, 5, 19, tzinfo=UTC)
-    end_time = datetime(2026, 5, 22, 23, 59, 59, tzinfo=UTC)
-    result = provider.fetch(series, asset, start_time=start_time, end_time=end_time, is_incremental=False)
+    series = make_series(asset, interval="5m")
+    start = make_identity(datetime(2026, 8, 11, 10, 30, tzinfo=UTC))
+    end = make_identity(datetime(2026, 8, 11, 12, tzinfo=UTC))
+    result = provider.fetch(series, asset, start=start, end=end, is_incremental=False)
     points = unwrap(result)
-    assert len(points) == 3, "last day eliminated (today)"
+    assert len(points) == 16, "last point eliminated (not aligned)"
     last_point: SeriesPoint = points[-1]
-    assert last_point.time.date() == date(2026, 5, 21)
+    assert last_point.time == datetime(2026, 8, 11, 11, 45, tzinfo=UTC)

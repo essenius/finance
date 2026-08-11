@@ -15,6 +15,7 @@ from finance.common.applogger import AppLogger
 # here, we intentionally execute the `if not self.root.handlers:` branch,
 # which is otherwise unreachable in normal test execution.
 
+LOGGER = "finance"
 
 @pytest.fixture
 def cover_empty_root_handlers():
@@ -47,7 +48,7 @@ def test_error_logs_to_logger(json_caplog):
     assert record.levelname == "ERROR"
     assert record.msg == "boom"
     assert record.x == 1
-    assert '"level": "ERROR", "logger": "applogger", "message": "boom", "x": 1' in json_caplog.text
+    assert f'"level": "ERROR", "logger": "{LOGGER}", "message": "boom", "x": 1' in json_caplog.text
 
 
 def test_info_logs(json_caplog):
@@ -56,7 +57,7 @@ def test_info_logs(json_caplog):
     with json_caplog.at_level(logging.INFO):
         log.info("hello", a=2, bogus=None)
 
-    assert '"level": "INFO", "logger": "applogger", "message": "hello", "a": 2}' in json_caplog.text
+    assert f'"level": "INFO", "logger": "{LOGGER}", "message": "hello", "a": 2}}' in json_caplog.text
     assert "bogus" not in json_caplog.text
 
 
@@ -78,7 +79,7 @@ def test_log_without_msg(json_caplog):
         log.info(x=42)
 
     # no message
-    assert '"level": "INFO", "logger": "applogger", "x": 42}' in json_caplog.text
+    assert f'"level": "INFO", "logger": "{LOGGER}", "x": 42}}' in json_caplog.text
 
 
 def test_ok_field_removed(json_caplog):
@@ -86,7 +87,7 @@ def test_ok_field_removed(json_caplog):
 
     with json_caplog.at_level(logging.INFO):
         log.info("msg", ok=False, x=4)
-    assert ' "level": "INFO", "logger": "applogger", "message": "msg", "x": 4}' in json_caplog.text
+    assert f' "level": "INFO", "logger": "{LOGGER}", "message": "msg", "x": 4}}' in json_caplog.text
 
 
 def test_nested_dict(json_caplog):
@@ -96,7 +97,7 @@ def test_nested_dict(json_caplog):
         log.info("nested", data={"a": 1, "b": 2})
 
     assert (
-        ', "level": "INFO", "logger": "applogger", "message": "nested", "data": {"a": 1, "b": 2}}' in json_caplog.text
+        f', "level": "INFO", "logger": "{LOGGER}", "message": "nested", "data": {{"a": 1, "b": 2}}' in json_caplog.text
     )
 
 
@@ -107,7 +108,7 @@ def test_warning_level(json_caplog):
         log.warning("careful", y=5)
 
     #'{"timestamp": "2026-07-26 12:01:20,343", "level": "WARNING", "logger": "finance.common.applogger", "message": "careful", "y": 5}\n'
-    assert ', "level": "WARNING", "logger": "applogger", "message": "careful", "y": 5}' in json_caplog.text
+    assert f', "level": "WARNING", "logger": "{LOGGER}", "message": "careful", "y": 5}}' in json_caplog.text
 
 
 def test_warning_flattening(json_caplog):
@@ -116,4 +117,4 @@ def test_warning_flattening(json_caplog):
     with json_caplog.at_level(logging.WARNING):
         log.warning(warnings=["warning 1", "warning 2"])
 
-    assert ', "level": "WARNING", "logger": "applogger", "warnings": ["warning 1", "warning 2"]}' in json_caplog.text
+    assert f', "level": "WARNING", "logger": "{LOGGER}", "warnings": ["warning 1", "warning 2"]}}' in json_caplog.text

@@ -4,6 +4,8 @@
 
 from datetime import UTC, datetime
 
+from finance.common.candle_identity import CandleIdentity
+
 from ..common.model import Asset, FetchResult, Series, SeriesPoint
 from .provider import MarketDataProvider
 
@@ -16,13 +18,13 @@ class FredProvider(MarketDataProvider):
     """FRED daily economic data provider."""
 
     def fetch(
-        self, series: Series, asset: Asset, start_time: datetime, end_time: datetime, is_incremental: bool
+        self, series: Series, asset: Asset, start: CandleIdentity, end: CandleIdentity, is_incremental: bool
     ) -> FetchResult:
         if not self.api_key:
             return FetchResult.fail(series.name, "FRED requires an API key")
 
-        start_date = start_time.date().strftime("%Y-%m-%d")
-        end_date = end_time.date().strftime("%Y-%m-%d")
+        start_date = start.date().strftime("%Y-%m-%d")
+        end_date = end.date().strftime("%Y-%m-%d")
 
         params = {
             "series_id": asset.provider_code,

@@ -3,7 +3,7 @@
 # File: src/finance/common/candle_identity.py
 
 from dataclasses import dataclass
-from datetime import UTC, datetime, time
+from datetime import UTC, date, datetime, time, timedelta
 from functools import total_ordering
 
 
@@ -12,10 +12,12 @@ from functools import total_ordering
 class CandleIdentity:
     is_daily: bool
     value: datetime
+    interval: timedelta
 
-    def __init__(self, value: datetime, is_daily: bool):
+    def __init__(self, value: datetime, is_daily: bool, interval: timedelta):
         self.value = value
         self.is_daily = is_daily
+        self.interval = interval
 
     def __eq__(self, other):
         if not isinstance(other, CandleIdentity):
@@ -33,9 +35,21 @@ class CandleIdentity:
     def publish_label(self) -> datetime:
         return self.value
 
+    def date(self) -> date:
+        return self.value.date()
+
     def store_label(self) -> datetime:
         if self.is_daily:
             return datetime.combine(self.value.date(), time.min, UTC)
         else:
             return self.value.astimezone(UTC)
 
+    def start_timestamp(self):
+        return self.value.timestamp()
+
+    def end_timestamp(self):
+        if self.is_daily:
+            # allow any time in the label period, to allow for publishers using start-of-day or end-of-day
+            # note this is only used to calculate the fetch period based on already determined identities
+            return (self.value + self.interval).timestamp() - 1
+        return self.value.timestamp()

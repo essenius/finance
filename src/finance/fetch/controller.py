@@ -7,6 +7,7 @@ from datetime import datetime, timedelta
 
 from finance.common.candle_identity import CandleIdentity
 
+from ..common.applogger import AppLogger
 from ..common.model import Asset, FetchResult, ProviderConfig, Series, SeriesState, SweepConfig
 from ..common.series_calendar import SeriesCalendar
 from ..common.string_enums import SupportedProviders
@@ -24,6 +25,7 @@ PROVIDER_REGISTRY = {
     SupportedProviders.ECB: EcbProvider,
 }
 
+logger = AppLogger("fetch")
 
 def create_providers(
     providers_config: dict[str, ProviderConfig], api_keys: dict[str, dict]
@@ -70,10 +72,10 @@ class FetchController:
             if range is None:
                 continue
             start, end, is_incremental = range
-            print(
+            logger.debug(
                 f"series: {series.name} ({series.id}) Store range: {start.store_label()} - {end.store_label()} Publish range: {start.publish_label()} - {end.publish_label()} {'/I' if is_incremental else ''}"
             )
-            yield provider.fetch(series, asset, start.publish_label(), end.publish_label(), is_incremental)
+            yield provider.fetch(series, asset, start, end, is_incremental)
 
     def get_sweep_start(self, state: SeriesState, sweep: SweepConfig, last: CandleIdentity) -> datetime:
         if sweep.window <= timedelta(0):
@@ -103,7 +105,7 @@ class FetchController:
         snap_identity = calendar.snap_back_identity(now)
         last_identity = calendar.snap_back_on_publish_time(now, snap_identity)
 
-        print(f"series: {series.name} ({series.id}): {first_identity.store_label()} - {last_identity.store_label()}")
+        logger.debug(f"series: {series.name} ({series.id}): {first_identity.store_label()} - {last_identity.store_label()}")
         return first_identity, last_identity
 
     @staticmethod

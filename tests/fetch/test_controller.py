@@ -442,7 +442,7 @@ def test_get_sweep_start(make_asset, make_series, fixed_now):
     fc = make_fetch_controller(series, assets.get, fixed_now)
     state = SeriesState()
     sweep = SweepConfig.from_config(config={})
-    last = CandleIdentity(value=datetime.min, is_daily=False)
+    last = CandleIdentity(value=datetime.min, is_daily=False, interval=timedelta(0))
     assert fc.get_sweep_start(state=state, sweep=sweep, last=last) is None
     now = fixed_now()
     yesterday = now - timedelta(days=1)

@@ -2,12 +2,13 @@
 # Licensed under the Apache License, Version 2.0. See the LICENSE file for details.
 # File: tests/fetch/test_provider.py
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from zoneinfo import ZoneInfo
 
 import pytest
 import requests
 
+from finance.common.candle_identity import CandleIdentity
 from finance.common.model import MeasurementResult
 from finance.fetch.provider import MarketDataProvider
 
@@ -86,10 +87,8 @@ def test_safe_get_errors(dummy_provider, data: any, path, expected):
 
 def test_fetch_not_implemented(dummy_provider, make_series, make_asset_dict, fixed_now):
     assets = make_asset_dict()
-    now = fixed_now()
-    result = dummy_provider().fetch(
-        make_series(assets["eur_usd"]), assets, start_time=now, end_time=now, is_incremental=False
-    )
+    now = CandleIdentity(fixed_now(), False, timedelta(0))
+    result = dummy_provider().fetch(make_series(assets["eur_usd"]), assets, start=now, end=now, is_incremental=False)
     assert not result.ok
     assert result.reason == "fetch not implemented"
 

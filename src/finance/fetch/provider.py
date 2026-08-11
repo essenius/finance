@@ -8,6 +8,8 @@ from zoneinfo import ZoneInfo
 
 import requests
 
+from finance.common.candle_identity import CandleIdentity
+
 from ..common.model import Asset, FetchResult, MeasurementResult, ProviderConfig, Series
 from ..common.result import Result, T
 from ..common.time_utils import now_second_precision
@@ -50,7 +52,7 @@ class MarketDataProvider:
         return Result.ok_payload(current)
 
     def fetch(
-        self, series: Series, asset: Asset, start_time: datetime, end_time: datetime, is_incremental: bool
+        self, series: Series, asset: Asset, start: CandleIdentity, end: CandleIdentity, is_incremental: bool
     ) -> FetchResult:
         """
         Fetch data points for the given asset definition between start_time and end_time.

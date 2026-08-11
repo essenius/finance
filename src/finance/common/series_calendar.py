@@ -62,6 +62,9 @@ class SeriesCalendar:
     def combine_local(self, local_day: date, local_time: time) -> datetime:
         return datetime.combine(local_day, local_time, tzinfo=self.timezone)
 
+    def make_candle_identity(self, label: datetime) -> CandleIdentity:
+        return CandleIdentity(value=label, is_daily=self.is_daily(), interval=self.interval)
+
     def snap_back_interval(self, ts: datetime) -> datetime:
         # snap to already snaps to previous
         return self.utc_to_local(snap_to(ts, self.interval))
@@ -180,22 +183,22 @@ class SeriesCalendar:
 
         if self.is_daily():
             trading_day_label = self.snap_back_trading_day_label(local)
-            return CandleIdentity(trading_day_label, is_daily=True)
+            return self.make_candle_identity(trading_day_label)
 
         value = self.snap_back_interval(local)
         candle_label = self.snap_back_intraday_interval(value)
-        return CandleIdentity(candle_label, is_daily=False)
+        return self.make_candle_identity(candle_label)
 
     def snap_forward_identity(self, moment_utc: datetime) -> CandleIdentity:
         local = self.utc_to_local(moment_utc)
 
         if self.is_daily():
             trading_day_label = self.snap_forward_trading_day_label(local)
-            return CandleIdentity(trading_day_label, is_daily=True)
+            return self.make_candle_identity(trading_day_label)
 
         value = self.snap_forward_interval(local)
         candle_label = self.snap_forward_intraday_interval(value)
-        return CandleIdentity(candle_label, is_daily=False)
+        return self.make_candle_identity(candle_label)
 
     def snap_back_on_publish_time(self, local: datetime, id: CandleIdentity):
         if local < id.publish_label() + self.get_publication_offset():

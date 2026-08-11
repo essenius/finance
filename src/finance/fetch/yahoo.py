@@ -8,6 +8,8 @@ from functools import partial
 from urllib.parse import quote
 from zoneinfo import ZoneInfo
 
+from finance.common.candle_identity import CandleIdentity
+
 from ..common.model import Asset, FetchResult, MeasurementResult, Series, SeriesPoint
 from ..common.result import Result
 from ..common.string_enums import Candle
@@ -24,10 +26,12 @@ class YahooProvider(MarketDataProvider):
     # ----
 
     def fetch(
-        self, series: Series, asset: Asset, start_time: datetime, end_time: datetime, is_incremental: bool
+        self, series: Series, asset: Asset, start: CandleIdentity, end: CandleIdentity, is_incremental: bool
     ) -> FetchResult:
         name = series.name
-        url, params = self._build_url(asset.provider_code, series.interval, start_time, end_time)
+        start_timestamp = start.start_timestamp()
+        end_timestamp = end.end_timestamp()
+        url, params = self._build_url(asset.provider_code, series.interval, start_timestamp, end_timestamp)
         result = self._safe_call(
             measurement=name, fn=lambda: self._fetch_impl(url, name, params), context="Yahoo fetch"
         )
@@ -55,12 +59,12 @@ class YahooProvider(MarketDataProvider):
     # Fetch data
     # -----------
 
-    def _build_url(self, provider_code, interval_str, start_time, end_time) -> tuple[str, dict]:
+    def _build_url(self, provider_code, interval_str, start_timestamp, end_timestamp) -> tuple[str, dict]:
         encoded = quote(provider_code, safe="")
         params = {
             "interval": interval_str,
-            "period1": int(start_time.timestamp()),
-            "period2": int(end_time.timestamp()),
+            "period1": int(start_timestamp),
+            "period2": int(end_timestamp),
             "includePrePost": "false",
             "events": "div,splits",
         }
@@ -100,14 +104,16 @@ class YahooProvider(MarketDataProvider):
 
     def is_aligned(self, ts: float, series: Series) -> bool:
         # Yahoo's last candle time isn't aligned, it's the last data so far.
+        if series.is_daily():
+            return True
         seconds = int(series.interval_delta().total_seconds())
         return int(ts) % seconds == 0
 
-    def _extract_arrays(self, payload: dict) -> Result[tuple[list[int], dict[str, list]]]:
+    def _extract_arrays(self, payload: dict) -> Result[tuple[list[int], dict[str, list]] | None]:
 
         timestamps = payload.get("timestamp")
         if not timestamps:
-            return Result.fail("no timestamp in result")
+            return Result.ok_payload(None, warnings=["no timestamp in result"])
 
         quote_result = self._safe_get(payload, ["indicators", "quote", 0])
         if not quote_result.ok:
@@ -162,12 +168,13 @@ class YahooProvider(MarketDataProvider):
         name = series.name
         point_factory = partial(SeriesPoint, series_id=series.id)
         arrays_result = self._extract_arrays(payload)
-        if not arrays_result.ok:
+        if not arrays_result.ok or arrays_result.payload is None:
             return FetchResult.from_result(arrays_result, name)
 
         timestamps, arrays = arrays_result.payload
         if timestamps != [] and not self.is_aligned(timestamps[-1], series):
             # remove last element from timestamps and arrays
+            print("Removing last element as not aligned")
             timestamps.pop()
             for key in arrays:
                 if arrays[key] != []:

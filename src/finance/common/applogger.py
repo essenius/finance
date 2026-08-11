@@ -108,10 +108,12 @@ def _is_json_active() -> bool:
 
 
 class AppLogger:
+    def __init__(self, module_name: str | None = None):
+        postfix = f".{module_name}" if module_name else ""
+        self.name = f"finance{postfix}"
+
     @property
-    def logger(self, module_name: str | None = None):
-        prefix = f"{module_name}." if module_name else ""
-        self.name = f"{prefix}applogger"
+    def logger(self):
         return logging.getLogger(self.name)
 
     def log(self, level: str, msg: str | None = None, **context: Any) -> dict[str, Any]:

@@ -110,12 +110,19 @@ def make_asset():
             "symbol": name,
             "provider": "yahoo",
             "provider_code": "EURUSD=X",
-            "display_name": f"d_{name}",
+            "long_name": f"d_{name}",
+            "short_name": None,
             "instrument": "forex",
             "region": "Europe",
             "exchange": "DEX",
             "currency": "USD",
             "unit": "EUR",
+            "first_trade_date": None,
+            "timezone": UTC,
+            "market_open": time.min,
+            "market_close": time.max,
+            "week_start": "mon",
+            "week_end": "fri",
         }
         return Asset(**(defaults | overrides))
 
@@ -138,12 +145,7 @@ def make_series(make_asset):
             "retention": Retention.SHORT_LIVED,
             "retention_period": "30d",
             "bootstrap_history": "5d",
-            "timezone": UTC,
             "publication_offset": None,
-            "market_open": time.min,
-            "market_close": time.max,
-            "week_start": "mon",
-            "week_end": "fri",
         }
         params = defaults | overrides
         params["name"] = f"{asset.name}:{params['code']}"

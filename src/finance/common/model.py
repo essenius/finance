@@ -5,7 +5,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field, replace
-from datetime import UTC, datetime, time, timedelta
+from datetime import UTC, date, datetime, time, timedelta
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from ..common.result import MeasurementResult
@@ -128,7 +128,7 @@ class ProviderConfig:
         return self.get_from_duration_table(interval, self.sweep) or SweepConfig.zero()
 
 
-@dataclass(frozen=True)
+@dataclass
 class Asset:
     # identity
     name: str
@@ -136,13 +136,22 @@ class Asset:
     provider: str
 
     # metadata
-    display_name: str
     provider_code: str
+    long_name: str | None = None
+    short_name: str | None = None
     instrument: str | None = None
     exchange: str | None = None
     region: str | None = None
     currency: str | None = None
     unit: str | None = None
+
+    # calendar
+    first_trade_date: date | None = None
+    timezone: ZoneInfo | None = None
+    market_open: time | None = None
+    market_close: time | None = None
+    week_start: str | None = None
+    week_end: str | None = None
 
     # assigned by the backend
     id: int | None = None
@@ -150,17 +159,38 @@ class Asset:
     @classmethod
     def create(cls, name: str, config: dict, tags: dict) -> Asset:
         provider_config = config.get("provider", {})
+
+        raw_timezone = config.get("timezone", "UTC")
+        try:
+            timezone = ZoneInfo(raw_timezone)
+        except ZoneInfoNotFoundError:
+            raise ValueError(f"Cannot understand timezone '{raw_timezone}'.") from None
+
+        week_start = config.get("week_start", "mon")
+        # check and raise error if wrong, but keep string representation
+        parse_weekday(week_start)
+
+        week_end = config.get("week_end", "fri")
+        parse_weekday(week_end)
+
         return cls(
             name=name,
             symbol=config.get("symbol", name),
             provider=provider_config["name"],
             provider_code=provider_config["code"],
-            display_name=config.get("display_name", name),
+            long_name=config.get("long_name", name),
+            short_name=config.get("short_name"),
             instrument=tags.get("instrument"),
             region=tags.get("region"),
             exchange=tags.get("exchange"),
             currency=tags.get("currency"),
             unit=tags.get("unit"),
+            first_trade_date=config.get("first_trade_date"),
+            timezone=timezone,
+            market_open=parse_time(config.get("market_open", "min")),
+            market_close=parse_time(config.get("market_close", "max")),
+            week_start=week_start,
+            week_end=week_end,
         )
 
     def with_id(self, new_id: id) -> Asset:
@@ -179,16 +209,23 @@ class Asset:
             self.name != other.name
             or self.symbol != other.symbol
             or not self.same_semantics(other)
-            or self.display_name != other.display_name
+            or self.long_name != other.long_name
+            or self.short_name != other.short_name
             or self.instrument != other.instrument
             or self.region != other.region
             or self.exchange != other.exchange
             or self.currency != other.currency
             or self.unit != other.unit
+            or self.first_trade_date != other.first_trade_date
+            or self.timezone != other.timezone
+            or self.market_open != other.market_open
+            or self.market_close != other.market_close
+            or self.week_start != other.week_start
+            or self.week_end != other.week_end
         )
 
     def __repr__(self):
-        return f"Asset(id={self.id}, name={self.name}, symbol={self.symbol}, provider_code={self.provider_code}, region={self.region})"
+        return f"Asset(id={self.id}, name={self.name}, symbol={self.symbol}, provider_code={self.provider_code}, region={self.region}, week={self.week_start}-{self.week_end})"
 
 
 @dataclass
@@ -207,11 +244,6 @@ class Series:
     retention_period: str
     series_type: SeriesType
     bootstrap_history: str
-    timezone: ZoneInfo
-    market_open: time
-    market_close: time
-    week_start: str
-    week_end: str
     publication_offset: str | None
 
     # assigned by backend
@@ -249,20 +281,6 @@ class Series:
         if bootstrap_history is None:
             bootstrap_history = "10y" if retention == Retention.LONG_LIVED else "30d"
 
-        raw_timezone = config.get("timezone", "UTC")
-        try:
-            timezone = ZoneInfo(raw_timezone)
-        except ZoneInfoNotFoundError:
-            raise ValueError(f"Cannot understand timezone '{raw_timezone}'.") from None
-        market_open = parse_time(config.get("market_open", "min"))
-        market_close = parse_time(config.get("market_close", "max"))
-
-        week_start = config.get("week_start", "mon")
-        # check and raise error if wrong, but keep string representation
-        parse_weekday(week_start)
-
-        week_end = config.get("week_end", "fri")
-        parse_weekday(week_end)
         publication_offset = check_duration_in(config, "publication_offset", None)
 
         return cls(
@@ -275,11 +293,6 @@ class Series:
             retention=retention,
             retention_period=retention_period,
             bootstrap_history=bootstrap_history,
-            timezone=timezone,
-            market_open=market_open,
-            market_close=market_close,
-            week_start=week_start,
-            week_end=week_end,
             publication_offset=publication_offset,
         )
 
@@ -290,15 +303,11 @@ class Series:
         """check if two series are semantically the same (e.g. indicating a rename of the code)"""
         return (
             self.asset_id == other.asset_id
+            and self.interval == other.interval
+            and self.series_type == other.series_type
             and self.retention == other.retention
             and self.retention_period == other.retention_period
-            and self.series_type == other.series_type
-            and self.interval == other.interval
             and self.bootstrap_history == other.bootstrap_history
-            and self.week_start == other.week_start
-            and self.week_end == other.week_end
-            and self.market_close == other.market_close
-            and self.market_open == other.market_open
             and self.publication_offset == other.publication_offset
         )
 
@@ -312,7 +321,7 @@ class Series:
         return self.code != other.code or not self.same_semantics(other)
 
     def __repr__(self):
-        return f"Series(id={self.id}, name={self.name}, asset_id={self.asset_id}, retention={self.retention}, series_type={self.series_type}, interval={self.interval}, week={self.week_start}-{self.week_end})"
+        return f"Series(id={self.id}, name={self.name}, asset_id={self.asset_id}, retention={self.retention}, series_type={self.series_type}, interval={self.interval})"
 
     @staticmethod
     def is_intraday_interval(interval: timedelta):

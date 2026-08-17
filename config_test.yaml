@@ -251,6 +251,27 @@ business:
         daily: [daily, eu_equities]
 
     # -------------------------
+    # ETFs
+    # -------------------------
+
+    vwce:
+      provider:
+        name: yahoo
+        code: VWCE.AS
+      symbol: VWCE
+      long_name: Vanguard FTSE All-World UCITS ETF USD Acc
+      first_trade_date: 2019-07-23
+      tags:
+        instrument: ETF
+        exchange: AMS
+        region: WORLD
+        currency: EUR
+        unit: share
+      series:
+        intraday: [intraday, eu_equities]
+        daily: [daily, eu_equities]
+
+    # -------------------------
     # INDEXES
     # -------------------------
     spx:

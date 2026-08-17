@@ -2,7 +2,7 @@
 # Licensed under the Apache License, Version 2.0. See the LICENSE file for details.
 # File: tests/timeseries/test_timescale_assets_series.py
 
-from datetime import datetime
+from datetime import datetime, time
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
@@ -206,8 +206,46 @@ def test_store_series_error_no_asset_id(assert_error, make_backend, make_asset, 
 def test_get_assets_returns_asset_list(make_backend):
     backend = make_backend()
     rows = [
-        (1, "AAPL", "AAPL", "yahoo", "AAPL", "Apple Inc.", "stock", "US", "NASDAQ", "USD", "share"),
-        (2, "MSFT", "MSFT", "yahoo", "MSFT", "Microsoft Corporation", "stock", "US", "NASDAQ", "USD", "share"),
+        (
+            1,
+            "AAPL",
+            "AAPL",
+            "yahoo",
+            "AAPL",
+            "Apple Inc.",
+            "Apple Incorporated",
+            "stock",
+            "US",
+            "NASDAQ",
+            "USD",
+            "share",
+            "America/New_York",
+            None,
+            "mon",
+            "fri",
+            "9:30",
+            "16:00",
+        ),
+        (
+            2,
+            "MSFT",
+            "MSFT",
+            "yahoo",
+            "MSFT",
+            "Microsoft",
+            "Microsoft Corporation",
+            "stock",
+            "US",
+            "NASDAQ",
+            "USD",
+            "share",
+            "America/New_York",
+            None,
+            "sun",
+            "sat",
+            "min",
+            "max",
+        ),
     ]
 
     cursor_cm = make_cursor(fetchall=rows)
@@ -219,12 +257,19 @@ def test_get_assets_returns_asset_list(make_backend):
         SimpleNamespace(name="symbol"),
         SimpleNamespace(name="provider"),
         SimpleNamespace(name="provider_code"),
-        SimpleNamespace(name="display_name"),
+        SimpleNamespace(name="long_name"),
+        SimpleNamespace(name="short_name"),
         SimpleNamespace(name="instrument"),
         SimpleNamespace(name="region"),
         SimpleNamespace(name="exchange"),
         SimpleNamespace(name="currency"),
         SimpleNamespace(name="unit"),
+        SimpleNamespace(name="timezone"),
+        SimpleNamespace(name="first_trade_date"),
+        SimpleNamespace(name="week_start"),
+        SimpleNamespace(name="week_end"),
+        SimpleNamespace(name="market_open"),
+        SimpleNamespace(name="market_close"),
     ]
     backend._sql_client._connection.cursor.return_value = cursor_cm
 
@@ -235,6 +280,9 @@ def test_get_assets_returns_asset_list(make_backend):
     assert len(assets) == 2
     assert assets[0].symbol == "AAPL"
     assert assets[1].symbol == "MSFT"
+    assert assets[0].timezone.key == "America/New_York"
+    assert assets[1].week_start == "sun"
+    assert assets[0].market_close == time(hour=16)
 
 
 def test_get_assets_error(assert_error, make_backend):
@@ -266,12 +314,7 @@ def test_get_series_returns_series_list(make_backend):
             "short_lived",
             "30d",
             "30d",
-            "Europe/Berlin",
-            "min",
-            "max",
-            "sun",
-            "sat",
-            "1m",
+            None,
         ),
         (
             11,
@@ -284,11 +327,6 @@ def test_get_series_returns_series_list(make_backend):
             "long_lived",
             None,
             "1y",
-            "UTC",
-            "9:00",
-            "17:00",
-            "mon",
-            "fri",
             "1d",
         ),
     ]
@@ -307,11 +345,6 @@ def test_get_series_returns_series_list(make_backend):
         SimpleNamespace(name="retention"),
         SimpleNamespace(name="retention_period"),
         SimpleNamespace(name="bootstrap_history"),
-        SimpleNamespace(name="timezone"),
-        SimpleNamespace(name="market_open"),
-        SimpleNamespace(name="market_close"),
-        SimpleNamespace(name="week_start"),
-        SimpleNamespace(name="week_end"),
         SimpleNamespace(name="publication_offset"),
     ]
     backend._sql_client._connection.cursor.return_value = cursor_cm

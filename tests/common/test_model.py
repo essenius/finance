@@ -29,13 +29,21 @@ def test_asset_create_with_id_differs():
     assert asset.symbol == "SPX"
     assert asset.provider == "yahoo"
     assert asset.provider_code == "^SPX"
-    assert asset.display_name == "spx"
+    assert asset.long_name == "spx"
+    assert asset.short_name is None
     assert asset.instrument == "forex"
     assert asset.exchange is None
     assert asset.region is None
     assert asset.currency is None
     assert asset.unit is None
-    assert f"{asset}" == "Asset(id=None, name=spx, symbol=SPX, provider_code=^SPX, region=None)"
+    assert asset.first_trade_date is None
+
+    assert asset.week_start == "mon"
+    assert asset.week_end == "fri"
+    assert asset.market_open == time.min
+    assert asset.market_close == time.max
+
+    assert f"{asset}" == "Asset(id=None, name=spx, symbol=SPX, provider_code=^SPX, region=None, week=mon-fri)"
 
     asset2 = asset.with_id(1)
     assert asset2.id == 1
@@ -47,6 +55,14 @@ def test_asset_create_with_id_differs():
     tags |= {"region": "Europe"}
     asset3 = Asset.create(name="spx", config=config, tags=tags)
     assert asset.differs_from(asset3)
+
+
+def test_asset_create_with_wrong_timezone(make_asset):
+
+    config = {"symbol": "SPX", "provider": {"name": "yahoo", "code": "^SPX"}, "timezone": "bogus"}
+    with pytest.raises(ValueError) as ve:
+        Asset.create(name="spx", config=config, tags={})
+    assert "Cannot understand timezone 'bogus'" in str(ve.value)
 
 
 def test_series_create_with_id_differs(make_asset):
@@ -77,7 +93,7 @@ def test_series_create_with_id_differs(make_asset):
     series2 = series.with_id(10)
     assert (
         f"{series2}"
-        == "Series(id=10, name=spx:dummy, asset_id=3, retention=long_lived, series_type=candle, interval=1d, week=mon-fri)"
+        == "Series(id=10, name=spx:dummy, asset_id=3, retention=long_lived, series_type=candle, interval=1d)"
     )
 
     # differs from only looks at metadata, not at id, name
@@ -88,21 +104,6 @@ def test_series_create_with_id_differs(make_asset):
     assert series.differs_from(series3)
     assert series3.bootstrap_history == "5y"
     assert series3.publication_offset == "16h"
-
-
-def test_series_create_with_wrong_timezone(make_asset):
-    asset = make_asset(name="spx", id=3)
-    config = {
-        "symbol": "SPX",
-        "series_type": "candle",
-        "interval": "1d",
-        "bootstrap_history": "10y",
-        "retention": "long_lived",
-        "timezone": "bogus",
-    }
-    with pytest.raises(ValueError) as ve:
-        Series.create(asset=asset, code="dummy", config=config)
-    assert "Cannot understand timezone 'bogus'" in str(ve.value)
 
 
 def test_series_create_with_defaults_daily(make_asset):
@@ -126,10 +127,6 @@ def test_series_create_with_defaults_daily(make_asset):
     assert series.retention_delta() is None
     assert series.bootstrap_history == "10y"
     assert series.bootstrap_history_delta() == timedelta(days=3652.5)
-    assert series.week_start == "mon"
-    assert series.week_end == "fri"
-    assert series.market_open == time.min
-    assert series.market_close == time.max
     assert series.publication_offset is None
 
 

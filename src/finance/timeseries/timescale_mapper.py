@@ -14,12 +14,19 @@ def asset_from_row(row: tuple, columns: dict[str, int]) -> Asset:
         symbol=row[columns["symbol"]],
         provider=row[columns["provider"]],
         provider_code=row[columns["provider_code"]],
-        display_name=row[columns["display_name"]],
+        long_name=row[columns["long_name"]],
+        short_name=row[columns["short_name"]],
         instrument=row[columns["instrument"]],
         region=row[columns["region"]],
         exchange=row[columns["exchange"]],
         currency=row[columns["currency"]],
         unit=row[columns["unit"]],
+        first_trade_date=row[columns["first_trade_date"]],
+        timezone=parse_timezone(row[columns["timezone"]]),
+        week_start=row[columns["week_start"]],
+        week_end=row[columns["week_end"]],
+        market_open=parse_time(row[columns["market_open"]]),
+        market_close=parse_time(row[columns["market_close"]]),
     )
 
 
@@ -35,11 +42,6 @@ def series_from_row(row: tuple, columns: dict[str, int]) -> Series:
         retention=Retention.validate(row[columns["retention"]]),
         retention_period=row[columns["retention_period"]],
         bootstrap_history=row[columns["bootstrap_history"]],
-        timezone=parse_timezone(row[columns["timezone"]]),
-        market_open=parse_time(row[columns["market_open"]]),
-        market_close=parse_time(row[columns["market_close"]]),
-        week_start=row[columns["week_start"]],
-        week_end=row[columns["week_end"]],
         publication_offset=row[columns["publication_offset"]],
     )
 

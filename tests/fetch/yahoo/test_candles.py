@@ -41,7 +41,7 @@ def test_extract_candles_valid_output_structure(yahoo_provider, unwrap, make_ass
         },
     }
 
-    candles = unwrap(yahoo_provider(now_provider=fake_now)._extract_candles(series, normalize, result))
+    candles = unwrap(yahoo_provider(now_provider=fake_now)._extract_candles(series, result))
 
     assert len(candles) == 1
     point = candles[0]
@@ -76,7 +76,7 @@ def test_extract_candles_skips_invalid(yahoo_provider, assert_warning, make_asse
     asset = make_asset()
     series = make_series(asset, series_type=SeriesType.CANDLE)
 
-    candles = yahoo_provider()._extract_candles(series, normalize, result)
+    candles = yahoo_provider()._extract_candles(series, result)
     assert_warning(candles, "Skipped 1 candles without close value")
     assert candles.payload == []
 
@@ -104,7 +104,7 @@ def test_extract_candles_signals_incomplete(yahoo_provider, assert_warning, make
     asset = make_asset()
     series = make_series(asset, series_type=SeriesType.CANDLE)
 
-    candles = yahoo_provider()._extract_candles(series, normalize, result)
+    candles = yahoo_provider()._extract_candles(series, result)
     assert_warning(candles, "1 incomplete candles")
     assert len(candles.payload) == 1
     point = candles.payload[0]
@@ -120,7 +120,7 @@ def test_extract_candles_handles_missing_timestamp(yahoo_provider, assert_error,
     asset = make_asset()
     series = make_series(asset, series_type=SeriesType.VALUE)
 
-    candles = yahoo_provider()._extract_candles(series, normalize, result)
+    candles = yahoo_provider()._extract_candles(series, result)
     assert candles.ok
     assert candles.payload is None
     assert candles.warnings[0] == "no timestamp in result"
@@ -134,7 +134,7 @@ def test_extract_candles_handles_missing_quote(yahoo_provider, assert_error, mak
 
     series = make_series(asset, series_type=SeriesType.CANDLE)
 
-    candles = yahoo_provider()._extract_candles(series, normalize, result)
+    candles = yahoo_provider()._extract_candles(series, result)
     assert_error(candles, "unexpected quote structure", "missing index [0]")
 
 
@@ -144,5 +144,5 @@ def test_extract_candles_empty_result(yahoo_provider, unwrap, make_asset, make_s
     data = {"timestamp": [1], "indicators": {"quote": [{}]}}
     asset = make_asset()
     series = make_series(asset, series_type=SeriesType.VALUE)
-    candles = unwrap(yahoo_provider()._extract_candles(series, normalize, data))
+    candles = unwrap(yahoo_provider()._extract_candles(series, data))
     assert candles == []

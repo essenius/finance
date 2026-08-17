@@ -27,6 +27,7 @@ PROVIDER_REGISTRY = {
 
 logger = AppLogger("fetch")
 
+
 def create_providers(
     providers_config: dict[str, ProviderConfig], api_keys: dict[str, dict]
 ) -> dict[str, MarketDataProvider]:
@@ -68,7 +69,8 @@ class FetchController:
                     series.name, f"no provider '{asset.provider}'", f"Skipped series '{series.name}'"
                 )
                 continue
-            range = self.get_fetch_range(series=series, provider=provider, state=state_entry)
+            calendar = SeriesCalendar.from_asset(asset)
+            range = self.get_fetch_range(series=series, provider=provider, state=state_entry, calendar=calendar)
             if range is None:
                 continue
             start, end, is_incremental = range
@@ -98,14 +100,21 @@ class FetchController:
         if series.retention_delta() is not None:
             horizon = min(horizon, series.retention_delta())
 
-        # store label is UTC, we want that.
-        first_identity = calendar.snap_forward_identity(now - horizon)
+        oldest_required = now - horizon
+        first_trade_time = calendar.first_trade_time()
+        if first_trade_time is not None:
+            oldest_required = max(first_trade_time, oldest_required)
+            logger.debug(f"oldest required: {oldest_required}")
+
+        first_identity = calendar.snap_forward_identity(oldest_required)
 
         # the last one we need is the last one that could have been published
         snap_identity = calendar.snap_back_identity(now)
         last_identity = calendar.snap_back_on_publish_time(now, snap_identity)
 
-        logger.debug(f"series: {series.name} ({series.id}): {first_identity.store_label()} - {last_identity.store_label()}")
+        logger.debug(
+            f"series: {series.name} ({series.id}): {first_identity.store_label()} - {last_identity.store_label()}"
+        )
         return first_identity, last_identity
 
     @staticmethod
@@ -121,15 +130,19 @@ class FetchController:
         return None
 
     def get_fetch_range(
-        self, series: Series, provider: MarketDataProvider, state: SeriesState | None
+        self,
+        series: Series,
+        provider: MarketDataProvider,
+        state: SeriesState | None,
+        calendar: SeriesCalendar,
     ) -> tuple[CandleIdentity, CandleIdentity, bool] | None:
         """
         Unified fetch decision: if fetch needed → return (start, end, is_incremental), else None
         """
 
-        calendar = SeriesCalendar.from_series(series)
+        series_calendar = calendar.for_series(series)
         now = self.now()
-        first_req, last_req = self.get_required_range(series, calendar, now)
+        first_req, last_req = self.get_required_range(series, series_calendar, now)
 
         # edge case. e.g. when retention horizon lands in a weekend
         if first_req > last_req:
@@ -140,7 +153,7 @@ class FetchController:
         # if we have missing history, grab that first
         # This can mean we skip a daily publication (but that will be picked up next run)
         # we won't do the sweep now either
-        prepend_range = self.get_prepend_range(calendar, state, first_req)
+        prepend_range = self.get_prepend_range(series_calendar, state, first_req)
         if prepend_range is not None:
             start, end = prepend_range
             if end is None:
@@ -154,11 +167,11 @@ class FetchController:
             retention = series.retention_delta()
             if retention is not None:
                 sweep_start = max(sweep_start, now - retention)
-            first_identity = calendar.snap_forward_identity(sweep_start)
+            first_identity = series_calendar.snap_forward_identity(sweep_start)
             self.update_sweep_state(state, sweep_config, last_req)
             return (first_identity, last_req, False)
 
         if last_req.store_label() > state.last_point:
-            first_identity = calendar.snap_forward_identity(state.last_point + series.interval_delta())
+            first_identity = series_calendar.snap_forward_identity(state.last_point + series.interval_delta())
             return (first_identity, last_req, True)
         return None

@@ -3,7 +3,7 @@
 # File: tests/fetch/yahoo/test_fetch.py
 
 import json
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from unittest.mock import Mock, patch
 
 from finance.common.candle_identity import CandleIdentity

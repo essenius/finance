@@ -47,3 +47,17 @@ def test_candle_identity_daily():
     assert (
         id1.end_timestamp() == 1784149199
     )  # one microsecond before the next label (to catch labels e.g. at start of day)
+
+
+def test_normalize_store_label(fixed_now):
+    now = fixed_now()
+    timestamp = now.timestamp()
+    tokyo = ZoneInfo("Asia/Tokyo")
+    id1 = CandleIdentity.from_timestamp(timestamp, timezone=tokyo, interval=timedelta(days=1))
+    # for daily or more, we have daily labels.
+    # Note the date is different. Tokyo is 9 hours ahead of UTC, so the timestamp in local time is already in the next day.
+    assert id1.store_label() == datetime(2025, 6, 16, tzinfo=UTC)
+
+    id2 = CandleIdentity.from_timestamp(timestamp, timezone=tokyo, interval=timedelta(minutes=5))
+    # for intraday, we keep the complete datetime in UTC
+    assert id2.store_label() == now

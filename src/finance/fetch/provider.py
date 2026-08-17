@@ -3,8 +3,6 @@
 # File: src/finance/fetch/provider.py
 
 from collections.abc import Callable
-from datetime import UTC, datetime, time
-from zoneinfo import ZoneInfo
 
 import requests
 
@@ -59,13 +57,13 @@ class MarketDataProvider:
         """
         return FetchResult.fail(series.name, "fetch not implemented")
 
-    @staticmethod
-    def normalize_timestamp(timestamp: int, is_intraday: bool, zone_info: ZoneInfo) -> datetime:
-        # if we have intraday values, this is a point in time. Convert to UTC
-        if is_intraday:
-            return datetime.fromtimestamp(timestamp, tz=UTC)
-
-        # if we have lower frequency data, treat it as a day label, by convention at midnight UTC
-        # (even if the UTC date of the timestamp could be different, as e.g. in Japan)
-        local = datetime.fromtimestamp(timestamp, tz=zone_info)
-        return datetime.combine(local.date(), time.min, tzinfo=UTC)
+    # CO: @staticmethod
+    # CO: def normalize_timestamp(timestamp: int, is_intraday: bool, zone_info: ZoneInfo) -> datetime:
+    # CO:     # if we have intraday values, this is a point in time. Convert to UTC
+    # CO:     if is_intraday:
+    # CO:         return datetime.fromtimestamp(timestamp, tz=UTC)
+    # CO:
+    # CO:     # if we have lower frequency data, treat it as a day label, by convention at midnight UTC
+    # CO:     # (even if the UTC date of the timestamp could be different, as e.g. in Japan)
+    # CO:     local = datetime.fromtimestamp(timestamp, tz=zone_info)
+    # CO:     return datetime.combine(local.date(), time.min, tzinfo=UTC)

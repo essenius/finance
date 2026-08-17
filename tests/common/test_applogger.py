@@ -17,6 +17,7 @@ from finance.common.applogger import AppLogger
 
 LOGGER = "finance"
 
+
 @pytest.fixture
 def cover_empty_root_handlers():
     # Clear handlers (pytest removed them just before this fixture runs)

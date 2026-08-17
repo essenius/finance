@@ -10,7 +10,7 @@ from zoneinfo import ZoneInfo
 
 from finance.common.candle_identity import CandleIdentity
 
-from ..common.model import Series
+from ..common.model import Asset, Series
 from ..common.time_utils import parse_duration, parse_weekday, snap_to
 
 ONE_DAY = timedelta(days=1)
@@ -20,25 +20,33 @@ ONE_MICROSECOND = timedelta(microseconds=1)
 
 @dataclass
 class SeriesCalendar:
-    interval: timedelta
     timezone: ZoneInfo
     market_open: time
     market_close: time
     week_start: int
     week_end: int
-    publication_offset: timedelta | None
+    interval: timedelta | None = None
+    publication_offset: timedelta | None = None
+    first_trade_date: date | None = None
+
     _offset: timedelta | None = None
 
     @classmethod
-    def from_series(cls, series: Series) -> SeriesCalendar:
+    def from_asset(cls, asset: Asset) -> SeriesCalendar:
         return cls(
-            interval=series.interval_delta(),
-            timezone=series.timezone,
-            market_open=series.market_open,
-            market_close=series.market_close,
-            week_start=parse_weekday(series.week_start),
-            week_end=parse_weekday(series.week_end),
+            timezone=asset.timezone,
+            market_open=asset.market_open,
+            market_close=asset.market_close,
+            week_start=parse_weekday(asset.week_start),
+            week_end=parse_weekday(asset.week_end),
+            first_trade_date=asset.first_trade_date,
+        )
+
+    def for_series(self, series: Series) -> SeriesCalendar:
+        return replace(
+            self,
             publication_offset=parse_duration(series.publication_offset, f"interval for {series.name}"),
+            interval=series.interval_delta(),
         )
 
     def is_overnight(self) -> bool:
@@ -61,6 +69,11 @@ class SeriesCalendar:
 
     def combine_local(self, local_day: date, local_time: time) -> datetime:
         return datetime.combine(local_day, local_time, tzinfo=self.timezone)
+
+    def first_trade_time(self) -> datetime | None:
+        if self.first_trade_date is None:
+            return None
+        return datetime.combine(self.first_trade_date, time.min, self.timezone)
 
     def make_candle_identity(self, label: datetime) -> CandleIdentity:
         return CandleIdentity(value=label, is_daily=self.is_daily(), interval=self.interval)

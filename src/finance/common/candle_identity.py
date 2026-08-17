@@ -2,9 +2,12 @@
 # Licensed under the Apache License, Version 2.0. See the LICENSE file for details.
 # File: src/finance/common/candle_identity.py
 
+from __future__ import annotations
+
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, time, timedelta
 from functools import total_ordering
+from zoneinfo import ZoneInfo
 
 
 @total_ordering
@@ -13,6 +16,12 @@ class CandleIdentity:
     is_daily: bool
     value: datetime
     interval: timedelta
+
+    @classmethod
+    def from_timestamp(cls, timestamp: int, timezone: ZoneInfo, interval: timedelta) -> CandleIdentity:
+        is_daily = interval >= timedelta(days=1)
+        value = datetime.fromtimestamp(timestamp, tz=timezone)
+        return cls(value, is_daily, interval)
 
     def __init__(self, value: datetime, is_daily: bool, interval: timedelta):
         self.value = value

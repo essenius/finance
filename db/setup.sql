@@ -2,7 +2,7 @@
 -- Licensed under the Apache License, Version 2.0. See the LICENSE file for details.
 -- File: db/setup.sql
 
--- run with psql -h localhost -U postgres -f db/setup.sql
+-- run with psql -h localhost -p 5433 -U postgres -f db/setup.sql
 -- set credentials in ~/.pgpass: localhost:5432:*:postgres:password:sslmode=verify-all
 
 -- Create database if not exists (Postgres doesn't have CREATE DATABASE IF NOT EXISTS)
@@ -147,37 +147,9 @@ BEGIN
 END;
 $$;
 
--- ============================
--- Asset table
--- ============================
-
-CREATE TABLE IF NOT EXISTS asset (
-    id            SERIAL PRIMARY KEY,
-    -- identity/logic
-    name          TEXT NOT NULL,
-    symbol        TEXT NOT NULL,
-    provider      TEXT NOT NULL,
-    provider_code TEXT NOT NULL,
-    
-    -- metadata
-    display_name  TEXT,
-    instrument    TEXT,
-    region        TEXT,
-    exchange      TEXT,
-    currency      TEXT,
-    unit          TEXT,
-    UNIQUE(name),
-    -- we can have different providers for daily and intraday
-    UNIQUE(provider, symbol),
-    UNIQUE(provider, provider_code)
-);
-
-CREATE INDEX IF NOT EXISTS asset_symbol_idx ON asset (symbol);
-CREATE INDEX IF NOT EXISTS asset_name_idx ON asset (name);
-CREATE INDEX IF NOT EXISTS asset_provider_idx ON asset (provider);
 
 -- ============================
--- Series table
+-- Types
 -- ============================
 
 -- 'create type if not exists' does not exist
@@ -196,6 +168,53 @@ BEGIN
     END IF;
 END$$;
 
+-- ============================
+-- Asset table
+-- ============================
+
+CREATE TABLE IF NOT EXISTS asset (
+    id            SERIAL PRIMARY KEY,
+    -- identity/logic
+    name          TEXT NOT NULL,
+    symbol        TEXT NOT NULL,
+    provider      TEXT NOT NULL,
+    provider_code TEXT NOT NULL,
+
+    -- metadata
+
+    long_name  TEXT,
+    short_name TEXT,
+    instrument TEXT,
+    region     TEXT,
+    exchange   TEXT,
+    currency   TEXT,
+    unit       TEXT,
+    
+    -- market calendar 
+
+    -- can be empty if before the required interval
+    first_trade_date DATE,
+
+    timezone         TEXT,
+    week_start       week_day NOT NULL,
+    week_end         week_day NOT NULL,
+    market_open      TIME WITHOUT TIME ZONE,
+    market_close     TIME WITHOUT TIME ZONE,
+    
+    UNIQUE(name),
+    -- we can have different providers for daily and intraday
+    UNIQUE(provider, symbol),
+    UNIQUE(provider, provider_code)
+);
+
+CREATE INDEX IF NOT EXISTS asset_symbol_idx ON asset (symbol);
+CREATE INDEX IF NOT EXISTS asset_name_idx ON asset (name);
+CREATE INDEX IF NOT EXISTS asset_provider_idx ON asset (provider);
+
+-- ============================
+-- Series table
+-- ============================
+
 CREATE TABLE IF NOT EXISTS series (
     id SERIAL PRIMARY KEY,
     code TEXT NOT NULL,
@@ -205,11 +224,6 @@ CREATE TABLE IF NOT EXISTS series (
     retention series_retention NOT NULL,
     retention_period TEXT,
     bootstrap_history TEXT NOT NULL,
-    timezone TEXT NOT NULL,
-    market_open TIME WITHOUT TIME ZONE NOT NULL,
-    market_close TIME WITHOUT TIME ZONE NOT NULL,
-    week_start week_day NOT NULL,
-    week_end week_day NOT NULL,
     publication_offset TEXT,
 
     UNIQUE(asset_id, code)
@@ -239,22 +253,23 @@ SELECT
     a.provider,
     a.provider_code,
     a.symbol,
-    a.display_name,
+    a.long_name,
     a.instrument,
     a.region,
     a.exchange,
     a.currency,
     a.unit,
+    a.timezone,
+    a.market_open,
+    a.market_close,
+    a.week_start,
+    a.week_end,
+    a.first_trade_date,
     s.interval,
     s.retention,
     s.retention_period,
     s.series_type,
     s.bootstrap_history,
-    s.timezone,
-    s.market_open,
-    s.market_close,
-    s.week_start,
-    s.week_end,
     s.publication_offset
 FROM series s JOIN asset a ON s.asset_id = a.id ORDER BY series_id ASC;
 

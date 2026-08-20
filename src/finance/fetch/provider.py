@@ -8,7 +8,7 @@ import requests
 
 from finance.common.candle_identity import CandleIdentity
 
-from ..common.model import Asset, FetchResult, MeasurementResult, ProviderConfig, Series
+from ..common.model import Asset, FetchResult, ProviderConfig, Series
 from ..common.result import Result, T
 from ..common.time_utils import now_second_precision
 
@@ -23,13 +23,11 @@ class MarketDataProvider:
         self.session = kwargs.pop("session", None) or requests.Session()
         self.now = kwargs.pop("now_provider", now_second_precision)
 
-    def _safe_call(
-        self, measurement: str, fn: Callable[[], MeasurementResult[T]], context: str
-    ) -> MeasurementResult[T]:
+    def _safe_call(self, measurement: str, fn: Callable[[], Result[T]], context: str) -> Result[T]:
         try:
             return fn()
         except Exception as exc:
-            return MeasurementResult.fail(measurement, f"Exception during {context}", exc)
+            return Result.fail(f"Exception during {context}", exc)
 
     def _safe_get(self, obj: dict | list, path: list[str | int]) -> Result[any]:
         """
@@ -55,7 +53,7 @@ class MarketDataProvider:
         """
         Fetch data points for the given asset definition between start_time and end_time.
         """
-        return FetchResult.fail(series.name, "fetch not implemented")
+        return FetchResult.fail("fetch not implemented")
 
     # CO: @staticmethod
     # CO: def normalize_timestamp(timestamp: int, is_intraday: bool, zone_info: ZoneInfo) -> datetime:

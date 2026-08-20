@@ -66,9 +66,9 @@ def assert_error() -> Callable[[Result, str, str | None], None]:
     def _assert_error(result: Result, reason: str, error: str | None) -> None:
         assert not result.ok, "ok is true"
         assert result.payload is None, f"Payload is not None but {result.payload}"
-        assert reason in result.reason, f"Reason '{result.reason}' is not correct"
+        assert reason in result.reason, f"Reason '{result.reason}' != expected '{reason}"
         if result.error is not None:
-            assert error in result.error, f"Error '{result.error}' is not equal to expected '{error}'"
+            assert error in result.error, f"Error '{result.error}' != expected '{error}'"
         else:
             assert result.error is None, f"Error is not None but {result.error}"
 

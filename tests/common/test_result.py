@@ -2,14 +2,13 @@
 # Licensed under the Apache License, Version 2.0. See the LICENSE file for details.
 # File: tests/common/test_result.py
 
-from finance.common.result import MeasurementResult, Result
+from finance.common.result import Result
 
 
 def test_result_success_payload():
-    result = MeasurementResult.ok_payload("spx", payload=[1, 2, 3])
+    result = Result.ok_payload(payload=[1, 2, 3])
 
     assert result.ok is True
-    assert result.series_name == "spx"
     assert result.payload == [1, 2, 3]
     assert result.warnings is None
     assert result.error is None
@@ -18,10 +17,9 @@ def test_result_success_payload():
 
 
 def test_result_success_no_payload():
-    result = MeasurementResult.ok_payload("spx", None)
+    result = Result.ok_payload(None)
 
     assert result.ok is True
-    assert result.series_name == "spx"
     assert result.payload is None
     assert result.warnings is None
     assert result.error is None
@@ -30,10 +28,9 @@ def test_result_success_no_payload():
 
 
 def test_result_success_with_warnings():
-    result = MeasurementResult.ok_payload("spx", [1], ["slow response", "rate limited"])
+    result = Result.ok_payload([1], ["slow response", "rate limited"])
 
     assert result.ok is True
-    assert result.series_name == "spx"
     assert result.payload == [1]
     assert result.warnings == ["slow response", "rate limited"]
     assert result.error is None
@@ -42,10 +39,9 @@ def test_result_success_with_warnings():
 
 
 def test_result_success_with_empty_warnings():
-    result = MeasurementResult.ok_payload("spx", payload=[1], warnings=[])
+    result = Result.ok_payload(payload=[1], warnings=[])
 
     assert result.ok is True
-    assert result.series_name == "spx"
     assert result.payload == [1]
     assert result.warnings is None
     assert result.error is None
@@ -53,10 +49,9 @@ def test_result_success_with_empty_warnings():
 
 
 def test_result_error_reason_only():
-    result = MeasurementResult.fail("spx", "timeout")
+    result = Result.fail("timeout")
 
     assert result.ok is False
-    assert result.series_name == "spx"
     assert result.payload is None
     assert result.reason == "timeout"
     assert result.warnings is None
@@ -65,7 +60,7 @@ def test_result_error_reason_only():
 
 def test_result_error_with_exception_and_meta():
     exc = ValueError("boom")
-    result = MeasurementResult.fail("spx", "bad data", exc, meta={"other": 1})
+    result = Result.fail("bad data", exc, meta={"other": 1})
 
     assert result.ok is False
     assert result.payload is None

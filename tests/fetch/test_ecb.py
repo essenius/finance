@@ -9,6 +9,7 @@ from zoneinfo import ZoneInfo
 import pytest
 
 from finance.common.candle_identity import CandleIdentity
+from finance.fetch.ecb import EcbProvider
 
 
 def make_identity(label: datetime) -> CandleIdentity:
@@ -66,7 +67,7 @@ def test_ecb_fetch_ok(ecb_provider, assert_ok, make_asset, make_series):
     ],
 )
 def test_ecb_fetch_wrong_provider_code(ecb_provider, make_series, make_asset, provider_code):
-    provider = ecb_provider()
+    provider: EcbProvider = ecb_provider()
     provider.session.queue(200, {})
 
     asset = make_asset(provider_code=provider_code)
@@ -82,7 +83,7 @@ def test_ecb_fetch_wrong_provider_code(ecb_provider, make_series, make_asset, pr
 
 def test_ecb_fetch_non_200(ecb_provider, assert_error, make_asset, make_series, fixed_now):
     now = make_identity(fixed_now())
-    provider = ecb_provider()
+    provider: EcbProvider = ecb_provider()
     provider.session.queue(500, "", "Internal Server Error")
 
     asset = make_asset(provider_code="EUR_USD")

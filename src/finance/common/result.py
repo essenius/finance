@@ -41,13 +41,14 @@ class Result[T]:
             warnings=Result.parse_warnings(warnings),
         )
 
-    def with_measurement(self, measurement: str) -> MeasurementResult[T]:
-        return MeasurementResult.from_result(self, measurement)
+    # CO: def with_measurement(self, measurement: str) -> MeasurementResult[T]:
+    # CO:    return MeasurementResult.from_result(self, measurement)
 
     def with_meta(self, meta: dict) -> Result:
         return replace(self, meta=meta)
 
 
+""" TODO delete
 @dataclass
 class MeasurementResult(Result[T]):
     # Python quirk: this cannot be non-defaulted as there are defaults in the parent
@@ -80,3 +81,4 @@ class MeasurementResult(Result[T]):
         meta: dict | None = None,
     ) -> MeasurementResult[None]:
         return Result.fail(reason, error, warnings, meta).with_measurement(series_name)
+"""

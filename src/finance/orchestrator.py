@@ -117,7 +117,7 @@ class Orchestrator:
         if not result.ok:
             return False
 
-        series = self.registry.get_series_by_name(result.series_name)
+        series = self.registry.get_series_by_id(payload.series_id)
 
         if payload.metadata is not None:
             asset_to_save = self.registry.register_provider_metadata(series.asset_id, payload.metadata)

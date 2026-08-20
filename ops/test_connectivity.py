@@ -3,12 +3,13 @@
 # File: ops/test_connectivity.py
 
 from pathlib import Path
+from unittest.mock import Mock
 
 from finance.common.dict_utils import deep_merge
 from finance.common.model import SeriesPoint
 from finance.common.time_utils import now_second_precision
 from finance.config.loader import ConfigLoader
-from finance.main_utils import reconcile_registry, unwrap
+from finance.orchestrator import Orchestrator, unwrap
 from finance.registry.registry import Registry
 from finance.timeseries import SeriesBackend
 
@@ -45,9 +46,7 @@ def main():
     print(f"environment config: {env_cfg}")
     print("creating backend")
 
-    registry = Registry()
-    registry.load_yaml_assets(asset_list)
-    registry.load_yaml_series(series_list)
+    registry = Registry(assets=asset_list, series=series_list)
 
     backend_result = SeriesBackend.from_config(
         config=deep_merge(secrets, env_cfg),  # series_by_id=registry.get_series_by_id
@@ -58,8 +57,9 @@ def main():
 
     backend = backend_result.payload
 
-    print("reconciling registry")
-    reconcile_registry(registry, backend)
+    orchestrator = Orchestrator(backend=backend, registry=registry, state=Mock(), fetcher=Mock())
+    print("Preparing...")
+    orchestrator.prepare()
 
     print_list(registry.all_assets(), "registry assets")
     print_list(registry.all_series(), "registry series")
@@ -80,7 +80,7 @@ def main():
         return
 
     print("Write OK")
-    # Read it back
+    # Read it back (TODO not right yet. Fix)
 
     print("Reading back...")
     read_result = backend.read_last(id)

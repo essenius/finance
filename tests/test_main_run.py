@@ -28,7 +28,7 @@ class FakeFetchController:
     def fetch_incrementally(self, state) -> Iterable[FetchResult]:
         for id, value, time in self.outputs:
             fp = SeriesPoint(series_id=id, time=time, close=value)
-            yield FetchResult.ok_payload("spx", FetchData(points=[fp], metadata=None))
+            yield FetchResult.ok_payload(FetchData(series_id=id, points=[fp], metadata=None))
 
 
 def make_config():

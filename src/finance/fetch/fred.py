@@ -21,7 +21,7 @@ class FredProvider(MarketDataProvider):
         self, series: Series, asset: Asset, start: CandleIdentity, end: CandleIdentity, is_incremental: bool
     ) -> FetchResult:
         if not self.api_key:
-            return FetchResult.fail(series.name, "FRED requires an API key")
+            return FetchResult.fail(reason="FRED requires an API key")
 
         start_date = start.date().strftime("%Y-%m-%d")
         end_date = end.date().strftime("%Y-%m-%d")
@@ -45,7 +45,7 @@ class FredProvider(MarketDataProvider):
         data = response.json()
         observations = data.get("observations")
         if observations is None:
-            return FetchResult.fail(series.name, "no 'observations' in response")
+            return FetchResult.fail(reason="no 'observations' in response")
 
         points: list[SeriesPoint] = []
 
@@ -68,6 +68,6 @@ class FredProvider(MarketDataProvider):
             value = float(value_str)
             points.append(SeriesPoint(series_id=series.id, time=time, close=value))
 
-            result = FetchData(points=points, metadata=None)
+            result = FetchData(series_id=series.id, points=points, metadata=None)
 
-        return FetchResult.ok_payload(series.name, result)
+        return FetchResult.ok_payload(result)

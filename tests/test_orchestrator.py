@@ -9,12 +9,11 @@ import pytest
 
 from finance.common.model import FetchData, FetchResult, SeriesPoint, SeriesResult, SeriesState
 from finance.common.result import Result
-from finance.main_utils import unwrap
-from finance.orchestrator import Orchestrator
+from finance.orchestrator import Orchestrator, unwrap
 
 
 def ok_fetch_result(points: list) -> FetchResult:
-    return FetchResult.ok_payload("spx", FetchData(points=points, metadata=None))
+    return FetchResult.ok_payload(FetchData(series_id=1, points=points, metadata=None))
 
 
 # ---------------------------------------------------------------------------
@@ -292,17 +291,17 @@ def test_handle_fetch_response_returns_false_for_failed_fetch(orchestrator, regi
         reason="fetch failed",
         error="connection error",
         warnings=[],
-        series_name="TEST",
     )
 
     assert orchestrator.handle_fetch_response(result) is False
 
-    registry.get_series_by_name.assert_not_called()
+    registry.get_series_by_id.assert_not_called()
     backend.store_asset.assert_not_called()
 
 
 def test_handle_fetch_response_ingests_points_without_metadata(orchestrator, registry):
     series = Mock()
+    series.id = 42
     series.name = "TEST"
 
     point = Mock()
@@ -311,20 +310,19 @@ def test_handle_fetch_response_ingests_points_without_metadata(orchestrator, reg
 
     result = FetchResult(
         ok=True,
-        payload=Mock(metadata=None, points=[point]),
+        payload=Mock(metadata=None, points=[point], series_id=series.id),
         reason=None,
         error=None,
         warnings=[],
-        series_name="TEST",
     )
 
-    registry.get_series_by_name.return_value = series
+    registry.get_series_by_id.return_value = series
 
     orchestrator.ingest_points = Mock(return_value=True)
 
     assert orchestrator.handle_fetch_response(result) is True
 
-    registry.get_series_by_name.assert_called_once_with("TEST")
+    registry.get_series_by_id.assert_called_once_with(42)
     orchestrator.ingest_points.assert_called_once_with([point], series)
     registry.register_provider_metadata.assert_not_called()
 
@@ -341,10 +339,9 @@ def test_handle_fetch_response_registers_provider_metadata_without_persisting(or
         reason=None,
         error=None,
         warnings=[],
-        series_name="TEST",
     )
 
-    registry.get_series_by_name.return_value = series
+    registry.get_series_by_id.return_value = series
     registry.register_provider_metadata.return_value = None
 
     assert orchestrator.handle_fetch_response(result) is True
@@ -370,10 +367,9 @@ def test_handle_fetch_response_persists_changed_asset_metadata(orchestrator, reg
         reason=None,
         error=None,
         warnings=[],
-        series_name="TEST",
     )
 
-    registry.get_series_by_name.return_value = series
+    registry.get_series_by_id.return_value = series
     registry.register_provider_metadata.return_value = asset
     backend.store_asset.return_value = make_result(stored_asset)
 
@@ -399,10 +395,9 @@ def test_handle_fetch_response_processes_metadata_and_points(orchestrator, regis
         reason=None,
         error=None,
         warnings=[],
-        series_name="TEST",
     )
 
-    registry.get_series_by_name.return_value = series
+    registry.get_series_by_id.return_value = series
     registry.register_provider_metadata.return_value = None
 
     orchestrator.ingest_points = Mock(return_value=True)
@@ -423,10 +418,9 @@ def test_handle_fetch_response_with_no_points_does_not_ingest(orchestrator, regi
         reason=None,
         error=None,
         warnings=[],
-        series_name="TEST",
     )
 
-    registry.get_series_by_name.return_value = series
+    registry.get_series_by_id.return_value = series
 
     assert orchestrator.handle_fetch_response(result) is True
 

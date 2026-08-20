@@ -8,7 +8,7 @@ from dataclasses import dataclass, field, replace
 from datetime import UTC, date, datetime, time, timedelta
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from ..common.result import MeasurementResult
+from ..common.result import Result
 from ..common.string_enums import Candle, Retention, SeriesType
 from ..common.time_utils import check_duration_in, parse_duration, parse_time, parse_weekday
 
@@ -117,17 +117,18 @@ class AssetMetadata:
 
 
 SeriesPoints = list[SeriesPoint]
-SeriesPointsResult = MeasurementResult[SeriesPoints]
+SeriesPointsResult = Result[SeriesPoints]
 
 
 @dataclass(frozen=True)
 class FetchData:
+    series_id: int
     points: SeriesPoints
     metadata: AssetMetadata | None = None
 
 
-FetchResult = MeasurementResult[FetchData]
-SeriesResult = MeasurementResult[SeriesPoint | None]
+FetchResult = Result[FetchData]
+SeriesResult = Result[SeriesPoint | None]
 
 
 @dataclass(frozen=True)
@@ -174,7 +175,7 @@ class ProviderConfig:
     @staticmethod
     def get_from_duration_table(
         delta: timedelta, table: dict[timedelta, timedelta | SweepConfig] | None
-    ) -> timedelta | SweepConfig:
+    ) -> timedelta | SweepConfig | None:
         if not table:
             return None  # unlimited
         chosen = None

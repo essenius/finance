@@ -9,7 +9,8 @@ from unittest.mock import Mock
 from zoneinfo import ZoneInfo
 
 from finance.common.candle_identity import CandleIdentity
-from finance.common.model import Asset, FetchResult, MeasurementResult, ProviderConfig, Series, SeriesState, SweepConfig
+from finance.common.model import Asset, FetchResult, ProviderConfig, Series, SeriesState, SweepConfig
+from finance.common.result import Result
 from finance.common.series_calendar import SeriesCalendar
 from finance.common.string_enums import Retention, SupportedProviders
 from finance.common.time_utils import snap_to
@@ -43,7 +44,7 @@ def fetch_with_single_result(fc: FetchController, state: State) -> FetchResult:
 
 def make_fake_provider(fetch_result=None):
     if fetch_result is None:
-        fetch_result = MeasurementResult.ok_payload("eur_usd:dummy", [])
+        fetch_result = Result.ok_payload([])
     fake_provider = Mock()
     fake_provider.fetch.return_value = fetch_result
     fake_provider.provider_config = Mock()
@@ -134,7 +135,6 @@ def test_controller_fetch_when_oldest_too_new(state, make_asset, make_series):
 
     result = fetch_with_single_result(fc, state)
     assert result.ok
-    assert result.series_name == "eur_usd:dummy"
 
 
 def test_controller_fetches_when_stale(state, fixed_now, make_asset, make_series):
@@ -152,7 +152,6 @@ def test_controller_fetches_when_stale(state, fixed_now, make_asset, make_series
 
     result = fetch_with_single_result(fc, state)
     assert result.ok
-    assert result.series_name == "eur_usd:dummy"
 
     fc.get_provider("yahoo").fetch.assert_called_once()
 
@@ -198,8 +197,6 @@ def test_controller_unknown_provider(assert_error, state, fixed_now, make_asset,
     result = fetch_with_single_result(fc, state)
     assert_error(result, "no provider 'mystery'", "Skipped series 'eur_usd:dummy'")
 
-    assert result.series_name == "eur_usd:dummy"
-
     assert 1 in state.series
 
 
@@ -216,7 +213,7 @@ def test_controller_unknown_asset(assert_error, state, fixed_now, make_asset, ma
 
 
 def test_controller_malformed_result(assert_error, state, fixed_now, make_asset, make_series):
-    fake_provider = make_fake_provider(fetch_result=MeasurementResult.fail("eur_usd_dummy", "bad data"))
+    fake_provider = make_fake_provider(fetch_result=Result.fail(reason="bad data"))
 
     asset = make_asset()
     assets = make_assets([asset])
@@ -245,8 +242,8 @@ def test_controller_multiple_assets(state, fixed_now, make_asset, make_series):
     fake_provider = make_fake_provider()
 
     fake_provider.fetch.side_effect = [
-        MeasurementResult.ok_payload("eur_usd_yahoo_intraday", []),
-        MeasurementResult.ok_payload("spx_yahoo_intraday", []),
+        Result.ok_payload([]),
+        Result.ok_payload([]),
     ]
 
     asset1 = make_asset(name="eur_usd_yahoo")
@@ -268,7 +265,7 @@ def test_controller_multiple_assets(state, fixed_now, make_asset, make_series):
 
 
 def test_compute_fetch_range_intraday(make_series, make_asset):
-    fake_provider = make_fake_provider(fetch_result=MeasurementResult.fail("eur_usd_dummy", "bad data"))
+    fake_provider = make_fake_provider(fetch_result=Result.fail(reason="bad data"))
 
     asset = make_asset()
     calendar = SeriesCalendar.from_asset_metadata(asset.effective_metadata)
@@ -339,7 +336,7 @@ def test_compute_fetch_range_intraday(make_series, make_asset):
 
 
 def test_compute_fetch_range_daily(make_series, make_asset, make_metadata):
-    fake_provider = make_fake_provider(fetch_result=MeasurementResult.fail("eur_usd_dummy", "bad data"))
+    fake_provider = make_fake_provider(fetch_result=Result.fail(reason="bad data"))
 
     meta = make_metadata(first_trade_date=date(2021, 10, 1))
     asset = make_asset(effective_metadata=meta)
@@ -410,7 +407,7 @@ def test_compute_fetch_range_daily(make_series, make_asset, make_metadata):
 
 
 def test_compute_fetch_range_first_after_last(make_asset, make_series):
-    fake_provider = make_fake_provider(fetch_result=MeasurementResult.fail("eur_usd_dummy", "bad data"))
+    fake_provider = make_fake_provider(fetch_result=Result.fail(reason="bad data"))
 
     asset = make_asset()
     calendar = SeriesCalendar.from_asset_metadata(asset.effective_metadata)

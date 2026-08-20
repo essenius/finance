@@ -2,6 +2,7 @@
 # Licensed under the Apache License, Version 2.0. See the LICENSE file for details.
 # File: src/finance/main_utils.py
 
+'''TODO: delete
 import argparse
 from dataclasses import asdict
 from pathlib import Path
@@ -127,3 +128,4 @@ def process_result(
             f"Range for {series.name} after updating: {range.first_point.isoformat()} - {range.last_point.isoformat()}"
         )
     return all_ok
+'''

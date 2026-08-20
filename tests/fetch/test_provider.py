@@ -8,7 +8,7 @@ import pytest
 import requests
 
 from finance.common.candle_identity import CandleIdentity
-from finance.common.model import MeasurementResult
+from finance.common.result import Result
 
 
 def test_init_defaults(dummy_provider):
@@ -26,7 +26,7 @@ def test_safe_call_success(dummy_provider):
     p = dummy_provider()
 
     def good():
-        return MeasurementResult.ok_payload("x", [1, 2, 3])
+        return Result.ok_payload([1, 2, 3])
 
     result = p._safe_call("ABC", good, "context")
     assert result.ok

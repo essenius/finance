@@ -4,9 +4,9 @@
 
 from datetime import UTC, datetime
 
-from finance.common.candle_identity import CandleIdentity
-
-from ..common.model import Asset, FetchData, FetchResult, MeasurementResult, Series, SeriesPoint
+from ..common.candle_identity import CandleIdentity
+from ..common.model import Asset, FetchData, FetchResult, Series, SeriesPoint
+from ..common.result import Result
 from .provider import MarketDataProvider
 
 BASE_URL = "https://data-api.ecb.europa.eu/service/data"
@@ -41,30 +41,30 @@ class EcbProvider(MarketDataProvider):
             return None
         return f"{BASE_URL}/EXR/D.{base}.{quote}.SP00.A"
 
-    def _extract_observations(self, series: Series, data: dict) -> MeasurementResult[dict]:
+    def _extract_observations(self, series: Series, data: dict) -> Result[dict]:
         series_result = self._safe_get(data, ["dataSets", 0, "series"])
         if not series_result.ok:
-            return MeasurementResult.fail(series.name, "Could not find ECB series in response", series_result.reason)
+            return Result.fail("Could not find ECB series in response", series_result.reason)
 
         raw_series = series_result.payload
 
         try:
             first_key = next(iter(raw_series))
         except StopIteration:
-            return MeasurementResult.fail(series.name, "Could not find ECB series entry in response")
+            return Result.fail("Could not find ECB series entry in response")
 
         observations_result = self._safe_get(raw_series, [first_key, "observations"])
         if not observations_result.ok:
-            return MeasurementResult.fail(series.name, "Could not find ECB observations", observations_result.reason)
+            return Result.fail("Could not find ECB observations", observations_result.reason)
 
-        return MeasurementResult.ok_payload(series.name, observations_result.payload)
+        return Result.ok_payload(observations_result.payload)
 
-    def _extract_dates(self, name: str, data: dict) -> MeasurementResult[list]:
+    def _extract_dates(self, name: str, data: dict) -> Result[list]:
         date_values_result = self._safe_get(data, ["structure", "dimensions", "observation", 0, "values"])
         if not date_values_result.ok:
-            return MeasurementResult.fail(name, "Could not find ECB date metadata", date_values_result.reason)
+            return Result.fail("Could not find ECB date metadata", date_values_result.reason)
 
-        return MeasurementResult.ok_payload(name, date_values_result.payload)
+        return Result.ok_payload(date_values_result.payload)
 
     def _parse_points(self, series: Series, observations: dict, date_values: list) -> list[SeriesPoint]:
         points: list[SeriesPoint] = []
@@ -95,7 +95,7 @@ class EcbProvider(MarketDataProvider):
         name = series.name
         url = self._make_url(provider_code)
         if url is None:
-            return FetchResult.fail(name, f"Could not split provider code '{provider_code}' into base_quote for url")
+            return FetchResult.fail(f"Could not split provider code '{provider_code}' into base_quote for url")
 
         response = self.session.get(url, params=params, timeout=self.provider_config.timeout_delta().seconds)
         response.raise_for_status()
@@ -115,6 +115,6 @@ class EcbProvider(MarketDataProvider):
 
         points = self._parse_points(series, observations, date_values)
 
-        result = FetchData(points=points, metadata=None)
+        result = FetchData(series_id=series.id, points=points, metadata=None)
 
-        return FetchResult.ok_payload(name, result)
+        return FetchResult.ok_payload(result)

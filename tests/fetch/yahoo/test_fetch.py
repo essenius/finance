@@ -106,7 +106,7 @@ def test_fetch_success(yahoo_provider, unwrap, make_asset, make_series):
     response.raise_for_status.return_value = None
     asset = make_asset(provider_code="AAPL")
     series = make_series(asset, interval="1h", retention=Retention.SHORT_LIVED, series_type=SeriesType.VALUE)
-    provider = yahoo_provider(now_provider=fake_now)
+    provider: YahooProvider = yahoo_provider(now_provider=fake_now)
     with patch.object(provider.session, "get", return_value=response):
         result = provider.fetch(series, asset, now, now, False)
 

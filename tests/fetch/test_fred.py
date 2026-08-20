@@ -6,10 +6,12 @@ from datetime import UTC, datetime
 
 import pytest
 
+from finance.fetch.fred import FredProvider
+
 
 def test_fred_fetch_normal_with_skipped(fred_provider, assert_ok, make_asset, make_series, fixed_now):
 
-    provider = fred_provider()
+    provider: FredProvider = fred_provider()
     provider.session.queue(
         status=200,
         json_data={

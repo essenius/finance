@@ -58,16 +58,13 @@ class FetchController:
             asset = self.get_asset_by_id(series.asset_id)
             if asset is None:
                 yield FetchResult.fail(
-                    series.name,
                     f"Could not find asset {series.asset_id} ({series.asset_name})",
                     f"Skipped series '{series.name}'",
                 )
                 continue
             provider = self.get_provider(asset.provider)
             if not provider:
-                yield FetchResult.fail(
-                    series.name, f"no provider '{asset.provider}'", f"Skipped series '{series.name}'"
-                )
+                yield FetchResult.fail(f"no provider '{asset.provider}'", f"Skipped series '{series.name}'")
                 continue
             calendar = SeriesCalendar.from_asset_metadata(asset.effective_metadata)
             range = self.get_fetch_range(series=series, provider=provider, state=state_entry, calendar=calendar)

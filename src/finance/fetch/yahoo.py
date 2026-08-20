@@ -9,16 +9,7 @@ from zoneinfo import ZoneInfo
 from finance.common.applogger import AppLogger
 from finance.common.candle_identity import CandleIdentity
 
-from ..common.model import (
-    Asset,
-    AssetMetadata,
-    FetchData,
-    FetchResult,
-    MeasurementResult,
-    Series,
-    SeriesPoint,
-    SeriesPointsResult,
-)
+from ..common.model import Asset, AssetMetadata, FetchData, FetchResult, Series, SeriesPoint, SeriesPointsResult
 from ..common.result import Result
 from ..common.string_enums import Candle
 from .provider import MarketDataProvider
@@ -54,15 +45,15 @@ class YahooProvider(MarketDataProvider):
         metadata_result = self._extract_metadata(meta)
         if not metadata_result.ok:
             return FetchResult.fail(
-                series.name, f"Could not parse series '{series.name}' in Yahoo fetch result", metadata_result.reason
+                reason=f"Could not parse series '{series.name}' in Yahoo fetch result", error=metadata_result.reason
             )
 
         metadata = metadata_result.payload
         points_result = self._extract_candles(series, result.payload, metadata.timezone)
         if not points_result.ok:
             return points_result
-        result = FetchData(points=points_result.payload, metadata=metadata)
-        return FetchResult.ok_payload(name, result)
+        result = FetchData(series_id=series.id, points=points_result.payload, metadata=metadata)
+        return FetchResult.ok_payload(result)
 
     # -----------
     # Fetch data
@@ -79,7 +70,7 @@ class YahooProvider(MarketDataProvider):
         }
         return f"{self.BASE_URL.format(symbol=encoded)}", params
 
-    def _fetch_impl(self, url, name, params) -> MeasurementResult[dict]:
+    def _fetch_impl(self, url, name, params) -> Result[dict]:
         """fetch the response from the provider. Is called from a _safe_call wrapper so can throw"""
         headers = {"User-Agent": "Mozilla/5.0"}
         response = self.session.get(
@@ -90,11 +81,11 @@ class YahooProvider(MarketDataProvider):
 
         error_response = self._error_response(data)
         if error_response:
-            return MeasurementResult.fail(name, "Could not interpret fetch response", error_response)
+            return Result.fail("Could not interpret fetch response", error_response)
 
         # must work since is_error_response checks for it
         value = data["chart"]["result"][0]
-        return MeasurementResult.ok_payload(name, value)
+        return Result.ok_payload(value)
 
     def _error_response(self, data) -> str | None:
         chart = data.get("chart", {})
@@ -230,10 +221,9 @@ class YahooProvider(MarketDataProvider):
     def _extract_candles(
         self, series: Series, payload: dict | None = None, timezone: ZoneInfo = UTC
     ) -> SeriesPointsResult:
-        name = series.name
         arrays_result = self._extract_arrays(payload)
         if not arrays_result.ok or arrays_result.payload is None:
-            return FetchResult.from_result(arrays_result, name)
+            return arrays_result
 
         timestamps, arrays = arrays_result.payload
         if timestamps != [] and not self.is_aligned(timestamps[-1], series):
@@ -245,4 +235,4 @@ class YahooProvider(MarketDataProvider):
                     arrays[key].pop()
         candles, warnings = self._build_candles(timestamps, arrays, series, timezone)
 
-        return SeriesPointsResult.ok_payload(name, candles, warnings)
+        return SeriesPointsResult.ok_payload(candles, warnings)

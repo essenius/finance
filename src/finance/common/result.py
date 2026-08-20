@@ -4,12 +4,45 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, replace
-from typing import TypeVar
-
-T = TypeVar("T")
+from dataclasses import dataclass, field
+from typing import Literal
 
 
+@dataclass
+class Success[T]:
+    payload: T
+    warnings: list[str] = field(default_factory=list)
+    meta: dict[str, object] | None = None
+    ok: Literal[True] = True
+
+    def to_log_dict(self) -> dict[str, object]:
+        # log doesn't include the payload as that can be quite large
+        return {
+            "warnings": self.warnings,
+            "meta": self.meta,
+        }
+
+
+@dataclass
+class Failure:
+    reason: str
+    error: str | Exception | None = None
+    warnings: list[str] = field(default_factory=list)
+    meta: dict[str, object] | None = None
+    ok: Literal[False] = False
+
+    def to_log_dict(self) -> dict[str, object]:
+        return {
+            "reason": self.reason,
+            "error": self.error,
+            "warnings": self.warnings,
+            "meta": self.meta,
+        }
+
+type Result[T] = Success[T] | Failure
+
+
+""" TODO delet
 @dataclass
 class Result[T]:
     ok: bool
@@ -48,7 +81,7 @@ class Result[T]:
         return replace(self, meta=meta)
 
 
-""" TODO delete
+e
 @dataclass
 class MeasurementResult(Result[T]):
     # Python quirk: this cannot be non-defaulted as there are defaults in the parent

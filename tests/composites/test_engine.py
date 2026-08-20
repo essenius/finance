@@ -210,7 +210,7 @@ def test_missing_dependency(unwrap, assert_error, state):
     results = list(engine.evaluate_incrementally())
 
     # Expect exactly one failure
-    fail = [r for r in results if not r.ok]
+    fail = [r for r in results if r.ok is False]
     assert len(fail) == 1
 
     fr = fail[0]
@@ -234,7 +234,7 @@ def test_syntax_error_in_raw_expression(state):
     set_state(state, A_daily=({"value": 1}, 100))
 
     engine = CompositeEngine.build(composites, state)
-    assert not engine.ok
+    assert engine.ok is False
     assert "Syntax error in composite expression 'A +'" in engine.reason
     assert "invalid syntax (<unknown>, line 1)" in engine.error
 

@@ -70,7 +70,7 @@ def run(
         # Config loader can have errors, but is also needed to setup logging.
         # So if the config loader fails, we take default logging settings.
         config_result = load_config()
-        log_section = {} if not config_result.ok else config_result.payload.get("logging")
+        log_section = {} if config_result.ok is False else config_result.payload.get("logging")
         log_config.setup(log_section)
         # Now we have a valid json logger, and we can start logging.
         config = unwrap(config_result)
@@ -81,7 +81,7 @@ def run(
         registry = registry_factory(config["assets"], config["series"])
 
         backend_result = backend_factory(deep_merge(secrets[BACKEND], config[BACKEND]), sql_factory)
-        if not backend_result.ok:
+        if backend_result.ok is False:
             logger.error(reason=backend_result.reason, error=backend_result.error)
             return 1
 

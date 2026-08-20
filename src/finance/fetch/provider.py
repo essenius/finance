@@ -3,13 +3,14 @@
 # File: src/finance/fetch/provider.py
 
 from collections.abc import Callable
+from typing import Any
 
 import requests
 
 from finance.common.candle_identity import CandleIdentity
 
 from ..common.model import Asset, FetchResult, ProviderConfig, Series
-from ..common.result import Result, T
+from ..common.result import Failure, Result, Success
 from ..common.time_utils import now_second_precision
 
 
@@ -23,29 +24,25 @@ class MarketDataProvider:
         self.session = kwargs.pop("session", None) or requests.Session()
         self.now = kwargs.pop("now_provider", now_second_precision)
 
-    def _safe_call(self, measurement: str, fn: Callable[[], Result[T]], context: str) -> Result[T]:
+    def _safe_call[T](self, measurement: str, fn: Callable[[], Result[T]], context: str) -> Result[T]:
         try:
             return fn()
         except Exception as exc:
-            return Result.fail(f"Exception during {context}", exc)
+            return Failure(reason=f"Exception during {context}", error=exc)
 
-    def _safe_get(self, obj: dict | list, path: list[str | int]) -> Result[any]:
-        """
-        Walk nested dict/list structures safely.
-        Returns (value, None) on success.
-        Returns (None, error_message) on failure.
-        """
+    def _safe_get(self, obj: dict | list, path: list[str | int]) -> Result[Any]:
+
         current = obj
         for i, key in enumerate(path):
             try:
                 current = current[key]
             except KeyError:
-                return Result.fail(f"missing key '{key}' at {path[:i]}")
+                return Failure(reason=f"missing key '{key}' at {path[:i]}")
             except IndexError:
-                return Result.fail(f"missing index [{key}] at {path[:i]}")
+                return Failure(reason=f"missing index [{key}] at {path[:i]}")
             except TypeError:
-                return Result.fail(f"cannot index with [{key}] at {path[:i]}")
-        return Result.ok_payload(current)
+                return Failure(reason=f"cannot index with [{key}] at {path[:i]}")
+        return Success(current)
 
     def fetch(
         self, series: Series, asset: Asset, start: CandleIdentity, end: CandleIdentity, is_incremental: bool
@@ -53,7 +50,7 @@ class MarketDataProvider:
         """
         Fetch data points for the given asset definition between start_time and end_time.
         """
-        return FetchResult.fail("fetch not implemented")
+        return Failure(reason="fetch not implemented")
 
     # CO: @staticmethod
     # CO: def normalize_timestamp(timestamp: int, is_intraday: bool, zone_info: ZoneInfo) -> datetime:

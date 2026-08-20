@@ -5,7 +5,7 @@
 from datetime import datetime
 
 from ..common.model import SeriesPoint, SeriesState
-from ..common.result import Result
+from ..common.result import Result, Success
 from ..state.wal import JsonlWAL
 from ..timeseries.series_backend import SeriesBackend
 
@@ -18,7 +18,7 @@ class State:
 
     def load(self) -> Result[int]:
         result = self._backend.get_series_states()
-        if not result.ok:
+        if result.ok is False:
             return result
         self.series = result.payload
         self.update_wal_range()
@@ -65,7 +65,7 @@ class State:
         for entry in entries:
             result = self.sync_backend(entry)
             # no sense continuing if the backend can't handle new points
-            if not result.ok:
+            if result.ok is False:
                 return result
             warnings = result.warnings
             flushed_count += result.payload
@@ -75,7 +75,7 @@ class State:
         if result.ok and (result.payload > 0):
             self.sync_wal(result.payload)
             flushed_count += result.payload
-        return Result.ok_payload(flushed_count, warnings=warnings)
+        return Success(flushed_count, warnings=warnings)
 
     def sync_wal(self, written_count: int) -> Result[int]:
         warnings = []
@@ -83,7 +83,7 @@ class State:
         if removed_count != written_count:
             warnings.append(f"Requested to remove {written_count} entries from the WAL but removed {removed_count}")
 
-        return Result.ok_payload(removed_count, warnings=warnings)
+        return Success(removed_count, warnings=warnings)
 
     def sync_backend(self, point: SeriesPoint) -> Result[int]:
         """
@@ -93,7 +93,7 @@ class State:
         """
         result = self._backend.add_point(point)
 
-        if not result.ok:
+        if result.ok is False:
             return result
 
         return self.sync_wal(result.payload)

@@ -10,7 +10,7 @@ from finance.common.applogger import AppLogger
 from finance.common.candle_identity import CandleIdentity
 
 from ..common.model import Asset, AssetMetadata, FetchData, FetchResult, Series, SeriesPoint, SeriesPointsResult
-from ..common.result import Result
+from ..common.result import Failure, Result, Success
 from ..common.string_enums import Candle
 from .provider import MarketDataProvider
 
@@ -29,6 +29,11 @@ class YahooProvider(MarketDataProvider):
     def fetch(
         self, series: Series, asset: Asset, start: CandleIdentity, end: CandleIdentity, is_incremental: bool
     ) -> FetchResult:
+
+        def FetchFailure(error: str) -> Failure:
+
+            return Failure(f"Could not parse series '{series.name}' in Yahoo fetch result", error=error)
+
         name = series.name
         start_timestamp = start.start_timestamp()
         end_timestamp = end.end_timestamp()
@@ -37,23 +42,21 @@ class YahooProvider(MarketDataProvider):
             measurement=name, fn=lambda: self._fetch_impl(url, name, params), context="Yahoo fetch"
         )
 
-        if not result.ok:
+        if result.ok is False:
             return result
 
         meta = result.payload.get("meta", {})
 
         metadata_result = self._extract_metadata(meta)
-        if not metadata_result.ok:
-            return FetchResult.fail(
-                reason=f"Could not parse series '{series.name}' in Yahoo fetch result", error=metadata_result.reason
-            )
+        if metadata_result.ok is False:
+            return FetchFailure(error=metadata_result.reason)
 
         metadata = metadata_result.payload
         points_result = self._extract_candles(series, result.payload, metadata.timezone)
-        if not points_result.ok:
-            return points_result
+        if points_result.ok is False:
+            return FetchFailure(error=points_result.reason)
         result = FetchData(series_id=series.id, points=points_result.payload, metadata=metadata)
-        return FetchResult.ok_payload(result)
+        return Success(result)
 
     # -----------
     # Fetch data
@@ -81,11 +84,11 @@ class YahooProvider(MarketDataProvider):
 
         error_response = self._error_response(data)
         if error_response:
-            return Result.fail("Could not interpret fetch response", error_response)
+            return Failure(reason="Could not interpret fetch response", error=error_response)
 
         # must work since is_error_response checks for it
         value = data["chart"]["result"][0]
-        return Result.ok_payload(value)
+        return Success(value)
 
     def _error_response(self, data) -> str | None:
         chart = data.get("chart", {})
@@ -112,12 +115,12 @@ class YahooProvider(MarketDataProvider):
 
         timezone_name = meta.get("exchangeTimezoneName")
         if timezone_name is None:
-            return Result.fail("missing exchangeTimezoneName in meta")
+            return Failure(reason="missing exchangeTimezoneName in meta")
 
         try:
             timezone = ZoneInfo(timezone_name)
         except Exception as e:
-            return Result.fail(f"invalid exchange timezone '{timezone_name}': {e}")
+            return Failure(reason=f"invalid exchange timezone '{timezone_name}': {e}")
 
         first_trade_date = None
         first_trade_timestamp = meta.get("firstTradeDate")
@@ -133,7 +136,7 @@ class YahooProvider(MarketDataProvider):
             market_open = time_from_timestamp(start, timezone)
             market_close = time_from_timestamp(end, timezone)
 
-        return Result.ok_payload(
+        return Success(
             AssetMetadata(
                 short_name=meta.get("shortName"),
                 long_name=meta.get("longName"),
@@ -162,15 +165,15 @@ class YahooProvider(MarketDataProvider):
 
         timestamps = payload.get("timestamp")
         if not timestamps:
-            return Result.ok_payload(None, warnings=["no timestamp in result"])
+            return Success(None, warnings=["no timestamp in result"])
 
         quote_result = self._safe_get(payload, ["indicators", "quote", 0])
-        if not quote_result.ok:
-            return Result.fail("unexpected quote structure", quote_result.reason)
+        if quote_result.ok is False:
+            return Failure(reason=quote_result.reason)
 
         quote = quote_result.payload
         arrays = {f: quote.get(f) or [] for f in Candle.values()}
-        return Result.ok_payload((timestamps, arrays))
+        return Success((timestamps, arrays))
 
     def _build_candles(
         self, timestamps, arrays, series: Series, timezone: ZoneInfo
@@ -222,9 +225,10 @@ class YahooProvider(MarketDataProvider):
         self, series: Series, payload: dict | None = None, timezone: ZoneInfo = UTC
     ) -> SeriesPointsResult:
         arrays_result = self._extract_arrays(payload)
-        if not arrays_result.ok or arrays_result.payload is None:
+        if arrays_result.ok is False:
             return arrays_result
-
+        if arrays_result.payload is None:
+            return Success([], arrays_result.warnings)
         timestamps, arrays = arrays_result.payload
         if timestamps != [] and not self.is_aligned(timestamps[-1], series):
             # remove last element from timestamps and arrays
@@ -235,4 +239,4 @@ class YahooProvider(MarketDataProvider):
                     arrays[key].pop()
         candles, warnings = self._build_candles(timestamps, arrays, series, timezone)
 
-        return SeriesPointsResult.ok_payload(candles, warnings)
+        return Success(candles, warnings)

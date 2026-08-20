@@ -121,8 +121,8 @@ def test_extract_candles_handles_missing_timestamp(yahoo_provider, make_asset, m
     series = make_series(asset, series_type=SeriesType.VALUE)
 
     candles = yahoo_provider()._extract_candles(series, result)
-    assert candles.ok
-    assert candles.payload is None
+    assert candles.ok is True
+    assert candles.payload == []
     assert candles.warnings[0] == "no timestamp in result"
 
 
@@ -135,7 +135,7 @@ def test_extract_candles_handles_missing_quote(yahoo_provider, assert_error, mak
     series = make_series(asset, series_type=SeriesType.CANDLE)
 
     candles = yahoo_provider()._extract_candles(series, result)
-    assert_error(candles, "unexpected quote structure", "missing index [0]")
+    assert_error(candles, reason="missing index [0] at ['indicators', 'quote']", error=None)
 
 
 def test_extract_candles_empty_result(yahoo_provider, unwrap, make_asset, make_series):

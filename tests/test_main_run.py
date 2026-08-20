@@ -6,7 +6,7 @@ from collections.abc import Iterable
 from unittest.mock import MagicMock, Mock
 
 from finance.common.model import FetchData, FetchResult, SeriesPoint
-from finance.common.result import Result
+from finance.common.result import Failure, Success
 from finance.main import run
 
 # ---------------------------------------------------------------------------
@@ -28,7 +28,7 @@ class FakeFetchController:
     def fetch_incrementally(self, state) -> Iterable[FetchResult]:
         for id, value, time in self.outputs:
             fp = SeriesPoint(series_id=id, time=time, close=value)
-            yield FetchResult.ok_payload(FetchData(series_id=id, points=[fp], metadata=None))
+            yield Success(FetchData(series_id=id, points=[fp], metadata=None))
 
 
 def make_config():
@@ -53,11 +53,11 @@ class FakeCompositeEngine:
     def evaluate_incrementally(self):
         if self.fail_eval:
             for measurement, _, _ in self.outputs:
-                yield MeasurementResult.fail(measurement, "simulated failure")
+                yield MeasurementFailure(reason=measurement, "simulated failure")
         else:
             for measurement, fields, ts in self.outputs:
                 fp = FetchPoint(fields=fields, timestamp=ts)
-                yield MeasurementResult.ok_payload(measurement, [fp])
+                yield MeasurementSuccess(measurement, [fp])
 """
 
 # ---------------------------------------------------------------------------
@@ -79,7 +79,7 @@ def test_run_wires_dependencies_and_returns_orchestrator_result():
     orchestrator.run.return_value = 17
 
     def load_config():
-        return Result.ok_payload(config)
+        return Success(config)
 
     def registry_factory(assets, series):
         assert assets is config["assets"]
@@ -87,7 +87,7 @@ def test_run_wires_dependencies_and_returns_orchestrator_result():
         return registry
 
     def backend_factory(*_):
-        return Result.ok_payload(backend)
+        return Success(backend)
 
     def state_factory(*, backend, wal):
         assert backend is backend
@@ -131,11 +131,11 @@ def test_run_wires_dependencies_and_returns_orchestrator_result():
 
 def test_run_returns_one_when_backend_initialization_fails():
 
-    backend_factory = Mock(return_value=Result.fail("Backend initialization failed", "boom"))
+    backend_factory = Mock(return_value=Failure(reason="Backend initialization failed", error="boom"))
     orchestrator_factory = Mock()
 
     result = run(
-        load_config=lambda: Result.ok_payload(make_config()),
+        load_config=lambda: Success(make_config()),
         backend_factory=backend_factory,
         orchestrator_factory=orchestrator_factory,
     )
@@ -163,7 +163,7 @@ def test_run_happy_path(tmp_path, json_caplog, fixed_now, state_deps, make_asset
 
     backend, wal = state_deps
     backend.flush.return_value = Result(0)
-    backend.get_series_states.return_value = Result.ok_payload({})
+    backend.get_series_states.return_value = Success({})
     now = fixed_now()
     state_holder = {}
     json_caplog.set_level("DEBUG")
@@ -187,20 +187,20 @@ def test_run_happy_path(tmp_path, json_caplog, fixed_now, state_deps, make_asset
         return state
 
     def load_config():
-        return Result.ok_payload(fake_config)
+        return Success(fake_config)
 
     def fetch_controller_factory(series, get_assets, get_providers):
         return FakeFetchController([(1, 4321, now)])
 
     # CO: def composite_engine_builder(composites, state):
-    # CO:    return Result.ok_payload(FakeCompositeEngine([("spread", {"value": 10}, 200)]))
+    # CO:    return Success(FakeCompositeEngine([("spread", {"value": 10}, 200)]))
 
     # note that sql_factory was not mocked so it takes the original.
 
     run(
         load_config=load_config,
         registry_factory=registry_factory,
-        backend_factory=lambda *_: Result.ok_payload(backend),
+        backend_factory=lambda *_: Success(backend),
         state_factory=state_factory,
         fetch_controller_factory=fetch_controller_factory,
         #   composite_engine_builder=composite_engine_builder,
@@ -237,10 +237,10 @@ def test_run_fetch_failure(tmp_path, json_caplog, fixed_now, make_asset, make_se
     }
 
     def load_config():
-        return Result.ok_payload(fake_config)
+        return Success(fake_config)
 
     def backend_factory(*_):
-        return Result.ok_payload(Mock())
+        return Success(Mock())
 
     def wal_factory(path):
         return Mock()
@@ -251,19 +251,19 @@ def test_run_fetch_failure(tmp_path, json_caplog, fixed_now, make_asset, make_se
             self.saved = False
 
         def ingest(self, point: SeriesPoint):
-            return SeriesResult.fail(point.series_id, "Boom", "simulated failure")
+            return SeriesFailure(reason=point.series_id, "Boom", "simulated failure")
 
         def save(self):
             self.saved = True
 
         def load(self):
-            return Result.ok_payload(0)
+            return Success(0)
 
     def fetch_controller_factory(series, get_assets, get_providers):
         return FakeFetchController([(1, 1, fixed_now())])
 
     # CO: def composite_engine_builder(composites, state):
-    # CO:    return Result.ok_payload(FakeCompositeEngine([]))
+    # CO:    return Success(FakeCompositeEngine([]))
 
     exit_value = run(
         load_config=load_config,
@@ -299,10 +299,10 @@ def test_run_composite_failure(tmp_path, caplog, fixed_now, state):
     }
 
     def load_config():
-        return Result.ok_payload(fake_config)
+        return Success(fake_config)
 
     def influx_backend_factory(*_):
-        return Result.ok_payload(Mock())
+        return Success(Mock())
 
     def wal_factory(path):
         return Mock()
@@ -317,7 +317,7 @@ def test_run_composite_failure(tmp_path, caplog, fixed_now, state):
         return FakeFetchController([])
 
     def composite_engine_builder(composites, state):
-        return Result.ok_payload(
+        return Success(
             FakeCompositeEngine(
                 outputs=[("spread", {"value": 10}, 200)],
                 fail_eval=True,
@@ -368,16 +368,16 @@ def test_run_backend_failure(tmp_path, json_caplog, fixed_now):
     }
 
     def load_config():
-        return Result.ok_payload(fake_config)
+        return Success(fake_config)
 
     def backend_factory(*_):
-        return Result.fail("Backend initialization failed", RuntimeError("boom"))
+        return Failure(reason="Backend initialization failed", RuntimeError("boom"))
 
     def fetch_controller_factory(*_):
         return FakeFetchController([])
 
     # CO: def composite_engine_builder(*_):
-    # CO:    return Result.ok_payload(FakeCompositeEngine([]))
+    # CO:    return Success(FakeCompositeEngine([]))
 
     json_caplog.set_level("ERROR")
 

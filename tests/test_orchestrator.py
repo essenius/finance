@@ -7,13 +7,13 @@ from unittest.mock import Mock, call
 
 import pytest
 
-from finance.common.model import FetchData, FetchResult, SeriesPoint, SeriesResult, SeriesState
-from finance.common.result import Result
+from finance.common.model import FetchData, FetchResult
+from finance.common.result import Failure, Success
 from finance.orchestrator import Orchestrator, unwrap
 
 
 def ok_fetch_result(points: list) -> FetchResult:
-    return FetchResult.ok_payload(FetchData(series_id=1, points=points, metadata=None))
+    return Success(FetchData(series_id=1, points=points, metadata=None))
 
 
 # ---------------------------------------------------------------------------
@@ -23,7 +23,7 @@ def ok_fetch_result(points: list) -> FetchResult:
 
 def test_unwrap_success_no_warning(json_caplog):
     json_caplog.set_level("DEBUG")
-    r = Result.ok_payload(123)
+    r = Success(123)
     assert unwrap(r, throw=False) == 123
     # no warnings logged
     assert "warnings=" not in json_caplog.text
@@ -31,29 +31,34 @@ def test_unwrap_success_no_warning(json_caplog):
 
 def test_unwrap_success_with_warning(json_caplog):
     json_caplog.set_level("WARNING")
-    r = Result(ok=True, payload=42, warnings=["careful"])
+    r = Success(42, warnings=["careful"])
     assert unwrap(r, throw=False) == 42
     assert '"warnings": ["careful"]}' in json_caplog.text
 
 
 def test_unwrap_failure_no_throw(json_caplog):
     json_caplog.set_level("ERROR")
-    r = Result.fail("x", "broken")
+    r = Failure(reason="x", error="broken")
     assert unwrap(r, throw=False) is None
-    assert '"reason": "x", "error": "broken"}' in json_caplog.text
+    assert '"reason": "x", "error": "broken"' in json_caplog.text
 
 
 def test_unwrap_failure_with_throw():
-    r = Result.fail("x", "boom")
-    with pytest.raises(ValueError):
-        unwrap(r, throw=True)
+    f1 = Failure(reason="x", error="boom")
+    with pytest.raises(ValueError) as exc:
+        unwrap(f1, throw=True)
+    assert "x: boom" in str(exc)
+    f2 = Failure(reason="x")
+    with pytest.raises(ValueError) as exc:
+        unwrap(f2, throw=True)
+    assert exc.value.args[0] == "x"
 
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
-
+'''
 class FakeState:
     """State that records ingest calls."""
 
@@ -63,7 +68,7 @@ class FakeState:
 
     def ingest(self, point: SeriesPoint):
         self.calls.append(point)
-        return SeriesResult.ok_payload("spx", point)  # success
+        return Success(point)  # success
 
     def update_state(self, series_id: int, first: int, last: int) -> None:
         self.series[series_id] = SeriesState(first_point=first, last_point=last)
@@ -74,7 +79,7 @@ class SkipState(FakeState):
 
     def ingest(self, point: SeriesPoint):
         self.calls.append(point)
-        return SeriesResult.ok_payload("spx", None)  # skip
+        return Success(None)  # skip
 
 
 class FailingState(FakeState):
@@ -82,14 +87,8 @@ class FailingState(FakeState):
 
     def ingest(self, point: SeriesPoint):
         self.calls.append(point)
-        return SeriesResult.fail("spx", "ingest failed")
-
-
-def make_result(payload=None, *, ok=True, reason=None, error=None, warnings=None):
-    warnings_real = warnings or []
-    if ok:
-        return Result.ok_payload(payload, warnings_real)
-    return Result.fail(reason=reason, error=error, warnings=warnings_real)
+        return Failure(reason="spx", error="ingest failed")
+'''
 
 
 @pytest.fixture
@@ -125,17 +124,17 @@ def test_prepare_loads_state_and_reconciles_backend(orchestrator, backend, regis
     series = Mock(name="series")
     stored_series = Mock(name="stored_series")
 
-    state.load.return_value = make_result(3)
-    backend.get_assets.return_value = make_result([asset])
+    state.load.return_value = Success(3)
+    backend.get_assets.return_value = Success([asset])
     registry.merge_and_find_new_assets.return_value = [asset]
-    backend.store_asset.return_value = make_result(stored_asset)
+    backend.store_asset.return_value = Success(stored_asset)
 
-    backend.get_series.return_value = make_result([series])
+    backend.get_series.return_value = Success([series])
 
     reconciled = Mock()
     reconciled.to_persist = [series]
     registry.reconcile_series.return_value = reconciled
-    backend.store_series.return_value = make_result(stored_series)
+    backend.store_series.return_value = Success(stored_series)
 
     orchestrator.prepare()
 
@@ -156,11 +155,11 @@ def test_prepare_loads_state_and_reconciles_backend(orchestrator, backend, regis
 
 
 def test_prepare_does_not_persist_when_nothing_changed(orchestrator, backend, registry, state):
-    state.load.return_value = make_result(0)
-    backend.get_assets.return_value = make_result([])
+    state.load.return_value = Success(0)
+    backend.get_assets.return_value = Success([])
     registry.merge_and_find_new_assets.return_value = []
 
-    backend.get_series.return_value = make_result([])
+    backend.get_series.return_value = Success([])
 
     reconciled = Mock()
     reconciled.to_persist = []
@@ -176,11 +175,11 @@ def test_prepare_does_not_persist_when_nothing_changed(orchestrator, backend, re
 
 
 def test_prepare_continues_when_wal_load_fails(orchestrator, backend, registry, state):
-    state.load.return_value = make_result(None, ok=False, reason="WAL error")
+    state.load.return_value = Failure(reason="WAL error")
 
-    backend.get_assets.return_value = make_result([])
+    backend.get_assets.return_value = Success([])
     registry.merge_and_find_new_assets.return_value = []
-    backend.get_series.return_value = make_result([])
+    backend.get_series.return_value = Success([])
 
     reconciled = Mock()
     reconciled.to_persist = []
@@ -207,7 +206,7 @@ def test_ingest_points_ingests_all_points_and_updates_range(orchestrator, state)
 
     points = [first, second]
 
-    state.ingest.return_value = make_result(None)
+    state.ingest.return_value = Success(None)
 
     stored_range = Mock()
     stored_range.first_point = first.time
@@ -241,7 +240,7 @@ def test_ingest_points_uses_lowest_and_highest_timestamp(orchestrator, state):
     late.time = datetime(2026, 8, 20, 12, tzinfo=UTC)
     late.series_id = 42
 
-    state.ingest.return_value = make_result(None)
+    state.ingest.return_value = Success(None)
 
     stored_range = Mock()
     stored_range.first_point = early.time
@@ -272,26 +271,20 @@ def test_ingest_points_does_not_update_range_when_point_ingestion_fails(orchestr
         points.append(point)
 
     state.ingest.side_effect = [
-        make_result(None),
-        make_result(None, ok=False, reason="database error"),
-        make_result(None),
+        Success(None),
+        Failure(reason="database error"),
+        Success(None),
     ]
 
-    result = orchestrator.ingest_points(points, series)
+    all_ok = orchestrator.ingest_points(points, series)
 
-    assert result is False
+    assert not all_ok
     assert state.ingest.call_count == 3
     state.update_state.assert_not_called()
 
 
 def test_handle_fetch_response_returns_false_for_failed_fetch(orchestrator, registry, backend):
-    result = FetchResult(
-        ok=False,
-        payload=None,
-        reason="fetch failed",
-        error="connection error",
-        warnings=[],
-    )
+    result = Failure(reason="fetch failed", error="connection error")
 
     assert orchestrator.handle_fetch_response(result) is False
 
@@ -308,13 +301,7 @@ def test_handle_fetch_response_ingests_points_without_metadata(orchestrator, reg
     point.time = datetime(2026, 8, 20, 10, tzinfo=UTC)
     point.series_id = series.id
 
-    result = FetchResult(
-        ok=True,
-        payload=Mock(metadata=None, points=[point], series_id=series.id),
-        reason=None,
-        error=None,
-        warnings=[],
-    )
+    result = Success(Mock(metadata=None, points=[point], series_id=series.id))
 
     registry.get_series_by_id.return_value = series
 
@@ -333,13 +320,7 @@ def test_handle_fetch_response_registers_provider_metadata_without_persisting(or
 
     metadata = Mock()
 
-    result = FetchResult(
-        ok=True,
-        payload=Mock(metadata=metadata, points=[]),
-        reason=None,
-        error=None,
-        warnings=[],
-    )
+    result = Success(Mock(metadata=metadata, points=[]))
 
     registry.get_series_by_id.return_value = series
     registry.register_provider_metadata.return_value = None
@@ -361,17 +342,11 @@ def test_handle_fetch_response_persists_changed_asset_metadata(orchestrator, reg
     asset = Mock()
     stored_asset = Mock()
 
-    result = FetchResult(
-        ok=True,
-        payload=Mock(metadata=metadata, points=[]),
-        reason=None,
-        error=None,
-        warnings=[],
-    )
+    result = Success(Mock(metadata=metadata, points=[]))
 
     registry.get_series_by_id.return_value = series
     registry.register_provider_metadata.return_value = asset
-    backend.store_asset.return_value = make_result(stored_asset)
+    backend.store_asset.return_value = Success(stored_asset)
 
     assert orchestrator.handle_fetch_response(result) is True
 
@@ -389,13 +364,7 @@ def test_handle_fetch_response_processes_metadata_and_points(orchestrator, regis
     metadata = Mock()
     point = Mock()
 
-    result = FetchResult(
-        ok=True,
-        payload=Mock(metadata=metadata, points=[point]),
-        reason=None,
-        error=None,
-        warnings=[],
-    )
+    result = Success(Mock(metadata=metadata, points=[point]))
 
     registry.get_series_by_id.return_value = series
     registry.register_provider_metadata.return_value = None
@@ -412,13 +381,7 @@ def test_handle_fetch_response_with_no_points_does_not_ingest(orchestrator, regi
     series = Mock()
     series.asset_id = 123
 
-    result = FetchResult(
-        ok=True,
-        payload=Mock(metadata=None, points=[]),
-        reason=None,
-        error=None,
-        warnings=[],
-    )
+    result = Success(Mock(metadata=None, points=[]))
 
     registry.get_series_by_id.return_value = series
 
@@ -494,7 +457,7 @@ def test_run_finalizes_successfully_when_nothing_is_fetched(orchestrator, fetche
 """
 
 def test_process_result_failure_result_not_ok():
-    r = FetchResult.fail("spx", "network")
+    r = FetchFailure(reason="spx", "network")
     state = FakeState()
     ok = process_result(r, state, Mock())
     assert ok is False
@@ -575,10 +538,10 @@ def test_reconcile_registry(make_asset, make_series, make_metadata):
     new_asset = asset.with_id(1)
     new_series = series.with_id(2)
 
-    backend.get_assets.return_value = Result.ok_payload([old_asset])
-    backend.get_series.return_value = Result.ok_payload([old_series])
-    backend.store_asset.return_value = Result.ok_payload(new_asset)
-    backend.store_series.return_value = Result.ok_payload(new_series)
+    backend.get_assets.return_value = Success([old_asset])
+    backend.get_series.return_value = Success([old_series])
+    backend.store_asset.return_value = Success(new_asset)
+    backend.store_series.return_value = Success(new_series)
     backend.refresh_short_lived_series_ids.return_value = None
 
     reconcile_registry(registry, backend)

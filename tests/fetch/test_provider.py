@@ -3,12 +3,13 @@
 # File: tests/fetch/test_provider.py
 
 from datetime import UTC, datetime, timedelta
+from typing import Any
 
 import pytest
 import requests
 
 from finance.common.candle_identity import CandleIdentity
-from finance.common.result import Result
+from finance.common.result import Success
 
 
 def test_init_defaults(dummy_provider):
@@ -26,7 +27,7 @@ def test_safe_call_success(dummy_provider):
     p = dummy_provider()
 
     def good():
-        return Result.ok_payload([1, 2, 3])
+        return Success([1, 2, 3])
 
     result = p._safe_call("ABC", good, "context")
     assert result.ok
@@ -40,10 +41,9 @@ def test_safe_call_exception(dummy_provider):
         raise ValueError("kaboom")
 
     result = p._safe_call("ABC", bad, "context")
-
-    assert result.payload is None
+    assert result.ok is False
     assert "Exception during context" in result.reason
-    assert "kaboom" in result.error
+    assert "kaboom" in str(result.error)
 
 
 # -------------------------
@@ -56,10 +56,8 @@ def test_safe_get_ok(dummy_provider):
     data = {"a": [{"b": 123}]}
 
     result = p._safe_get(data, ["a", 0, "b"])
-    assert result.ok
+    assert result.ok is True
     assert result.payload == 123
-    assert result.reason is None
-    assert result.error is None
 
 
 @pytest.mark.parametrize(
@@ -70,11 +68,10 @@ def test_safe_get_ok(dummy_provider):
         ({"a": 42}, ["a", 0], "cannot index with [0] at ['a']"),
     ],
 )
-def test_safe_get_errors(dummy_provider, data: any, path, expected):
+def test_safe_get_errors(dummy_provider, data: Any, path, expected):
     p = dummy_provider()
     result = p._safe_get(data, path)
-    assert not result.ok
-    assert result.payload is None
+    assert result.ok is False
     assert result.reason == expected
 
 
@@ -87,7 +84,7 @@ def test_fetch_not_implemented(dummy_provider, make_series, make_asset_dict, fix
     assets = make_asset_dict()
     now = CandleIdentity(fixed_now(), False, timedelta(0))
     result = dummy_provider().fetch(make_series(assets["eur_usd"]), assets, start=now, end=now, is_incremental=False)
-    assert not result.ok
+    assert result.ok is False
     assert result.reason == "fetch not implemented"
 
 

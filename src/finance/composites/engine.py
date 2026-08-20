@@ -73,7 +73,7 @@ class CompositeEngine:
         engine = cls(composites, state)
 
         graph_result = engine._build_graph()
-        if not graph_result.ok:
+        if graph_result.ok is False:
             return graph_result
 
         try:
@@ -94,7 +94,7 @@ class CompositeEngine:
         for name, cfg in self.composites.items():
             expr = cfg["expression"]
             deps_result = extract_dependencies(expr, self.composites.keys())
-            if not deps_result.ok:
+            if deps_result.ok is False:
                 return deps_result
             graph[name] = deps_result.payload
         return Result.ok_payload(graph)
@@ -224,7 +224,7 @@ class CompositeEngine:
         for name in self.order:
             single = self._evaluate_single(name, namespace)
 
-            if not single.ok:
+            if single.ok is False:
                 # propagate failure for this composite, but continue with others
                 yield single
                 continue

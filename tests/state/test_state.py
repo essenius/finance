@@ -2,10 +2,10 @@
 # Licensed under the Apache License, Version 2.0. See the LICENSE file for details.
 # File: tests/state/test_state.py
 
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 
 from finance.common.model import SeriesState
-from finance.common.result import Result
+from finance.common.result import Failure, Success
 
 # ---------------------------------------------------------------------------
 # get() tests
@@ -16,7 +16,8 @@ def test_get_returns_cached_entry(state_env):
     """If measurement exists in state, return it without rebuild."""
 
     state, backend, wal = state_env
-    my_state = SeriesState(first_point=10, last_point=10)
+    timestamp = datetime.fromtimestamp(10).astimezone(UTC)
+    my_state = SeriesState(first_point=timestamp, last_point=timestamp)
     state.series = {1: my_state}
     result = state.get_series_state(1)
     assert result == my_state
@@ -41,7 +42,7 @@ def test_save_writes_actual_file(state_env):
 
     state, backend, wal = state_env
 
-    backend.flush.return_value = Result.ok_payload(0)
+    backend.flush.return_value = Success(0)
     backend.save_sweep.return_value = None
     state.series = {1: SeriesState(needs_save=True), 2: SeriesState(needs_save=False)}
 
@@ -128,7 +129,7 @@ def test_update_state_does_not_shrink(state):
 def test_load_backend_error(state_env, assert_error):
 
     state, backend, wal = state_env
-    backend.get_series_states.return_value = Result.fail(reason="Boom!", error="Server down")
-    backend.flush.return_value = Result.ok_payload(0)
+    backend.get_series_states.return_value = Failure(reason="Boom!", error="Server down")
+    backend.flush.return_value = Success(0)
     result = state.load()
     assert_error(result, "Boom!", "Server down")

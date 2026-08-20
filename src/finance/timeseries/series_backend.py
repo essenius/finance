@@ -8,7 +8,7 @@ from collections.abc import Callable
 from datetime import datetime, timedelta
 
 from ..common.model import BACKEND, Asset, Series, SeriesPoint, SeriesState
-from ..common.result import Result
+from ..common.result import Failure, Result, Success
 from ..common.time_utils import write_time, write_timezone
 from .backend_protocol import BackendProtocol
 from .timescale_mapper import (
@@ -55,19 +55,21 @@ class SeriesBackend:
             )
 
             if ts_config.sslmode == "verify-ca" and ts_config.sslrootcert == "system":
-                return Result.fail(
-                    "Timescale backend initialization failed",
-                    f"verify-ca requires path in {BACKEND.upper()}_SSL_ROOT_CERT in .env or ssl_root_cert in yaml",
+                return Failure(
+                    reason="Timescale backend initialization failed",
+                    error=f"verify-ca requires path in {BACKEND.upper()}_SSL_ROOT_CERT in .env or ssl_root_cert in yaml",
                 )
 
             backend = cls(ts_config, sql_factory(ts_config), now)
             refresh_result = backend.refresh_short_lived_series_ids()
-            if not refresh_result.ok:
+            if refresh_result.ok is False:
                 return refresh_result
-            return Result.ok_payload(backend)
+            return Success(backend)
 
         except KeyError as ke:
-            return Result.fail("Timescale backend initialization failed", f"Cannot find mandatory config key {ke}")
+            return Failure(
+                reason="Timescale backend initialization failed", error=f"Cannot find mandatory config key {ke}"
+            )
 
     def add_point(self, entry: SeriesPoint) -> Result[int]:
         self._pending.append(entry)
@@ -75,7 +77,7 @@ class SeriesBackend:
         if self._should_flush():
             return self.flush()
 
-        return Result.ok_payload(0)
+        return Success(0)
 
     def close(self) -> Result[int]:
         """Flush pending data and close the DB connection."""
@@ -85,7 +87,7 @@ class SeriesBackend:
 
     def flush(self) -> Result[int]:
         if not self._pending:
-            return Result.ok_payload(0)
+            return Success(0)
 
         result = self._insert_batches(self._pending, "Flush")
         self._pending.clear()
@@ -101,14 +103,14 @@ class SeriesBackend:
             FROM asset ORDER BY id;
             """
         result = self._sql_client.execute_read(query, context="get_assets")
-        if not result.ok:
+        if result.ok is False:
             return result
 
         payload = result.payload
         rows = payload["rows"]
         columns = payload["columns"]
 
-        return Result.ok_payload([asset_from_row(row, columns) for row in rows])
+        return Success([asset_from_row(row, columns) for row in rows])
 
     def get_series(self) -> Result[list[Series]]:
         query = """
@@ -119,14 +121,14 @@ class SeriesBackend:
             ORDER BY s.id;
             """
         result = self._sql_client.execute_read(query, context="get_series")
-        if not result.ok:
+        if result.ok is False:
             return result
 
         payload = result.payload
         rows = payload["rows"]
         columns = payload["columns"]
 
-        return Result.ok_payload([series_from_row(row, columns) for row in rows])
+        return Success([series_from_row(row, columns) for row in rows])
 
     def get_series_states(self) -> Result[dict[int, SeriesState]]:
         # 1. Load cold/hot ranges
@@ -134,14 +136,14 @@ class SeriesBackend:
             "SELECT series_id, MIN(time), MAX(time) FROM series_data_cold GROUP BY series_id;",
             context="get_series_states_range_cold",
         )
-        if not cold.ok:
+        if cold.ok is False:
             return cold
 
         hot = self._sql_client.execute_read(
             "SELECT series_id, MIN(time), MAX(time) FROM series_data_hot GROUP BY series_id;",
             context="get_series_states_range_hot",
         )
-        if not hot.ok:
+        if hot.ok is False:
             return hot
 
         # Merge cold + hot
@@ -151,29 +153,29 @@ class SeriesBackend:
         sweep = self._sql_client.execute_read(
             "SELECT series_id, next_sweep, sweep_start FROM series_state;", context="get_series_states_sweep_info"
         )
-        if not sweep.ok:
+        if sweep.ok is False:
             return sweep
 
         # Merge sweep info
         merged = series_state_merge_sweep_info(state, sweep.payload["rows"])
 
-        return Result.ok_payload(merged)
+        return Success(merged)
 
     def refresh_short_lived_series_ids(self) -> Result[None]:
         query = "SELECT id FROM series WHERE retention = 'short_lived';"
 
         result = self._sql_client.execute_read(query, context="load_short_lived_series_ids")
-        if not result.ok:
+        if result.ok is False:
             return result
 
         rows = result.payload["rows"]
         self._short_lived_series_ids = {row[0] for row in rows}
 
-        return Result.ok_payload(None)
+        return Success(None)
 
     def store_asset(self, asset: Asset) -> Result[Asset]:
         if asset.effective_metadata is None:
-            return Result.fail(reason="Store asset failed", error=f"No effective metadata to store asset {asset.name}")
+            return Failure(reason="Store asset failed", error=f"No effective metadata to store asset '{asset.name}'")
         meta = asset.effective_metadata
         base_fields = (
             asset.name,
@@ -216,13 +218,13 @@ class SeriesBackend:
             params = (*base_fields, asset.id)
 
         result = self._sql_client.execute_write(sql_query, params)
-        if not result.ok:
+        if result.ok is False:
             return result
-        return Result.ok_payload(asset if asset.id is not None else asset.with_id(result.payload))
+        return Success(asset if asset.id is not None else asset.with_id(result.payload))
 
     def store_series(self, series: Series) -> Result[Series]:
         if series.asset_id is None:
-            return Result.fail("Store series failed", "asset_id was not set")
+            return Failure(reason="Store series failed", error="asset_id was not set")
 
         base_fields = (
             series.code,
@@ -254,9 +256,9 @@ class SeriesBackend:
             params = (*base_fields, series.id)
 
         result = self._sql_client.execute_write(sql_query, params, "store series")
-        if not result.ok:
+        if result.ok is False:
             return result
-        return Result.ok_payload(series if series.id is not None else series.with_id(result.payload))
+        return Success(series if series.id is not None else series.with_id(result.payload))
 
     def save_sweep(self, series_id: int, next_sweep: datetime, sweep_start: datetime) -> Result[int]:
         sql_query = """
@@ -311,7 +313,7 @@ class SeriesBackend:
             values = [(e.series_id, e.time, e.open, e.high, e.low, e.close, e.volume) for e in point_list]
 
             result = self._sql_client.execute_many(sql_stmt, values, context=f"{context}_{label}")
-            if not result.ok:
+            if result.ok is False:
                 return result
 
-        return Result.ok_payload(len(entries))
+        return Success(len(entries))

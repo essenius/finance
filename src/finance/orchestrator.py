@@ -28,22 +28,24 @@ def unwrap[T](result: Result[T], throw: Literal[False]) -> T | None: ...
 
 def unwrap[T](result: Result[T], throw: bool = True) -> T | None:
     """
-    Unwrap a Result[T]:
-    - log warnings
-    - return payload on success
-    - optionally throw ValueError on failure
+    Unwrap a Result[T], logging warnings and optionally raising on failure
     """
-    result_dict = asdict(result)
-    result_dict.pop("payload")
-    if not result.ok:
+    result_dict = result.to_log_dict()
+
+    if result.ok is False:
         logger.error(**result_dict)
         if throw:
-            raise (ValueError(f"{result.reason}: {result.error}")) if result.error else ValueError(result.reason)
+            if result.error:
+                raise ValueError(f"{result.reason}: {result.error}")
+            raise ValueError(result.reason)
+        return_value = None
+    else:
+        return_value = result.payload
 
     # we can have warnings with ok, they still have results
     if result.warnings:
         logger.warning(**result_dict)
-    return result.payload
+    return return_value
 
 
 class Orchestrator:
@@ -100,7 +102,7 @@ class Orchestrator:
             ingest_result = self.state.ingest(point)
             # log any errors
             unwrap(ingest_result, throw=False)
-            if not ingest_result.ok:
+            if ingest_result.ok is False:
                 all_ok = False
 
         if all_ok:
@@ -114,7 +116,7 @@ class Orchestrator:
     def handle_fetch_response(self, result: FetchResult):
         payload = unwrap(result, throw=False)
 
-        if not result.ok:
+        if result.ok is False:
             return False
 
         series = self.registry.get_series_by_id(payload.series_id)

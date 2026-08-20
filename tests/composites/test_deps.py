@@ -150,7 +150,7 @@ def test_extract_dependencies_ok(expr, candidates, expected):
 )
 def test_extract_dependencies_syntax_error(expr):
     result = extract_dependencies(expr, {"A", "B"})
-    assert not result.ok
+    assert result.ok is False
     assert "Syntax error" in result.reason
 
 

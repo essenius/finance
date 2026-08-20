@@ -32,7 +32,7 @@ def unwrap[T](result: Result[T], throw: bool = True) -> T | None:
     """
     result_dict = asdict(result)
     result_dict.pop("payload")
-    if not result.ok:
+    if result.ok is False:
         logger.error(**result_dict)
         if throw:
             raise (ValueError(f"{result.reason}: {result.error}")) if result.error else ValueError(result.reason)
@@ -87,7 +87,7 @@ def process_result(
     payload = unwrap(result, throw=False)
 
     # if the raw Result failed, stop here
-    if not result.ok:
+    if result.ok is False:
         return False
 
     if payload.metadata is not None:
@@ -118,7 +118,7 @@ def process_result(
         ingest_result = state.ingest(point)
         # log any errors
         unwrap(ingest_result, throw=False)
-        if not ingest_result.ok:
+        if ingest_result.ok is False:
             all_ok = False
 
     if all_ok:

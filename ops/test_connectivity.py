@@ -26,7 +26,7 @@ def main():
     print("Loading config...")
     loader = ConfigLoader(cwd=project_root, config_path="config.yaml")
     cfg_result = loader.load()
-    if not cfg_result.ok:
+    if cfg_result.ok is False:
         print("Config load failed:", cfg_result.reason, cfg_result.error)
         return
 
@@ -51,7 +51,7 @@ def main():
     backend_result = SeriesBackend.from_config(
         config=deep_merge(secrets, env_cfg),  # series_by_id=registry.get_series_by_id
     )
-    if not backend_result.ok:
+    if backend_result.ok is False:
         print("Backend creation failed:", backend_result.reason, backend_result.error)
         return
 
@@ -75,7 +75,7 @@ def main():
     id = registry.all_series()[0].id
     point = SeriesPoint(id, now, close=123.48)
     result = backend.add_point(point)
-    if not result.ok:
+    if result.ok is False:
         print(f"Write failed: {result.reason}, {result.error}")
         return
 
@@ -85,7 +85,7 @@ def main():
     print("Reading back...")
     read_result = backend.read_last(id)
 
-    if not read_result.ok:
+    if read_result.ok is False:
         print("Read failed:", read_result.error)
         return
 

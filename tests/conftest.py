@@ -12,12 +12,12 @@ import pytest
 
 from finance.common.applogger import JsonFormatter, LogConfig
 from finance.common.model import Asset, AssetMetadata, Series
-from finance.common.result import Result
+from finance.common.result import Failure, Result
 from finance.common.string_enums import Retention, SeriesType
 from finance.state.state import State
 from finance.state.wal import JsonlWAL
 from finance.timeseries.series_backend import SeriesBackend
-from tests.support.types import Factory
+from tests.support.types import ConfigurableFactory, Factory
 
 # ---------------------------------------------------------------------------
 # Test doubles
@@ -54,7 +54,7 @@ def fixed_now() -> Factory[datetime]:
 def unwrap() -> Callable[[Result], object]:
 
     def _unwrap(result: Result) -> object:
-        assert result.ok
+        assert result.ok is True
         assert result.payload is not None
         return result.payload
 
@@ -64,11 +64,12 @@ def unwrap() -> Callable[[Result], object]:
 @pytest.fixture
 def assert_error() -> Callable[[Result, str, str | None], None]:
     def _assert_error(result: Result, reason: str, error: str | None) -> None:
-        assert not result.ok, "ok is true"
-        assert result.payload is None, f"Payload is not None but {result.payload}"
+        assert result.ok is False, "ok is false"
+        assert isinstance(result, Failure), "result is a Failure"
         assert reason in result.reason, f"Reason '{result.reason}' != expected '{reason}"
         if result.error is not None:
-            assert error in result.error, f"Error '{result.error}' != expected '{error}'"
+            assert error is not None
+            assert error in str(result.error), f"Error '{result.error}' != expected '{error}'"
         else:
             assert result.error is None, f"Error is not None but {result.error}"
 
@@ -77,14 +78,12 @@ def assert_error() -> Callable[[Result, str, str | None], None]:
 
 @pytest.fixture
 def assert_warning() -> Callable[[Result, str | None], object]:
-    def _assert_warning(result: Result, warning: str):
+    def _assert_warning(result: Result, warning: str | None) -> None:
         assert result.ok
         if warning is None:
             assert result.warnings is None
         else:
             assert any(warning in w for w in result.warnings), f"warning '{warning}' not found"
-        assert result.reason is None
-        return result.payload
 
     return _assert_warning
 
@@ -141,10 +140,11 @@ def make_asset(make_metadata) -> Factory[Asset]:
 
 
 @pytest.fixture
-def make_series(make_asset) -> Factory[Series]:
+def make_series(make_asset) -> ConfigurableFactory[Series]:
     def _make(asset: Asset | None, **overrides) -> Series:
         if asset is None:
             asset = make_asset()
+            assert asset is not None
 
         defaults = {
             "id": asset.id,

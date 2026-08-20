@@ -11,7 +11,7 @@ from datetime import timedelta
 import psycopg
 from psycopg import sql
 
-from ..common.result import Result
+from ..common.result import Failure, Result, Success
 
 
 @dataclass
@@ -61,9 +61,7 @@ class TimescaleSqlClient:
         )
 
     def execute_many(self, query: str | sql.SQL, params: list[tuple], context: str) -> Result[None]:
-        return self._database_operation(
-            lambda cur: cur.executemany(query, params), context
-        )  # lambda: Result.ok_payload(self._execute_many(sql_query, params, context)), context
+        return self._database_operation(lambda cur: cur.executemany(query, params), context)
 
     def is_connected(self) -> bool:
         conn = self._connection
@@ -76,7 +74,7 @@ class TimescaleSqlClient:
 
     def _database_operation(self, fn, context: str = "Database") -> Result:
         ensure = self._ensure_connected()
-        if not ensure.ok:
+        if ensure.ok is False:
             return ensure
 
         try:
@@ -85,30 +83,30 @@ class TimescaleSqlClient:
 
             # Commit only if fn succeeded
             self._connection.commit()
-            return Result.ok_payload(result)
+            return Success(result)
 
         except Exception as exc:
             # Roll back aborted transaction state
             with contextlib.suppress(Exception):
                 self._connection.rollback()
 
-            return Result.fail(f"{context} operation failed", exc)
+            return Failure(reason=f"{context} operation failed", error=exc)
 
     def _ensure_connected(self) -> Result[None]:
         if self.is_connected():
-            return Result.ok_payload(None)
+            return Success(None)
 
         try:
             conn = self._connect()
         except Exception as exc:
-            return Result.fail("Connect failed", exc)
+            return Failure(reason="Connect failed", error=exc)
 
         try:
             with conn.cursor() as cur:
                 cur.execute("SELECT id from series LIMIT 1")
         except Exception as exc:
             conn.rollback()
-            return Result.fail("Database startup failed", exc)
+            return Failure(reason="Database startup failed", error=exc)
 
         self._connection = conn
-        return Result.ok_payload(None)
+        return Success(None)

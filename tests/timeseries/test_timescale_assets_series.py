@@ -7,7 +7,7 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 from finance.common.model import Asset
-from finance.common.result import Result
+from finance.common.result import Failure, Success
 from finance.common.string_enums import Retention, SeriesType
 from finance.timeseries.series_backend import SeriesBackend
 from tests.support.types import Factory
@@ -47,7 +47,7 @@ def make_cursor(fetchone=None, fetchall=None):
 
 def test_refresh_short_lived_series_ids_loads_ids(make_backend):
     backend = make_backend()
-    backend._sql_client.execute_read = MagicMock(return_value=Result.ok_payload({"rows": [(10,), (20,), (30,)]}))
+    backend._sql_client.execute_read = MagicMock(return_value=Success({"rows": [(10,), (20,), (30,)]}))
 
     result = backend.refresh_short_lived_series_ids()
 
@@ -61,7 +61,7 @@ def test_refresh_short_lived_series_ids_loads_ids(make_backend):
 def test_refresh_short_lived_series_ids_handles_empty(make_backend):
     backend = make_backend()
 
-    backend._sql_client.execute_read = MagicMock(return_value=Result.ok_payload({"rows": []}))
+    backend._sql_client.execute_read = MagicMock(return_value=Success({"rows": []}))
 
     backend.refresh_short_lived_series_ids()
 
@@ -73,10 +73,10 @@ def test_refresh_short_lived_series_ids_handles_disconnected(make_backend):
     backend = make_backend()
 
     # but execute read fails
-    backend._sql_client.execute_read = MagicMock(return_value=Result.fail(reason="boom"))
+    backend._sql_client.execute_read = MagicMock(return_value=Failure(reason="boom"))
 
     result = backend.refresh_short_lived_series_ids()
-    assert not result.ok
+    assert result.ok is False
     assert result.reason == "boom"
     assert backend._short_lived_series_ids == set()
 
@@ -90,7 +90,7 @@ def test_store_asset_insert(make_backend, make_asset: Factory[Asset]):
     backend = make_backend()
 
     asset: Asset = make_asset(id=None)
-    backend._sql_client.execute_write = MagicMock(return_value=Result.ok_payload(42))
+    backend._sql_client.execute_write = MagicMock(return_value=Success(42))
 
     result = backend.store_asset(asset)
 
@@ -109,7 +109,7 @@ def test_store_asset_update(make_backend, make_asset):
     backend = make_backend()
 
     asset = make_asset(id=99)
-    backend._sql_client.execute_write = MagicMock(return_value=Result.ok_payload(99))
+    backend._sql_client.execute_write = MagicMock(return_value=Success(99))
     result = backend.store_asset(asset)
 
     assert result.ok
@@ -126,7 +126,7 @@ def test_store_asset_error_propagates(make_backend, make_asset, assert_error):
 
     asset = make_asset(id=None)
 
-    backend._sql_client.execute_write = MagicMock(return_value=Result.fail("boom"))
+    backend._sql_client.execute_write = MagicMock(return_value=Failure(reason="boom"))
 
     result = backend.store_asset(asset)
     assert_error(result, "boom", None)
@@ -142,7 +142,7 @@ def test_store_series_insert(make_backend, make_asset, make_series):
 
     asset = make_asset(id=5)
     series = make_series(asset=asset, id=None)
-    backend._sql_client.execute_write = MagicMock(return_value=Result.ok_payload(123))
+    backend._sql_client.execute_write = MagicMock(return_value=Success(123))
 
     result = backend.store_series(series)
 
@@ -163,7 +163,7 @@ def test_store_series_update(make_backend, make_asset, make_series):
     asset = make_asset(id=5)
     series = make_series(asset=asset, id=77)
 
-    backend._sql_client.execute_write = MagicMock(return_value=Result.ok_payload(77))
+    backend._sql_client.execute_write = MagicMock(return_value=Success(77))
 
     result = backend.store_series(series)
 
@@ -183,7 +183,7 @@ def test_store_series_error_execute(assert_error, make_backend, make_asset, make
     asset = make_asset(id=5)
     series = make_series(asset=asset, id=None)
 
-    backend._sql_client.execute_write = MagicMock(return_value=Result.fail("fail"))
+    backend._sql_client.execute_write = MagicMock(return_value=Failure(reason="fail"))
 
     result = backend.store_series(series)
     assert_error(result, "fail", None)

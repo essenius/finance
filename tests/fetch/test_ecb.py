@@ -66,7 +66,7 @@ def test_ecb_fetch_ok(ecb_provider, assert_ok, make_asset, make_series):
         "_",
     ],
 )
-def test_ecb_fetch_wrong_provider_code(ecb_provider, make_series, make_asset, provider_code):
+def test_ecb_fetch_wrong_provider_code(ecb_provider, make_series, make_asset, provider_code, assert_error):
     provider: EcbProvider = ecb_provider()
     provider.session.queue(200, {})
 
@@ -76,9 +76,8 @@ def test_ecb_fetch_wrong_provider_code(ecb_provider, make_series, make_asset, pr
     start = make_identity(datetime(2026, 5, 8, tzinfo=ZoneInfo("Europe/Berlin")))
     end = make_identity(datetime(2026, 5, 8, 23, 59, 59, tzinfo=ZoneInfo("Europe/Berlin")))
     result = provider.fetch(series, asset, start=start, end=end, is_incremental=True)
-    assert not result.ok
+    assert result.ok is False
     assert f"Could not split provider code '{provider_code}' into base_quote" in result.reason
-    assert result.payload is None
 
 
 def test_ecb_fetch_non_200(ecb_provider, assert_error, make_asset, make_series, fixed_now):
@@ -89,7 +88,7 @@ def test_ecb_fetch_non_200(ecb_provider, assert_error, make_asset, make_series, 
     asset = make_asset(provider_code="EUR_USD")
     series = make_series(asset)
     result = provider.fetch(series, asset, now, now, False)
-    assert_error(result, "Exception during ECB fetch of eur_usd:dummy", "Internal Server Error")
+    assert_error(result, reason="Exception during ECB fetch of eur_usd:dummy", error="Internal Server Error")
 
 
 MALFORMED_CASES = [
@@ -113,13 +112,13 @@ def test_ecb_malformed_json(
     ecb_provider, make_asset, make_series, json_data, expected, context, assert_error, fixed_now
 ):
     now = make_identity(fixed_now())
-    provider = ecb_provider()
+    provider:EcbProvider = ecb_provider()
     provider.session.queue(200, json_data)
 
     asset = make_asset(provider_code="EUR_USD")
     series = make_series(asset)
     result = provider.fetch(series, asset, now, now, False)
-    assert_error(result, f"Could not find ECB {context}", expected)
+    assert_error(result, reason=f"Could not find ECB {context}", error=expected)
 
 
 def test_ecb_fetch_multiple_points_skip_invalid(unwrap, ecb_provider, make_series, make_asset, fixed_now):

@@ -137,6 +137,8 @@ def test_impl_http_error(yahoo_provider, assert_error, make_asset, make_series, 
         ({"exchangeTimezoneName": "Not/A_Timezone"}, "invalid exchange timezone 'Not/A_Timezone'"),
     ],
 )
+
+
 def test_fetch_missing_exchange_timezone(
     yahoo_provider, assert_error, make_asset, make_series, fixed_now, meta, reason
 ):
@@ -164,6 +166,30 @@ def test_fetch_missing_exchange_timezone(
     assert_error(result, "Could not parse series 'AAPL:dummy' in Yahoo fetch result", reason)
 
 
+def test_fetch_missing_quote(
+    yahoo_provider, assert_error, make_asset, make_series, fixed_now):
+    now = make_identity(fixed_now())
+    response = Mock()
+    response.json.return_value = {
+        "chart": {
+            "result": [
+                {
+                    "meta": {"exchangeTimezoneName": "UTC"},
+                    "timestamp": [now.start_timestamp()],
+                    "indicators": {},
+                }
+            ],
+            "error": None,
+        }
+    }
+    response.raise_for_status.return_value = None
+    asset = make_asset(name="AAPL")
+    series = make_series(asset, interval="1h", retention=Retention.SHORT_LIVED, series_type=SeriesType.VALUE)
+    provider = yahoo_provider()
+    with patch.object(provider.session, "get", return_value=response):
+        result = provider.fetch(series, asset, now, now, False)
+
+    assert_error(result, "Could not parse series 'AAPL:dummy' in Yahoo fetch result", "missing key 'quote' at ['indicators']")
 def test_fetch_real_fixture_5m_eliminates_last_and_fills_metadata(yahoo_provider, unwrap, make_asset, make_series):
     with open("tests/data/yahoo_gold_intraday.json") as f:
         fake_json = json.load(f)

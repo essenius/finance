@@ -14,7 +14,7 @@ from ..common.dict_utils import deep_merge
 from ..common.introspection import here
 from ..common.model import BACKEND, Asset, ProviderConfig, Series
 from ..common.paths import resolve_config_path
-from ..common.result import Result
+from ..common.result import Failure, Result, Success
 from ..common.string_enums import Retention, SeriesType, SupportedProviders
 from ..common.time_utils import check_duration_in
 
@@ -44,16 +44,16 @@ class ConfigLoader:
 
         yaml_path = cfg_path if Path(cfg_path).is_absolute() else (self.cwd / cfg_path).resolve()
         raw_cfg = load_yaml_config(yaml_path)
-        if not raw_cfg.ok:
+        if raw_cfg.ok is False:
             return raw_cfg
 
         # cannot fail, so not wrapped in result
         env = load_environment_config(raw_cfg.payload.get("environment", {}), self.cwd)
         biz_result = load_business_config(raw_cfg.payload.get("business", {}))
-        if not biz_result.ok:
+        if biz_result.ok is False:
             return biz_result
 
-        return Result.ok_payload(env | biz_result.payload | env_vars)
+        return Success(env | biz_result.payload | env_vars)
 
     # -----------------------------
     # Load secrets from .env
@@ -77,7 +77,7 @@ class ConfigLoader:
             elif key == "FINANCE_CONFIG":
                 config = value
 
-        return Result.ok_payload({"secrets": {BACKEND: timescaledb, "api_keys": api_keys}, "config": config})
+        return Success({"secrets": {BACKEND: timescaledb, "api_keys": api_keys}, "config": config})
 
 
 # -----------------------------
@@ -88,14 +88,14 @@ class ConfigLoader:
 def load_yaml_config(yaml_path: Path) -> Result[dict]:
     context = {"location": here()}
     if not yaml_path.exists():
-        return Result.fail(f"Config file not found: {yaml_path}", meta=context)
+        return Failure(reason=f"Config file not found: {yaml_path}", meta=context)
 
     try:
         with yaml_path.open("r", encoding="utf-8") as f:
             result = yaml.safe_load(f)
-            return Result.ok_payload(result)
+            return Success(result)
     except yaml.YAMLError as exc:
-        return Result.fail("Invalid YAML", str(exc), meta=context)
+        return Failure(reason="Invalid YAML", error=exc, meta=context)
 
 
 def require(cfg: dict, key: str, context: str) -> str | dict:
@@ -116,7 +116,7 @@ def require(cfg: dict, key: str, context: str) -> str | dict:
 def normalize_providers(raw_providers: dict) -> Result[dict[str, ProviderConfig]]:
 
     def fail(error):
-        return Result.fail(f"Could not parse provider '{provider}'", error)
+        return Failure(reason=f"Could not parse provider '{provider}'", error=error)
 
     providers: dict[str, ProviderConfig] = {}
     for provider in SupportedProviders.values():
@@ -135,7 +135,7 @@ def normalize_providers(raw_providers: dict) -> Result[dict[str, ProviderConfig]
 
         providers[provider] = config
 
-    return Result.ok_payload(providers)
+    return Success(providers)
 
 
 # ---------------------------------
@@ -160,13 +160,13 @@ def check_template(name: str, input: dict) -> None:
 
 def check_series_templates(raw_templates: dict | None) -> Result[dict[str, dict]]:
     if raw_templates is None:
-        return Result.ok_payload({})
+        return Success({})
     for name, template in raw_templates.items():
         try:
             check_template(name, template)
         except ValueError as exc:
-            return Result.fail(f"Could not parse series template '{name}'", str(exc))
-    return Result.ok_payload(raw_templates)
+            return Failure(reason=f"Could not parse series template '{name}'", error=exc)
+    return Success(raw_templates)
 
 
 # -----------------------------
@@ -244,9 +244,9 @@ def normalize_assets_and_series(
                 series_list.append(series)
 
         except Exception as exc:  # also by require()
-            return Result.fail(f"Could not parse asset '{asset_name}'", exc)
+            return Failure(reason=f"Could not parse asset '{asset_name}'", error=exc)
 
-    return Result.ok_payload((asset_list, series_list))
+    return Success((asset_list, series_list))
 
 
 # --------------------------------
@@ -306,20 +306,20 @@ def load_business_config(biz_cfg: dict) -> Result[dict]:
 
     raw_providers = biz_cfg.get("providers", {})
     providers = normalize_providers(raw_providers)
-    if not providers.ok:
+    if providers.ok is False:
         return providers
 
     raw_series_templates = biz_cfg.get("series_templates")
 
     template_result = check_series_templates(raw_series_templates)
-    if not template_result.ok:
+    if template_result.ok is False:
         return template_result
     series_templates = template_result.payload
     raw_assets = biz_cfg.get("assets", {})
 
     # Normalize assets section into assets and series.
     result = normalize_assets_and_series(raw_assets, series_templates)
-    if not result.ok:
+    if result.ok is False:
         return result
     assets, series = result.payload
 
@@ -328,10 +328,9 @@ def load_business_config(biz_cfg: dict) -> Result[dict]:
     raw_composites = biz_cfg.get("composites", {})
 
     #composites = normalize_composites(raw_composites)
-    if not composites.ok:
+    if composites.ok is False:
         return composites
     """
 
-    return Result.ok_payload(
-        {"providers": providers.payload, "assets": assets, "series": series}  # , "composites": composites.payload}
-    )
+    return Success({"providers": providers.payload, "assets": assets, "series": series})
+    # , "composites": composites.payload}

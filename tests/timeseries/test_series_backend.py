@@ -5,7 +5,7 @@
 from datetime import timedelta
 
 from finance.common.model import SeriesPoint, SeriesState
-from finance.common.result import Result
+from finance.common.result import Failure, Result, Success
 from finance.timeseries.series_backend import SeriesBackend
 from finance.timeseries.timescale_sql import TimescaleConfig
 
@@ -32,13 +32,13 @@ class SqlFakeOk:
         self.read_results: list[list] = []
 
     def fail(self, context, error) -> Result:
-        return Result.fail(reason=f"{context} operation failed", error=error)
+        return Failure(reason=f"{context} operation failed", error=error)
 
     def result(self, context: str):
         if not self._connection or self._connection.closed:
             return self.fail(context, "Boom!")
 
-        return Result.ok_payload(None)
+        return Success(None)
 
     def execute_read(self, query: str | object, params: tuple | None = None, context: str = "Read") -> Result[list]:
         self.read_count += 1
@@ -46,14 +46,14 @@ class SqlFakeOk:
             return self.fail(context, f"Error in {self.error_in}")
 
         result = self.result(context)
-        if not result.ok:
+        if result.ok is False:
             return result
 
         if not self.read_results:
-            return Result.ok_payload({"rows": [], "columns": []})
+            return Success({"rows": [], "columns": []})
 
         next_payload = self.read_results.pop(0)
-        return Result.ok_payload(next_payload)
+        return Success(next_payload)
 
     def execute_write(self, query: str, params: tuple, context: str = "Write") -> Result[int]:
         self.write_count += 1
@@ -73,7 +73,7 @@ class SqlFakeFail:
         self._connection = None
 
     def fail(self, context: str) -> Result:
-        return Result.fail(reason=f"{context} operation failed", error="Boom!")
+        return Failure(reason=f"{context} operation failed", error="Boom!")
 
     def execute_read(self, sql_query: str | object, params: tuple | None = None, context="Read") -> Result[list]:
         return self.fail(context)
@@ -354,3 +354,10 @@ def test_get_series_states_sweep_error(assert_error, unwrap):
 
     result = backend.get_series_states()
     assert_error(result, "get_series_states_sweep_info operation failed", "Error in 3")
+
+
+def test_store_asset_no_effective_metadata(unwrap, make_asset, assert_error):
+    backend: SeriesBackend = unwrap(SeriesBackend.from_config(config=default_config, sql_factory=SqlFakeOk))
+    asset = make_asset(effective_metadata=None)
+    result = backend.store_asset(asset)
+    assert_error(result, reason="Store asset failed", error="No effective metadata to store asset 'eur_usd'")

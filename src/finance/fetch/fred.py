@@ -5,6 +5,7 @@
 from datetime import UTC, datetime
 
 from finance.common.candle_identity import CandleIdentity
+from finance.common.result import Failure, Success
 
 from ..common.model import Asset, FetchData, FetchResult, Series, SeriesPoint
 from .provider import MarketDataProvider
@@ -21,7 +22,7 @@ class FredProvider(MarketDataProvider):
         self, series: Series, asset: Asset, start: CandleIdentity, end: CandleIdentity, is_incremental: bool
     ) -> FetchResult:
         if not self.api_key:
-            return FetchResult.fail(reason="FRED requires an API key")
+            return Failure(reason="FRED requires an API key")
 
         start_date = start.date().strftime("%Y-%m-%d")
         end_date = end.date().strftime("%Y-%m-%d")
@@ -45,7 +46,7 @@ class FredProvider(MarketDataProvider):
         data = response.json()
         observations = data.get("observations")
         if observations is None:
-            return FetchResult.fail(reason="no 'observations' in response")
+            return Failure(reason="no 'observations' in response")
 
         points: list[SeriesPoint] = []
 
@@ -70,4 +71,4 @@ class FredProvider(MarketDataProvider):
 
             result = FetchData(series_id=series.id, points=points, metadata=None)
 
-        return FetchResult.ok_payload(result)
+        return Success(result)

@@ -43,11 +43,12 @@ business:
         name: yahoo
         code: "^GSPC"
       symbol: SPX
+      metadata: 24x7
       tags:
         instrument: index
         exchange: NYSE
       series:
-        daily: [daily, 24x7]
+        daily: daily
 
   composites:
     spread:
@@ -74,12 +75,17 @@ business:
     assert asset.name == "spx"
     assert asset.symbol == "SPX"
     assert asset.provider == "yahoo"
-    assert asset.instrument == "index"
-    assert asset.currency is None
-    assert asset.exchange == "NYSE"
-    assert asset.unit is None
-    assert asset.region is None
     assert asset.id is None
+
+    metadata = asset.config_metadata
+    assert metadata.instrument == "index"
+    assert metadata.currency is None
+    assert metadata.exchange == "NYSE"
+    assert metadata.unit is None
+    assert metadata.region is None
+    assert metadata.first_trade_date is None
+    assert metadata.week_start == "sun"
+    assert metadata.week_end == "sat"
 
     # series
     assert len(cfg["series"]) == 1

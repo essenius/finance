@@ -62,7 +62,71 @@ class SeriesPoint:
         return result
 
 
-FetchResult = MeasurementResult[list[SeriesPoint]]
+@dataclass(frozen=True)
+class AssetMetadata:
+    short_name: str | None = None
+    long_name: str | None = None
+    instrument: str | None = None
+    exchange: str | None = None
+    region: str | None = None
+    currency: str | None = None
+    unit: str | None = None
+
+    timezone: ZoneInfo | None = None
+    first_trade_date: date | None = None
+    market_open: time | None = None
+    market_close: time | None = None
+    week_start: str | None = None
+    week_end: str | None = None
+
+    @classmethod
+    def from_config(cls, config: dict) -> Asset:
+        raw_timezone = config.get("timezone")
+        timezone = None
+        if raw_timezone is not None:
+            try:
+                timezone = ZoneInfo(raw_timezone)
+            except ZoneInfoNotFoundError:
+                raise ValueError(f"Cannot understand timezone '{raw_timezone}'.") from None
+
+        week_start = config.get("week_start")
+        # check and raise error if filled and wrong, but keep string representation
+        parse_weekday(week_start)
+
+        week_end = config.get("week_end")
+        parse_weekday(week_end)
+
+        return cls(
+            long_name=config.get("long_name"),
+            short_name=config.get("short_name"),
+            instrument=config.get("instrument"),
+            region=config.get("region"),
+            exchange=config.get("exchange"),
+            currency=config.get("currency"),
+            unit=config.get("unit"),
+            timezone=timezone,
+            first_trade_date=config.get("first_trade_date"),
+            week_start=week_start,
+            week_end=week_end,
+            market_open=parse_time(config.get("market_open")),
+            market_close=parse_time(config.get("market_close")),
+        )
+
+    def __repr__(self):
+        return f"AssetMetadata(short={self.short_name}, currency={self.currency}, timezone={None if self.timezone is None else self.timezone.key})"
+
+
+SeriesPoints = list[SeriesPoint]
+SeriesPointsResult = MeasurementResult[SeriesPoints]
+
+
+@dataclass(frozen=True)
+class FetchData:
+    points: SeriesPoints
+    metadata: AssetMetadata | None = None
+
+
+FetchResult = MeasurementResult[FetchData]
 SeriesResult = MeasurementResult[SeriesPoint | None]
 
 
@@ -134,63 +198,69 @@ class Asset:
     name: str
     symbol: str
     provider: str
+    provider_code: str
 
     # metadata
-    provider_code: str
-    long_name: str | None = None
-    short_name: str | None = None
-    instrument: str | None = None
-    exchange: str | None = None
-    region: str | None = None
-    currency: str | None = None
-    unit: str | None = None
+    config_metadata: AssetMetadata | None = None
+    provider_metadata: AssetMetadata | None = None
+    effective_metadata: AssetMetadata | None = None
+    # TODO continue here with implementing  AssetMetadata
+    # CO: long_name: str | None = None
+    # CO: short_name: str | None = None
+    # CO: instrument: str | None = None
+    # CO: exchange: str | None = None
+    # CO: region: str | None = None
+    # CO: currency: str | None = None
+    # CO: unit: str | None = None
 
     # calendar
-    first_trade_date: date | None = None
-    timezone: ZoneInfo | None = None
-    market_open: time | None = None
-    market_close: time | None = None
-    week_start: str | None = None
-    week_end: str | None = None
+    # CO: first_trade_date: date | None = None
+    # CO: timezone: ZoneInfo | None = None
+    # CO: market_open: time | None = None
+    # CO: market_close: time | None = None
+    # CO: week_start: str | None = None
+    # CO: week_end: str | None = None
 
     # assigned by the backend
     id: int | None = None
 
     @classmethod
-    def create(cls, name: str, config: dict, tags: dict) -> Asset:
+    def from_config(cls, name: str, config: dict) -> Asset:
         provider_config = config.get("provider", {})
 
-        raw_timezone = config.get("timezone", "UTC")
-        try:
-            timezone = ZoneInfo(raw_timezone)
-        except ZoneInfoNotFoundError:
-            raise ValueError(f"Cannot understand timezone '{raw_timezone}'.") from None
+        config_meta = AssetMetadata.from_config(config)
+        # CO: raw_timezone = config.get("timezone", "UTC")
+        # CO: try:
+        # CO:     timezone = ZoneInfo(raw_timezone)
+        # CO: except ZoneInfoNotFoundError:
+        # CO:     raise ValueError(f"Cannot understand timezone '{raw_timezone}'.") from None
 
-        week_start = config.get("week_start", "mon")
-        # check and raise error if wrong, but keep string representation
-        parse_weekday(week_start)
+        # CO: week_start = config.get("week_start", "mon")
+        # CO: # check and raise error if wrong, but keep string representation
+        # CO: parse_weekday(week_start)
 
-        week_end = config.get("week_end", "fri")
-        parse_weekday(week_end)
+        # CO: week_end = config.get("week_end", "fri")
+        # CO: parse_weekday(week_end)
 
         return cls(
             name=name,
             symbol=config.get("symbol", name),
             provider=provider_config["name"],
             provider_code=provider_config["code"],
-            long_name=config.get("long_name", name),
-            short_name=config.get("short_name"),
-            instrument=tags.get("instrument"),
-            region=tags.get("region"),
-            exchange=tags.get("exchange"),
-            currency=tags.get("currency"),
-            unit=tags.get("unit"),
-            first_trade_date=config.get("first_trade_date"),
-            timezone=timezone,
-            market_open=parse_time(config.get("market_open", "min")),
-            market_close=parse_time(config.get("market_close", "max")),
-            week_start=week_start,
-            week_end=week_end,
+            config_metadata=config_meta,
+            # CO: long_name=config.get("long_name", name),
+            # CO: short_name=config.get("short_name"),
+            # CO: instrument=tags.get("instrument"),
+            # CO: region=tags.get("region"),
+            # CO: exchange=tags.get("exchange"),
+            # CO: currency=tags.get("currency"),
+            # CO: unit=tags.get("unit"),
+            # CO: first_trade_date=config.get("first_trade_date"),
+            # CO: timezone=timezone,
+            # CO: market_open=parse_time(config.get("market_open", "min")),
+            # CO: market_close=parse_time(config.get("market_close", "max")),
+            # CO: week_start=week_start,
+            # CO: week_end=week_end,
         )
 
     def with_id(self, new_id: id) -> Asset:
@@ -209,23 +279,24 @@ class Asset:
             self.name != other.name
             or self.symbol != other.symbol
             or not self.same_semantics(other)
-            or self.long_name != other.long_name
-            or self.short_name != other.short_name
-            or self.instrument != other.instrument
-            or self.region != other.region
-            or self.exchange != other.exchange
-            or self.currency != other.currency
-            or self.unit != other.unit
-            or self.first_trade_date != other.first_trade_date
-            or self.timezone != other.timezone
-            or self.market_open != other.market_open
-            or self.market_close != other.market_close
-            or self.week_start != other.week_start
-            or self.week_end != other.week_end
+            or self.effective_metadata != other.effective_metadata
+            # CO: or self.long_name != other.long_name
+            # CO: or self.short_name != other.short_name
+            # CO: or self.instrument != other.instrument
+            # CO: or self.region != other.region
+            # CO: or self.exchange != other.exchange
+            # CO: or self.currency != other.currency
+            # CO: or self.unit != other.unit
+            # CO: or self.first_trade_date != other.first_trade_date
+            # CO: or self.timezone != other.timezone
+            # CO: or self.market_open != other.market_open
+            # CO: or self.market_close != other.market_close
+            # CO: or self.week_start != other.week_start
+            # CO: or self.week_end != other.week_end
         )
 
     def __repr__(self):
-        return f"Asset(id={self.id}, name={self.name}, symbol={self.symbol}, provider_code={self.provider_code}, region={self.region}, week={self.week_start}-{self.week_end})"
+        return f"Asset(id={self.id}, name={self.name}, symbol={self.symbol}, provider_code={self.provider_code}, metadata={self.effective_metadata})"
 
 
 @dataclass

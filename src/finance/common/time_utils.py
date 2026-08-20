@@ -61,7 +61,9 @@ def now_second_precision():
     return datetime.now(tz=UTC).replace(microsecond=0)
 
 
-def parse_weekday(name: str) -> int:
+def parse_weekday(name: str) -> int | None:
+    if name is None:
+        return None
     key = name.lower()
     if key not in WEEKDAY_ABBR_MAP:
         raise ValueError(f"Cannot understand day '{key}'.")
@@ -74,7 +76,9 @@ def snap_to(time_point: datetime, range: timedelta) -> datetime:
     return datetime.fromtimestamp(snapped, tz=UTC)
 
 
-def parse_time(value):
+def parse_time(value) -> time | None:
+    if value is None:
+        return None
     if isinstance(value, int):
         # YAML sexagesimal integer (expects only hh:mm)
         hours = value // 60

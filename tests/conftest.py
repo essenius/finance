@@ -3,6 +3,7 @@
 # File: tests/conftest.py
 
 import logging
+from collections.abc import Callable
 from datetime import UTC, datetime, time
 from pathlib import Path
 from unittest.mock import Mock
@@ -10,12 +11,17 @@ from unittest.mock import Mock
 import pytest
 
 from finance.common.applogger import JsonFormatter, LogConfig
-from finance.common.model import Asset, Series
+from finance.common.model import Asset, AssetMetadata, Series
 from finance.common.result import Result
 from finance.common.string_enums import Retention, SeriesType
 from finance.state.state import State
 from finance.state.wal import JsonlWAL
 from finance.timeseries.series_backend import SeriesBackend
+from tests.support.types import Factory
+
+# ---------------------------------------------------------------------------
+# Test doubles
+# ---------------------------------------------------------------------------
 
 
 class MockStorage:
@@ -27,6 +33,142 @@ class MockStorage:
 
     def save(self, data):
         pass
+
+
+# ---------------------------------------------------------------------------
+# Common test values
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def fixed_now() -> Factory[datetime]:
+    return lambda: datetime(2025, 6, 15, 15, 6, 40, tzinfo=UTC)
+
+
+# ---------------------------------------------------------------------------
+# Result helpers
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def unwrap() -> Callable[[Result], object]:
+
+    def _unwrap(result: Result) -> object:
+        assert result.ok
+        assert result.payload is not None
+        return result.payload
+
+    return _unwrap
+
+
+@pytest.fixture
+def assert_error() -> Callable[[Result, str, str | None], None]:
+    def _assert_error(result: Result, reason: str, error: str | None) -> None:
+        assert not result.ok, "ok is true"
+        assert result.payload is None, f"Payload is not None but {result.payload}"
+        assert reason in result.reason, f"Reason '{result.reason}' is not correct"
+        if result.error is not None:
+            assert error in result.error, f"Error '{result.error}' is not equal to expected '{error}'"
+        else:
+            assert result.error is None, f"Error is not None but {result.error}"
+
+    return _assert_error
+
+
+@pytest.fixture
+def assert_warning() -> Callable[[Result, str | None], object]:
+    def _assert_warning(result: Result, warning: str):
+        assert result.ok
+        if warning is None:
+            assert result.warnings is None
+        else:
+            assert any(warning in w for w in result.warnings), f"warning '{warning}' not found"
+        assert result.reason is None
+        return result.payload
+
+    return _assert_warning
+
+
+# ---------------------------------------------------------------------------
+# Domain object factories
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def make_metadata() -> Factory[AssetMetadata]:
+    # CO: "long_name": f"d_{name}",
+
+    def _make(**overrides) -> AssetMetadata:
+        defaults = {
+            "long_name": None,
+            "short_name": None,
+            "instrument": "forex",
+            "region": "Europe",
+            "exchange": "DEX",
+            "currency": "USD",
+            "unit": "EUR",
+            "timezone": UTC,
+            "first_trade_date": None,
+            "market_open": time.min,
+            "market_close": time.max,
+            "week_start": "mon",
+            "week_end": "fri",
+        }
+        return AssetMetadata(**(defaults | overrides))
+
+    return _make
+
+
+@pytest.fixture
+def make_asset(make_metadata) -> Factory[Asset]:
+    def _make(name: str = "eur_usd", **overrides) -> Asset:
+        defaults = {
+            "id": 1,
+            "name": name,
+            "symbol": name,
+            "provider": "yahoo",
+            "provider_code": "EURUSD=X",
+        }
+        meta = overrides.get("config_metadata")
+        if meta is None:
+            meta = make_metadata()
+            defaults["config_metadata"] = meta
+        if overrides.get("effective_metadata") is None:
+            defaults["effective_metadata"] = meta
+        return Asset(**(defaults | overrides))
+
+    return _make
+
+
+@pytest.fixture
+def make_series(make_asset) -> Factory[Series]:
+    def _make(asset: Asset | None, **overrides) -> Series:
+        if asset is None:
+            asset = make_asset()
+
+        defaults = {
+            "id": asset.id,
+            "code": "dummy",
+            "asset_id": asset.id,
+            "asset_name": asset.name,
+            "interval": "10m",
+            "series_type": SeriesType.VALUE,
+            "retention": Retention.SHORT_LIVED,
+            "retention_period": "30d",
+            "bootstrap_history": "5d",
+            "publication_offset": None,
+        }
+        params = defaults | overrides
+        params["name"] = f"{asset.name}:{params['code']}"
+
+        return Series(**params)
+
+    return _make
+
+
+# ---------------------------------------------------------------------------
+# State fixtures
+# ---------------------------------------------------------------------------
 
 
 @pytest.fixture
@@ -52,107 +194,14 @@ def state_env(state_deps) -> tuple[State, SeriesBackend, JsonlWAL]:
 
 
 @pytest.fixture
-def fixed_now():
-    return lambda: datetime(2025, 6, 15, 15, 6, 40, tzinfo=UTC)
-
-
-@pytest.fixture
 def state(state_env) -> State:
     state, _, _ = state_env
     return state
 
 
-@pytest.fixture
-def unwrap():
-
-    def _unwrap(result: Result):
-        assert result.ok
-        assert result.payload is not None
-        return result.payload
-
-    return _unwrap
-
-
-@pytest.fixture
-def assert_error():
-    def _assert_error(result: Result, reason: str, error: str | None):
-        assert not result.ok, "ok is true"
-        assert result.payload is None, f"Payload is not None but {result.payload}"
-        assert reason in result.reason, f"Reason '{result.reason}' is not correct"
-        if result.error:
-            assert error in result.error, f"Error '{result.error}' is not correct"
-        else:
-            assert result.error is None, f"Error is not None but {result.error}"
-
-    return _assert_error
-
-
-@pytest.fixture
-def assert_warning():
-    def _assert_warning(result: Result, warning: str):
-        assert result.ok
-        if warning is None:
-            assert result.warnings is None
-        else:
-            assert any(warning in w for w in result.warnings), f"warning '{warning}' not found"
-        assert result.reason is None
-        return result.payload
-
-    return _assert_warning
-
-
-@pytest.fixture
-def make_asset():
-    def _make(name: str = "eur_usd", **overrides) -> Asset:
-        defaults = {
-            "id": 1,
-            "name": name,
-            "symbol": name,
-            "provider": "yahoo",
-            "provider_code": "EURUSD=X",
-            "long_name": f"d_{name}",
-            "short_name": None,
-            "instrument": "forex",
-            "region": "Europe",
-            "exchange": "DEX",
-            "currency": "USD",
-            "unit": "EUR",
-            "first_trade_date": None,
-            "timezone": UTC,
-            "market_open": time.min,
-            "market_close": time.max,
-            "week_start": "mon",
-            "week_end": "fri",
-        }
-        return Asset(**(defaults | overrides))
-
-    return _make
-
-
-@pytest.fixture
-def make_series(make_asset):
-    def _make(asset: Asset | None, **overrides):
-        if asset is None:
-            asset = make_asset()
-
-        defaults = {
-            "id": asset.id,
-            "code": "dummy",
-            "asset_id": asset.id,
-            "asset_name": asset.name,
-            "interval": "10m",
-            "series_type": SeriesType.VALUE,
-            "retention": Retention.SHORT_LIVED,
-            "retention_period": "30d",
-            "bootstrap_history": "5d",
-            "publication_offset": None,
-        }
-        params = defaults | overrides
-        params["name"] = f"{asset.name}:{params['code']}"
-
-        return Series(**params)
-
-    return _make
+# ---------------------------------------------------------------------------
+# Logging fixtures
+# ---------------------------------------------------------------------------
 
 
 @pytest.fixture
@@ -170,6 +219,8 @@ def setup_logging():
 
 @pytest.fixture
 def json_caplog(caplog, setup_logging):
+    # setup_logging is intentionally unused: its side effect configures logging.
+
     caplog.handler.setFormatter(JsonFormatter())
     return caplog
 

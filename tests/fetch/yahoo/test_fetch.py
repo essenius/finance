@@ -3,11 +3,13 @@
 # File: tests/fetch/yahoo/test_fetch.py
 
 import json
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, time, timedelta
 from unittest.mock import Mock, patch
 
+import pytest
+
 from finance.common.candle_identity import CandleIdentity
-from finance.common.model import SeriesPoint
+from finance.common.model import AssetMetadata, SeriesPoint
 from finance.common.string_enums import Retention, SeriesType
 from finance.fetch.yahoo import YahooProvider
 
@@ -109,9 +111,10 @@ def test_fetch_success(yahoo_provider, unwrap, make_asset, make_series):
         result = provider.fetch(series, asset, now, now, False)
 
     payload = unwrap(result)
-    assert len(payload) == 1, "one result"
-    assert payload[0].time == datetime(2026, 7, 23, 15, 00, tzinfo=UTC), "datetime is instant"
-    assert payload[0].close == 10.0, "Close is 10"
+    points = payload.points
+    assert len(points) == 1, "one result"
+    assert points[0].time == datetime(2026, 7, 23, 15, 00, tzinfo=UTC), "datetime is instant"
+    assert points[0].close == 10.0, "Close is 10"
 
 
 def test_impl_http_error(yahoo_provider, assert_error, make_asset, make_series, fixed_now):
@@ -127,14 +130,23 @@ def test_impl_http_error(yahoo_provider, assert_error, make_asset, make_series, 
     assert_error(result, "Exception during Yahoo fetch", "boom")
 
 
-def test_fetch_missing_exchange_timezone(yahoo_provider, assert_error, make_asset, make_series, fixed_now):
+@pytest.mark.parametrize(
+    ("meta", "reason"),
+    [
+        ({}, "missing exchangeTimezoneName in meta"),
+        ({"exchangeTimezoneName": "Not/A_Timezone"}, "invalid exchange timezone 'Not/A_Timezone'"),
+    ],
+)
+def test_fetch_missing_exchange_timezone(
+    yahoo_provider, assert_error, make_asset, make_series, fixed_now, meta, reason
+):
     now = make_identity(fixed_now())
     response = Mock()
     response.json.return_value = {
         "chart": {
             "result": [
                 {
-                    "meta": {},
+                    "meta": meta,
                     "timestamp": [now.start_timestamp()],
                     "indicators": {"quote": [{"close": [10.0]}]},
                 }
@@ -149,12 +161,10 @@ def test_fetch_missing_exchange_timezone(yahoo_provider, assert_error, make_asse
     with patch.object(provider.session, "get", return_value=response):
         result = provider.fetch(series, asset, now, now, False)
 
-    assert_error(
-        result, "Could not parse series 'AAPL:dummy' in Yahoo fetch result", "missing exchangeTimeZoneName in meta"
-    )
+    assert_error(result, "Could not parse series 'AAPL:dummy' in Yahoo fetch result", reason)
 
 
-def test_fetch_real_fixture_5m_eliminates_last(yahoo_provider, unwrap, make_asset, make_series):
+def test_fetch_real_fixture_5m_eliminates_last_and_fills_metadata(yahoo_provider, unwrap, make_asset, make_series):
     with open("tests/data/yahoo_gold_intraday.json") as f:
         fake_json = json.load(f)
 
@@ -168,7 +178,23 @@ def test_fetch_real_fixture_5m_eliminates_last(yahoo_provider, unwrap, make_asse
     start = make_identity(datetime(2026, 8, 11, 10, 30, tzinfo=UTC))
     end = make_identity(datetime(2026, 8, 11, 12, tzinfo=UTC))
     result = provider.fetch(series, asset, start=start, end=end, is_incremental=False)
-    points = unwrap(result)
+    fetch_result = unwrap(result)
+    points = fetch_result.points
     assert len(points) == 16, "last point eliminated (not aligned)"
     last_point: SeriesPoint = points[-1]
     assert last_point.time == datetime(2026, 8, 11, 11, 45, tzinfo=UTC)
+
+    metadata: AssetMetadata = fetch_result.metadata
+    assert metadata.short_name == "Gold Dec 26"
+    assert metadata.long_name is None
+    assert metadata.instrument == "FUTURE"
+    assert metadata.region is None
+    assert metadata.exchange == "CMX"
+    assert metadata.currency == "USD"
+    assert metadata.unit is None
+    assert metadata.first_trade_date == date(year=2000, month=8, day=30)
+    assert metadata.timezone.key == "America/New_York"
+    assert metadata.market_open == time(hour=0)
+    assert metadata.market_close == time(hour=23, minute=59)
+    assert metadata.week_start is None
+    assert metadata.week_end is None

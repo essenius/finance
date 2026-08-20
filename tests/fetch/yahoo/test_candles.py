@@ -112,7 +112,7 @@ def test_extract_candles_signals_incomplete(yahoo_provider, assert_warning, make
     assert point.open is None
 
 
-def test_extract_candles_handles_missing_timestamp(yahoo_provider, assert_error, make_asset, make_series):
+def test_extract_candles_handles_missing_timestamp(yahoo_provider, make_asset, make_series):
     """Missing timestamp array → fail."""
 
     result = {"timestamp": [], "indicators": {"quote": []}}
@@ -143,6 +143,7 @@ def test_extract_candles_empty_result(yahoo_provider, unwrap, make_asset, make_s
 
     data = {"timestamp": [1], "indicators": {"quote": [{}]}}
     asset = make_asset()
+    yahoo = yahoo_provider()
     series = make_series(asset, series_type=SeriesType.VALUE)
-    candles = unwrap(yahoo_provider()._extract_candles(series, data))
+    candles = unwrap(yahoo._extract_candles(series, data))
     assert candles == []

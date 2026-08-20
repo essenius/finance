@@ -27,7 +27,8 @@ def test_fred_fetch_normal_with_skipped(fred_provider, assert_ok, make_asset, ma
     result = provider.fetch(make_series(asset), asset, now, now, True)
     # no change in date as the date is a label, not a timestamp
     assert_ok(result, datetime(2024, 5, 9, 0, 0, 0, tzinfo=UTC), 2.34)
-    assert len(result.payload) == 1, "Ignored invalid values"
+
+    assert len(result.payload.points) == 1, "Ignored invalid values"
 
 
 # -------------------------------

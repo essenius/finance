@@ -162,8 +162,8 @@ def test_ecb_fetch_multiple_points_skip_invalid(unwrap, ecb_provider, make_serie
     provider.session.queue(200, fake_json, make_series)
     asset = make_asset(provider_code="EUR_USD")
     series = make_series(asset)
-    points = unwrap(provider.fetch(series, asset, now, now, True))
-
+    fetch_result = unwrap(provider.fetch(series, asset, now, now, True))
+    points = fetch_result.points
     assert len(points) == 2
     assert points[0].close == 1.10
     assert points[1].close == 1.12

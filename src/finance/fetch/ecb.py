@@ -6,7 +6,7 @@ from datetime import UTC, datetime
 
 from finance.common.candle_identity import CandleIdentity
 
-from ..common.model import Asset, FetchResult, MeasurementResult, Series, SeriesPoint
+from ..common.model import Asset, FetchData, FetchResult, MeasurementResult, Series, SeriesPoint
 from .provider import MarketDataProvider
 
 BASE_URL = "https://data-api.ecb.europa.eu/service/data"
@@ -115,4 +115,6 @@ class EcbProvider(MarketDataProvider):
 
         points = self._parse_points(series, observations, date_values)
 
-        return FetchResult.ok_payload(name, points)
+        result = FetchData(points=points, metadata=None)
+
+        return FetchResult.ok_payload(name, result)

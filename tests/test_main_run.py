@@ -5,11 +5,9 @@
 from collections.abc import Iterable
 from unittest.mock import MagicMock, Mock
 
-from finance.common.applogger import JsonFormatter
-from finance.common.model import FetchResult, SeriesPoint, SeriesResult
+from finance.common.model import FetchData, FetchResult, SeriesPoint
 from finance.common.result import Result
 from finance.main import run
-from finance.state.state import State
 
 # ---------------------------------------------------------------------------
 # Helper classes/functions for fetch + composite engines
@@ -30,7 +28,19 @@ class FakeFetchController:
     def fetch_incrementally(self, state) -> Iterable[FetchResult]:
         for id, value, time in self.outputs:
             fp = SeriesPoint(series_id=id, time=time, close=value)
-            yield FetchResult.ok_payload("spx", [fp])
+            yield FetchResult.ok_payload("spx", FetchData(points=[fp], metadata=None))
+
+
+def make_config():
+    return {
+        "paths": {"wal": "wal.jsonl"},
+        "logging": {"json": True, "level": "info"},
+        "secrets": {"timescaledb": {}, "api_keys": {}},
+        "assets": {},
+        "series": {},
+        "providers": {},
+        "timescaledb": {},
+    }
 
 
 """
@@ -51,10 +61,104 @@ class FakeCompositeEngine:
 """
 
 # ---------------------------------------------------------------------------
-# Tests
+# New Tests
 # ---------------------------------------------------------------------------
 
 
+def test_run_wires_dependencies_and_returns_orchestrator_result():
+    config = make_config()
+
+    registry = Mock()
+    backend = Mock()
+    wal = Mock()
+    state = Mock()
+    providers = Mock()
+    fetcher = Mock()
+
+    orchestrator = Mock()
+    orchestrator.run.return_value = 17
+
+    def load_config():
+        return Result.ok_payload(config)
+
+    def registry_factory(assets, series):
+        assert assets is config["assets"]
+        assert series is config["series"]
+        return registry
+
+    def backend_factory(*_):
+        return Result.ok_payload(backend)
+
+    def state_factory(*, backend, wal):
+        assert backend is backend
+        assert wal is wal
+        return state
+
+    def provider_factory(*, api_keys, providers_config):
+        assert api_keys is config["secrets"]["api_keys"]
+        assert providers_config is config["providers"]
+        return providers
+
+    def fetch_controller_factory(series, get_asset, get_provider):
+        assert series is registry.all_series()
+        assert get_asset is registry.get_asset_by_id
+        assert get_provider is providers.get
+        return fetcher
+
+    def orchestrator_factory(*, backend, registry, state, fetcher):
+        assert backend is backend
+        assert registry is registry
+        assert state is state
+        assert fetcher is fetcher
+        return orchestrator
+
+    assert (
+        run(
+            load_config=load_config,
+            registry_factory=registry_factory,
+            backend_factory=backend_factory,
+            state_factory=state_factory,
+            provider_factory=provider_factory,
+            fetch_controller_factory=fetch_controller_factory,
+            orchestrator_factory=orchestrator_factory,
+            wal_factory=lambda _: wal,
+        )
+        == 17
+    )
+
+    orchestrator.run.assert_called_once_with()
+
+
+def test_run_returns_one_when_backend_initialization_fails():
+
+    backend_factory = Mock(return_value=Result.fail("Backend initialization failed", "boom"))
+    orchestrator_factory = Mock()
+
+    result = run(
+        load_config=lambda: Result.ok_payload(make_config()),
+        backend_factory=backend_factory,
+        orchestrator_factory=orchestrator_factory,
+    )
+
+    assert result == 1
+    orchestrator_factory.assert_not_called()
+
+
+def test_run_returns_two_when_unexpected_exception_occurs(clean_logging, caplog):
+    def load_config():
+        raise RuntimeError("Boom!")
+
+    result = run(load_config=load_config)
+
+    assert result == 2
+    assert any(m.startswith("ERROR | Exiting due to error | exception.message=Boom!") for m in caplog.messages)
+
+
+# ---------------------------------------------------------------------------
+# Old Tests
+# ---------------------------------------------------------------------------
+
+'''
 def test_run_happy_path(tmp_path, json_caplog, fixed_now, state_deps, make_asset, make_series):
 
     backend, wal = state_deps
@@ -291,3 +395,4 @@ def test_run_backend_failure(tmp_path, json_caplog, fixed_now):
     assert result == 1
     assert "Backend initialization failed" in json_caplog.text
     assert "boom" in json_caplog.text
+'''

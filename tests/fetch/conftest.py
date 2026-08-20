@@ -13,13 +13,14 @@ from finance.fetch.ecb import EcbProvider
 from finance.fetch.fred import FredProvider
 from finance.fetch.provider import MarketDataProvider
 from finance.fetch.yahoo import YahooProvider
+from tests.support.types import ConfigurableFactory, Factory
 
 
 @pytest.fixture
 def assert_ok():
-    def _assert_ok(result: FetchResult, time: datetime, close: float):
+    def _assert_ok(result: FetchResult, time: datetime, close: float) -> None:
         assert result.ok
-        point = result.payload[0]
+        point = result.payload.points[0]
         assert point.time == time
         assert point.close == close
 
@@ -40,40 +41,41 @@ class FakeResponse:
             raise requests.exceptions.HTTPError(self.text or "boom")
 
 
+class FakeSession:
+    def __init__(self):
+        self.responses = []
+        self.calls = 0
+
+    def queue(self, status: int, json_data, text=None):
+        self.responses.append(FakeResponse(status, json_data, text))
+        return self
+
+    def queue_error(self, exc: Exception):
+        self.responses.append(exc)
+        return self
+
+    def get(self, url, params=None, timeout=None, **kwargs):
+        self.url = url
+        self.params = params
+        self.timeout = timeout
+        r = self.responses[self.calls]
+        self.calls += 1
+        if isinstance(r, Exception):
+            raise r
+        return r
+
+
 @pytest.fixture
-def fake_session():
-    class FakeSession:
-        def __init__(self):
-            self.responses = []
-            self.calls = 0
-
-        def queue(self, status, json_data, text=None):
-            self.responses.append(FakeResponse(status, json_data, text))
-            return self
-
-        def queue_error(self, exc):
-            self.responses.append(exc)
-            return self
-
-        def get(self, url, params=None, timeout=None, **kwargs):
-            self.url = url
-            self.params = params
-            self.timeout = timeout
-            r = self.responses[self.calls]
-            self.calls += 1
-            if isinstance(r, Exception):
-                raise r
-            return r
-
-    def _make():
+def fake_session() -> Factory[FakeSession]:
+    def _make() -> FakeSession:
         return FakeSession()
 
     return _make
 
 
 @pytest.fixture
-def ecb_provider(fixed_now, fake_session):
-    def _make():
+def ecb_provider(fixed_now, fake_session) -> Factory[EcbProvider]:
+    def _make() -> EcbProvider:
         return EcbProvider(
             api_key=None,
             provider_config=ProviderConfig(name=SupportedProviders.ECB),
@@ -85,8 +87,8 @@ def ecb_provider(fixed_now, fake_session):
 
 
 @pytest.fixture
-def fred_provider(fixed_now, fake_session):
-    def _make(api_key="TESTKEY"):
+def fred_provider(fixed_now, fake_session) -> Factory[FredProvider]:
+    def _make(api_key: str = "TESTKEY") -> FredProvider:
         return FredProvider(
             api_key=api_key,
             provider_config=ProviderConfig(name=SupportedProviders.FRED),
@@ -98,8 +100,10 @@ def fred_provider(fixed_now, fake_session):
 
 
 @pytest.fixture
-def yahoo_provider(fixed_now, fake_session):
-    def _make(now_provider=fixed_now):
+def yahoo_provider(
+    fixed_now: Factory[datetime], fake_session: Factory[FakeSession]
+) -> ConfigurableFactory[YahooProvider]:
+    def _make(now_provider: Factory[datetime] = fixed_now) -> YahooProvider:
         return YahooProvider(
             asset_config={},
             provider_config=ProviderConfig(name=SupportedProviders.YAHOO),
@@ -111,8 +115,8 @@ def yahoo_provider(fixed_now, fake_session):
 
 
 @pytest.fixture
-def dummy_provider():
-    def _make():
+def dummy_provider() -> Factory[MarketDataProvider]:
+    def _make() -> MarketDataProvider:
         return MarketDataProvider(
             provider_config=ProviderConfig(name="dummy"),
         )

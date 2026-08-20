@@ -2,18 +2,13 @@
 # Licensed under the Apache License, Version 2.0. See the LICENSE file for details.
 # File: src/finance/timeseries/timescale_mapper.py
 
-from ..common.model import Asset, Series, SeriesState
+from ..common.model import Asset, AssetMetadata, Series, SeriesState
 from ..common.string_enums import Retention, SeriesType
 from ..common.time_utils import parse_time, parse_timezone
 
 
 def asset_from_row(row: tuple, columns: dict[str, int]) -> Asset:
-    return Asset(
-        id=row[columns["id"]],
-        name=row[columns["name"]],
-        symbol=row[columns["symbol"]],
-        provider=row[columns["provider"]],
-        provider_code=row[columns["provider_code"]],
+    meta = AssetMetadata(
         long_name=row[columns["long_name"]],
         short_name=row[columns["short_name"]],
         instrument=row[columns["instrument"]],
@@ -27,6 +22,15 @@ def asset_from_row(row: tuple, columns: dict[str, int]) -> Asset:
         week_end=row[columns["week_end"]],
         market_open=parse_time(row[columns["market_open"]]),
         market_close=parse_time(row[columns["market_close"]]),
+    )
+
+    return Asset(
+        id=row[columns["id"]],
+        name=row[columns["name"]],
+        symbol=row[columns["symbol"]],
+        provider=row[columns["provider"]],
+        provider_code=row[columns["provider_code"]],
+        effective_metadata=meta,
     )
 
 

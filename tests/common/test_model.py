@@ -2,11 +2,11 @@
 # Licensed under the Apache License, Version 2.0. See the LICENSE file for details.
 # File: tests/common/test_model.py
 
-from datetime import datetime, time, timedelta
+from datetime import datetime, timedelta
 
 import pytest
 
-from finance.common.model import Asset, ProviderConfig, Series, SeriesPoint, SeriesState, SweepConfig
+from finance.common.model import Asset, AssetMetadata, ProviderConfig, Series, SeriesPoint, SeriesState, SweepConfig
 from finance.common.string_enums import Retention, SeriesType
 
 
@@ -21,29 +21,39 @@ def test_seriespoint_from_to_dict(fixed_now):
 
 
 def test_asset_create_with_id_differs():
-    config = {"symbol": "SPX", "provider": {"name": "yahoo", "code": "^SPX"}}
-    tags = {"instrument": "forex"}
-    asset = Asset.create(name="spx", config=config, tags=tags)
+    config = {"symbol": "SPX", "provider": {"name": "yahoo", "code": "^SPX"}, "short_name": "spx"}
+    asset = Asset.from_config(name="spx", config=config)
     assert asset.id is None
     assert asset.name == "spx"
     assert asset.symbol == "SPX"
     assert asset.provider == "yahoo"
     assert asset.provider_code == "^SPX"
-    assert asset.long_name == "spx"
-    assert asset.short_name is None
-    assert asset.instrument == "forex"
-    assert asset.exchange is None
-    assert asset.region is None
-    assert asset.currency is None
-    assert asset.unit is None
-    assert asset.first_trade_date is None
 
-    assert asset.week_start == "mon"
-    assert asset.week_end == "fri"
-    assert asset.market_open == time.min
-    assert asset.market_close == time.max
+    meta = AssetMetadata(
+        long_name=None,
+        short_name="spx",
+        instrument=None,
+        exchange=None,
+        region=None,
+        currency=None,
+        unit=None,
+        timezone=None,
+        first_trade_date=None,
+        week_start=None,
+        week_end=None,
+        market_open=None,
+        market_close=None,
+    )
+    assert asset.config_metadata == meta
 
-    assert f"{asset}" == "Asset(id=None, name=spx, symbol=SPX, provider_code=^SPX, region=None, week=mon-fri)"
+    assert f"{asset}" == "Asset(id=None, name=spx, symbol=SPX, provider_code=^SPX, metadata=None)"
+
+    asset.effective_metadata = asset.config_metadata
+
+    assert (
+        f"{asset}"
+        == "Asset(id=None, name=spx, symbol=SPX, provider_code=^SPX, metadata=AssetMetadata(short=spx, currency=None, timezone=None))"
+    )
 
     asset2 = asset.with_id(1)
     assert asset2.id == 1
@@ -52,16 +62,16 @@ def test_asset_create_with_id_differs():
     # differs from only looks at metadata, not at id, name
     assert not asset.differs_from(asset2)
 
-    tags |= {"region": "Europe"}
-    asset3 = Asset.create(name="spx", config=config, tags=tags)
+    config |= {"region": "Europe"}
+    asset3 = Asset.from_config(name="spx", config=config)
     assert asset.differs_from(asset3)
 
 
-def test_asset_create_with_wrong_timezone(make_asset):
+def test_asset_create_with_wrong_timezone():
 
     config = {"symbol": "SPX", "provider": {"name": "yahoo", "code": "^SPX"}, "timezone": "bogus"}
     with pytest.raises(ValueError) as ve:
-        Asset.create(name="spx", config=config, tags={})
+        Asset.from_config(name="spx", config=config)
     assert "Cannot understand timezone 'bogus'" in str(ve.value)
 
 

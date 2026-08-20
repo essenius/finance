@@ -6,7 +6,7 @@ from datetime import UTC, datetime
 
 from finance.common.candle_identity import CandleIdentity
 
-from ..common.model import Asset, FetchResult, Series, SeriesPoint
+from ..common.model import Asset, FetchData, FetchResult, Series, SeriesPoint
 from .provider import MarketDataProvider
 
 BASE_URL = "https://api.stlouisfed.org/fred/series/observations"
@@ -68,4 +68,6 @@ class FredProvider(MarketDataProvider):
             value = float(value_str)
             points.append(SeriesPoint(series_id=series.id, time=time, close=value))
 
-        return FetchResult.ok_payload(series.name, points)
+            result = FetchData(points=points, metadata=None)
+
+        return FetchResult.ok_payload(series.name, result)

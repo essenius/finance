@@ -6,9 +6,11 @@ from datetime import datetime, time
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
+from finance.common.model import Asset
 from finance.common.result import Result
 from finance.common.string_enums import Retention, SeriesType
 from finance.timeseries.series_backend import SeriesBackend
+from tests.support.types import Factory
 
 # ------------------------------------------------------------
 # Helpers
@@ -84,11 +86,10 @@ def test_refresh_short_lived_series_ids_handles_disconnected(make_backend):
 # ------------------------------------------------------------
 
 
-def test_store_asset_insert(make_backend, make_asset):
+def test_store_asset_insert(make_backend, make_asset: Factory[Asset]):
     backend = make_backend()
 
-    asset = make_asset(id=None)
-
+    asset: Asset = make_asset(id=None)
     backend._sql_client.execute_write = MagicMock(return_value=Result.ok_payload(42))
 
     result = backend.store_asset(asset)
@@ -108,7 +109,6 @@ def test_store_asset_update(make_backend, make_asset):
     backend = make_backend()
 
     asset = make_asset(id=99)
-
     backend._sql_client.execute_write = MagicMock(return_value=Result.ok_payload(99))
     result = backend.store_asset(asset)
 
@@ -276,13 +276,15 @@ def test_get_assets_returns_asset_list(make_backend):
     result = backend.get_assets()
 
     assert result.ok
-    assets = result.payload
+    assets: list[Asset] = result.payload
     assert len(assets) == 2
     assert assets[0].symbol == "AAPL"
     assert assets[1].symbol == "MSFT"
-    assert assets[0].timezone.key == "America/New_York"
-    assert assets[1].week_start == "sun"
-    assert assets[0].market_close == time(hour=16)
+    meta0 = assets[0].effective_metadata
+    assert meta0.timezone.key == "America/New_York"
+    meta1 = assets[1].effective_metadata
+    assert meta1.week_start == "sun"
+    assert meta0.market_close == time(hour=16)
 
 
 def test_get_assets_error(assert_error, make_backend):

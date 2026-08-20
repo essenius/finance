@@ -8,11 +8,11 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "finance"
-version = "0.2.28"
+version = "0.2.29"
 description = "Finance tools"
 authors = [{ name = "Rik Essenius" }]
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.12"
 
 dependencies = [
     "python-dotenv",
@@ -34,6 +34,7 @@ dev = [
     "pip-tools",
     "pluggy",
     "Pygments",
+    "pyright",
     "pytest",
     "pytest-cov",
     "ruff"
@@ -41,3 +42,8 @@ dev = [
 
 #[tool.setuptools.dynamic]
 #version = { attr = "finance.__version__" }
+
+
+[tool.pyright]
+include = ["src"]
+typeCheckingMode = "basic"

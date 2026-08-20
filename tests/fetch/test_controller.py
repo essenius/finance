@@ -157,14 +157,15 @@ def test_controller_fetches_when_stale(state, fixed_now, make_asset, make_series
     fc.get_provider("yahoo").fetch.assert_called_once()
 
 
-def test_controller_skips_fetch_with_offset(state, make_asset, make_series):
+def test_controller_skips_fetch_with_offset(state, make_asset, make_metadata, make_series):
 
     fake_hour = 12
 
     def fake_now():
         return datetime(2026, 7, 23, fake_hour, 40, tzinfo=UTC)
 
-    asset = make_asset(timezone=ZoneInfo("Europe/Berlin"))
+    meta = make_metadata(timezone=ZoneInfo("Europe/Berlin"))
+    asset = make_asset(effective_metadata=meta)
     assets = make_assets([asset])
     series = [make_series(asset, interval="1d", publication_offset="16h")]
 
@@ -270,7 +271,7 @@ def test_compute_fetch_range_intraday(make_series, make_asset):
     fake_provider = make_fake_provider(fetch_result=MeasurementResult.fail("eur_usd_dummy", "bad data"))
 
     asset = make_asset()
-    calendar = SeriesCalendar.from_asset(asset)
+    calendar = SeriesCalendar.from_asset_metadata(asset.effective_metadata)
     assets = make_assets([asset])
     series_list = [make_series(asset)]  # 10m interval
     providers = {"yahoo": fake_provider}
@@ -337,11 +338,12 @@ def test_compute_fetch_range_intraday(make_series, make_asset):
     assert state_entry_2.needs_save, "sweep: needs save"
 
 
-def test_compute_fetch_range_daily(make_series, make_asset):
+def test_compute_fetch_range_daily(make_series, make_asset, make_metadata):
     fake_provider = make_fake_provider(fetch_result=MeasurementResult.fail("eur_usd_dummy", "bad data"))
 
-    asset = make_asset(first_trade_date=date(2021, 10, 1))
-    calendar = SeriesCalendar.from_asset(asset)
+    meta = make_metadata(first_trade_date=date(2021, 10, 1))
+    asset = make_asset(effective_metadata=meta)
+    calendar = SeriesCalendar.from_asset_metadata(asset.effective_metadata)
     assets = make_assets([asset])
 
     # Daily series. Set first trade date less than 5 years ago to test it is respected.
@@ -411,7 +413,7 @@ def test_compute_fetch_range_first_after_last(make_asset, make_series):
     fake_provider = make_fake_provider(fetch_result=MeasurementResult.fail("eur_usd_dummy", "bad data"))
 
     asset = make_asset()
-    calendar = SeriesCalendar.from_asset(asset)
+    calendar = SeriesCalendar.from_asset_metadata(asset.effective_metadata)
     assets = make_assets([asset])
 
     # Daily series

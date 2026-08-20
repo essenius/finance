@@ -29,9 +29,9 @@ def make_calendar(
     )
 
 
-def test_from_asset_for_series(make_asset, make_series):
-    asset = make_asset(timezone=ZoneInfo("America/Chicago"), first_trade_date=date(2023, 1, 1))
-    calendar = SeriesCalendar.from_asset(asset)
+def test_from_asset_for_series(make_asset, make_series, make_metadata):
+    metadata = make_metadata(timezone=ZoneInfo("America/Chicago"), first_trade_date=date(2023, 1, 1))
+    calendar = SeriesCalendar.from_asset_metadata(metadata)
     assert calendar.timezone.key == "America/Chicago"
     assert calendar.market_open == time.min
     assert calendar.market_close == time.max
@@ -41,6 +41,7 @@ def test_from_asset_for_series(make_asset, make_series):
     assert calendar.publication_offset is None
     assert calendar.first_trade_date == date(2023, 1, 1)
 
+    asset = make_asset(config_metadata=metadata)
     series = make_series(asset, publication_offset="14h")
     calendar = calendar.for_series(series)
     assert calendar.publication_offset == timedelta(hours=14)

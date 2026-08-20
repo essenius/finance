@@ -5,7 +5,6 @@
 import argparse
 from dataclasses import asdict
 from pathlib import Path
-from typing import TypeVar
 
 from .common.applogger import AppLogger
 from .common.model import FetchResult, Series
@@ -16,8 +15,6 @@ from .timeseries.series_backend import SeriesBackend
 
 logger = AppLogger()
 
-T = TypeVar("T")
-
 
 def parse_args(argv: list[str] | None = None):
     parser = argparse.ArgumentParser(description="Finance ingestion service")
@@ -25,7 +22,7 @@ def parse_args(argv: list[str] | None = None):
     return parser.parse_args(argv)
 
 
-def unwrap(result: Result[T], throw: bool | None = True) -> T | None:
+def unwrap[T](result: Result[T], throw: bool = True) -> T | None:
     """
     Unwrap a Result[T]:
     - log warnings
@@ -47,12 +44,18 @@ def unwrap(result: Result[T], throw: bool | None = True) -> T | None:
 
 def reconcile_registry(registry: Registry, backend: SeriesBackend):
     saved_assets = unwrap(backend.get_assets())
-    registry.load_db_assets(saved_assets)
 
-    reconciled_assets = registry.reconcile_assets()
-    for asset in reconciled_assets.to_persist:
+    to_persist = registry.merge_and_find_new_assets(saved_assets)
+    for asset in to_persist:
         stored = unwrap(backend.store_asset(asset))
-        registry.register_final_asset(stored)
+        registry.register_stored_asset(stored)
+
+    # CO: registry.load_db_assets(saved_assets)
+
+    # CO: reconciled_assets = registry.reconcile_assets()
+    # CO: for asset in reconciled_assets.to_persist:
+    # CO:     stored = unwrap(backend.store_asset(asset))
+    # CO:     registry.register_stored_asset(stored)
 
     # series must be done after asset since it refers to final assets
     saved_series = unwrap(backend.get_series())
@@ -61,15 +64,18 @@ def reconcile_registry(registry: Registry, backend: SeriesBackend):
     reconciled_series = registry.reconcile_series()
     for series in reconciled_series.to_persist:
         stored = unwrap(backend.store_series(series))
-        registry.register_final_series(stored)
+        registry.register_stored_series(stored)
 
     backend.refresh_short_lived_series_ids()
 
 
-def process_result(result: FetchResult, state: State, series: Series) -> bool:
+def process_result(
+    result: FetchResult, state: State, series: Series, registry: Registry, backend: SeriesBackend
+) -> bool:
     """
     Process a FetchResult:
     - unwrap the MeasurementResult
+    - handle metadata if returned
     - iterate over all FetchPoints
     - build a ResultPoint for each
     - ingest each one
@@ -83,23 +89,31 @@ def process_result(result: FetchResult, state: State, series: Series) -> bool:
     if not result.ok:
         return False
 
-    if not payload:
-        return True  # nothing to do
+    if payload.metadata is not None:
+        asset_to_save = registry.register_provider_metadata(series.asset_id, payload.metadata)
+        if asset_to_save is not None:
+            stored = unwrap(backend.store_series(series))
+            registry.register_stored_series(stored)
+
+    if not payload.points:
+        return True
 
     all_ok = True
 
+    points = payload.points
+
     # this assumes the payload is ordered on increasing time
-    batch_first = payload[0].time
-    batch_last = payload[-1].time
+    batch_first = points[0].time
+    batch_last = points[-1].time
     # correct if it was the other way around
     if batch_first > batch_last:
         batch_first, batch_last = batch_last, batch_first
 
     logger.debug(
-        f"Retrieved range for {series.name}: {batch_first.isoformat()} - {batch_last.isoformat()}, {len(payload)} records."
+        f"Retrieved range for {series.name}: {batch_first.isoformat()} - {batch_last.isoformat()}, {len(points)} records."
     )
 
-    for point in payload:
+    for point in points:
         ingest_result = state.ingest(point)
         # log any errors
         unwrap(ingest_result, throw=False)

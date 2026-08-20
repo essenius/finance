@@ -2,14 +2,23 @@
 # Licensed under the Apache License, Version 2.0. See the LICENSE file for details.
 # File: src/finance/fetch/yahoo.py
 
-from datetime import UTC
+from datetime import UTC, date, datetime, time
 from urllib.parse import quote
 from zoneinfo import ZoneInfo
 
 from finance.common.applogger import AppLogger
 from finance.common.candle_identity import CandleIdentity
 
-from ..common.model import Asset, FetchResult, MeasurementResult, Series, SeriesPoint
+from ..common.model import (
+    Asset,
+    AssetMetadata,
+    FetchData,
+    FetchResult,
+    MeasurementResult,
+    Series,
+    SeriesPoint,
+    SeriesPointsResult,
+)
 from ..common.result import Result
 from ..common.string_enums import Candle
 from .provider import MarketDataProvider
@@ -41,15 +50,19 @@ class YahooProvider(MarketDataProvider):
             return result
 
         meta = result.payload.get("meta", {})
-        timezone = meta.get("exchangeTimezoneName")
-        if timezone is None:
+
+        metadata_result = self._extract_metadata(meta)
+        if not metadata_result.ok:
             return FetchResult.fail(
-                {series.name},
-                f"Could not parse series '{series.name}' in Yahoo fetch result",
-                "missing exchangeTimeZoneName in meta",
+                series.name, f"Could not parse series '{series.name}' in Yahoo fetch result", metadata_result.reason
             )
 
-        return self._extract_candles(series, result.payload, asset.timezone)
+        metadata = metadata_result.payload
+        points_result = self._extract_candles(series, result.payload, metadata.timezone)
+        if not points_result.ok:
+            return points_result
+        result = FetchData(points=points_result.payload, metadata=metadata)
+        return FetchResult.ok_payload(name, result)
 
     # -----------
     # Fetch data
@@ -93,6 +106,55 @@ class YahooProvider(MarketDataProvider):
         if result is None or result == []:
             return "result empty"
         return None
+
+    # -----------------------------
+    # Extract metadata
+    # -----------------------------
+
+    def _extract_metadata(self, meta: dict) -> Result[AssetMetadata]:
+
+        def time_from_timestamp(timestamp: int | None, timezone: ZoneInfo) -> time | None:
+            return None if timestamp is None else datetime.fromtimestamp(timestamp, UTC).astimezone(timezone).time()
+
+        def date_from_timestamp(timestamp: int | None, timezone: ZoneInfo) -> date | None:
+            return None if timestamp is None else datetime.fromtimestamp(timestamp, UTC).astimezone(timezone).date()
+
+        timezone_name = meta.get("exchangeTimezoneName")
+        if timezone_name is None:
+            return Result.fail("missing exchangeTimezoneName in meta")
+
+        try:
+            timezone = ZoneInfo(timezone_name)
+        except Exception as e:
+            return Result.fail(f"invalid exchange timezone '{timezone_name}': {e}")
+
+        first_trade_date = None
+        first_trade_timestamp = meta.get("firstTradeDate")
+        first_trade_date = date_from_timestamp(first_trade_timestamp, timezone)
+
+        market_open = None
+        market_close = None
+
+        regular_period = meta.get("currentTradingPeriod", {}).get("regular", {})
+        if regular_period:
+            start = regular_period.get("start")
+            end = regular_period.get("end")
+            market_open = time_from_timestamp(start, timezone)
+            market_close = time_from_timestamp(end, timezone)
+
+        return Result.ok_payload(
+            AssetMetadata(
+                short_name=meta.get("shortName"),
+                long_name=meta.get("longName"),
+                instrument=meta.get("instrumentType"),
+                exchange=meta.get("exchangeName"),
+                currency=meta.get("currency"),
+                first_trade_date=first_trade_date,
+                timezone=timezone,
+                market_open=market_open,
+                market_close=market_close,
+            )
+        )
 
     # -----------------------------
     # Extract candles with helpers
@@ -165,7 +227,9 @@ class YahooProvider(MarketDataProvider):
 
         return candles, warnings
 
-    def _extract_candles(self, series: Series, payload: dict | None = None, timezone: ZoneInfo = UTC) -> FetchResult:
+    def _extract_candles(
+        self, series: Series, payload: dict | None = None, timezone: ZoneInfo = UTC
+    ) -> SeriesPointsResult:
         name = series.name
         arrays_result = self._extract_arrays(payload)
         if not arrays_result.ok or arrays_result.payload is None:
@@ -181,4 +245,4 @@ class YahooProvider(MarketDataProvider):
                     arrays[key].pop()
         candles, warnings = self._build_candles(timestamps, arrays, series, timezone)
 
-        return FetchResult.ok_payload(name, candles, warnings)
+        return SeriesPointsResult.ok_payload(name, candles, warnings)

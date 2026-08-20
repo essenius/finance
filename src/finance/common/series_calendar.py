@@ -10,12 +10,19 @@ from zoneinfo import ZoneInfo
 
 from finance.common.candle_identity import CandleIdentity
 
-from ..common.model import Asset, Series
+from ..common.model import AssetMetadata, Series
 from ..common.time_utils import parse_duration, parse_weekday, snap_to
 
 ONE_DAY = timedelta(days=1)
 ONE_WEEK = timedelta(weeks=1)
 ONE_MICROSECOND = timedelta(microseconds=1)
+
+MONDAY = 0
+FRIDAY = 4
+
+
+def default_if_none[T](value: T | None, default: T) -> T:
+    return default if value is None else value
 
 
 @dataclass
@@ -32,14 +39,16 @@ class SeriesCalendar:
     _offset: timedelta | None = None
 
     @classmethod
-    def from_asset(cls, asset: Asset) -> SeriesCalendar:
+    def from_asset_metadata(cls, meta: AssetMetadata) -> SeriesCalendar:
         return cls(
-            timezone=asset.timezone,
-            market_open=asset.market_open,
-            market_close=asset.market_close,
-            week_start=parse_weekday(asset.week_start),
-            week_end=parse_weekday(asset.week_end),
-            first_trade_date=asset.first_trade_date,
+            # the defaults are primarily useful for the first fetch, when we might not have all metadata yet.
+            # it may result in a slightly inaccurate window, which is corrected the next run.
+            timezone=default_if_none(meta.timezone, UTC),
+            market_open=default_if_none(meta.market_open, time.min),
+            market_close=default_if_none(meta.market_close, time.max),
+            week_start=default_if_none(parse_weekday(meta.week_start), MONDAY),
+            week_end=default_if_none(parse_weekday(meta.week_end), FRIDAY),
+            first_trade_date=meta.first_trade_date,
         )
 
     def for_series(self, series: Series) -> SeriesCalendar:

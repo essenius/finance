@@ -174,48 +174,77 @@ def check_series_templates(raw_templates: dict | None) -> Result[dict[str, dict]
 # -----------------------------
 
 
+def _parse_metadata(
+    meta: dict | list | str | None, metadata_template: dict[str, dict], config: dict[str, dict]
+) -> dict:
+    if meta is None:
+        return config
+    if isinstance(meta, dict):
+        config |= dict(meta)
+        return config
+
+    template_list = meta if isinstance(meta, list) else [meta]
+    for name in template_list:
+        template = metadata_template.get(name)
+        if template is None:
+            raise ValueError(f"Could not find metadata template '{name}'")
+        config = deep_merge(config, template)
+    return config
+
+
 def normalize_assets_and_series(
-    raw_assets: dict, series_template: dict[str, dict]
+    raw_assets: dict, metadata_template: dict[str, dict]
 ) -> Result[tuple[list[Asset], list[Series]]]:
     asset_list = []
     series_list = []
-
-    def asset_parse_error(asset_name: str, error: str) -> Result[int]:
-        return Result.fail(f"Could not parse asset '{asset_name}'", error)
 
     for asset_name, cfg in raw_assets.items():
         try:
             provider_section = require(cfg, "provider", f"asset '{asset_name}'")
             if not isinstance(provider_section, dict):
-                return asset_parse_error(asset_name, "malformed provider section.")
+                raise ValueError("malformed provider section.")
 
             context = f"asset '{asset_name}' provider"
             require(provider_section, "name", context)
             require(provider_section, "code", context)
 
+            meta_def = cfg.get("metadata")
+            cfg = _parse_metadata(meta_def, metadata_template, cfg)
+            # CO: if isinstance(meta_def, dict):
+            # CO:     cfg |= meta_def
+            # CO: else:
+            # CO:     template_list = meta_def if isinstance(meta_def, list) else [meta_def]
+            # CO:     for name in template_list:
+            # CO:         template = metadata_template.get(name)
+            # CO:         if template is None:
+            # CO:             return asset_parse_error(asset_name, f"Could not find metadata template '{name}'")
+            # CO:         cfg = deep_merge(cfg, template)
+
             tags = {k.lower(): v for k, v in cfg.get("tags", {}).items()}
-            asset = Asset.create(name=asset_name, config=cfg, tags=tags)
+            cfg |= tags
+            asset = Asset.from_config(name=asset_name, config=cfg)
             asset_list.append(asset)
 
             series_config = require(cfg, "series", context)
 
             for code, series_def in series_config.items():
-                if isinstance(series_def, dict):
-                    config = dict(series_def)
-                else:
-                    config = {}
-                    template_list = series_def if isinstance(series_def, list) else [series_def]
-                    for name in template_list:
-                        template = series_template.get(name)
-                        if template is None:
-                            return asset_parse_error(asset_name, f"Could not find series template '{name}'")
-                        config = deep_merge(config, template)
+                config = _parse_metadata(series_def, metadata_template, {})
+                # CO: if isinstance(series_def, dict):
+                # CO:     config = dict(series_def)
+                # CO: else:
+                # CO:     config = {}
+                # CO:     template_list = series_def if isinstance(series_def, list) else [series_def]
+                # CO:     for name in template_list:
+                # CO:         template = metadata_template.get(name)
+                # CO:         if template is None:
+                # CO:             return asset_parse_error(asset_name, f"Could not find metadata template '{name}'")
+                # CO:         config = deep_merge(config, template)
                 require(config, "interval", context)
                 series = Series.create(asset=asset, code=code, config=config)
                 series_list.append(series)
 
-        except Exception as exc:  # by require()
-            return asset_parse_error(asset_name, exc)
+        except Exception as exc:  # also by require()
+            return Result.fail(f"Could not parse asset '{asset_name}'", exc)
 
     return Result.ok_payload((asset_list, series_list))
 

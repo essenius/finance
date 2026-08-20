@@ -172,30 +172,33 @@ class SeriesBackend:
         return Result.ok_payload(None)
 
     def store_asset(self, asset: Asset) -> Result[Asset]:
+        if asset.effective_metadata is None:
+            return Result.fail(reason="Store asset failed", error=f"No effective metadata to store asset {asset.name}")
+        meta = asset.effective_metadata
         base_fields = (
             asset.name,
             asset.symbol,
             asset.provider,
             asset.provider_code,
-            asset.long_name,
-            asset.short_name,
-            asset.instrument,
-            asset.region,
-            asset.exchange,
-            asset.currency,
-            asset.unit,
-            asset.first_trade_date,
-            write_timezone(asset.timezone),
-            asset.week_start,
-            asset.week_end,
-            write_time(asset.market_open),
-            write_time(asset.market_close),
+            meta.long_name,
+            meta.short_name,
+            meta.instrument,
+            meta.region,
+            meta.exchange,
+            meta.currency,
+            meta.unit,
+            meta.first_trade_date,
+            write_timezone(meta.timezone),
+            meta.week_start,
+            meta.week_end,
+            write_time(meta.market_open),
+            write_time(meta.market_close),
         )
 
         if asset.id is None:
             sql_query = """
-                    INSERT INTO asset (name, symbol, provider, provider_code, 
-                        long_name, short_name, instrument, region, exchange, currency, unit, 
+                    INSERT INTO asset (name, symbol, provider, provider_code,
+                        long_name, short_name, instrument, region, exchange, currency, unit,
                         first_trade_date, timezone, week_start, week_end, market_open, market_close)
                     VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                     RETURNING id;
@@ -204,8 +207,8 @@ class SeriesBackend:
         else:
             sql_query = """
                 UPDATE asset
-                SET name=%s, symbol=%s, provider=%s, provider_code=%s, 
-                    long_name=%s, short_name=%s, instrument=%s, region=%s, exchange=%s, currency=%s, unit=%s, 
+                SET name=%s, symbol=%s, provider=%s, provider_code=%s,
+                    long_name=%s, short_name=%s, instrument=%s, region=%s, exchange=%s, currency=%s, unit=%s,
                     first_trade_date=%s, timezone=%s, week_start=%s, week_end=%s, market_open=%s, market_close=%s
                 WHERE id=%s
                 RETURNING id;

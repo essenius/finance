@@ -69,7 +69,7 @@ class FetchController:
                     series.name, f"no provider '{asset.provider}'", f"Skipped series '{series.name}'"
                 )
                 continue
-            calendar = SeriesCalendar.from_asset(asset)
+            calendar = SeriesCalendar.from_asset_metadata(asset.effective_metadata)
             range = self.get_fetch_range(series=series, provider=provider, state=state_entry, calendar=calendar)
             if range is None:
                 continue

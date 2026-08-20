@@ -38,7 +38,7 @@ def test_normalize_assets_basic(unwrap):
     assert asset.provider_code == "EURUSD=X"
     assert asset.name == "eurusd"
     assert asset.symbol == "EURUSD"
-    assert asset.instrument == "Forex"
+    assert asset.config_metadata.instrument == "Forex"
 
     # series fields preserved / defaulted
     series: Series = series[0]
@@ -142,4 +142,4 @@ def test_normalize_asset_missing_template(assert_error):
         }
     }
     result = normalize_assets_and_series(series_cfg, {})
-    assert_error(result, "Could not parse asset 'spx'", "Could not find series template 'template1'")
+    assert_error(result, "Could not parse asset 'spx'", "Could not find metadata template 'template1'")

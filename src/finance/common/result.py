@@ -5,13 +5,13 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
-from typing import Generic, TypeVar
+from typing import TypeVar
 
 T = TypeVar("T")
 
 
 @dataclass
-class Result(Generic[T]):
+class Result[T]:
     ok: bool
     payload: T | None = None
     reason: str | None = None
@@ -20,7 +20,7 @@ class Result(Generic[T]):
     meta: dict | None = None
 
     @staticmethod
-    def parse_warnings(warnings: list[str]) -> str | None:
+    def parse_warnings(warnings: list[str] | None) -> list[str] | None:
         if warnings is None or warnings == []:
             return None
         return warnings
@@ -32,7 +32,7 @@ class Result(Generic[T]):
     @staticmethod
     def fail(
         reason: str, error: str | None = None, warnings: list[str] | None = None, meta: dict | None = None
-    ) -> Result[None]:
+    ) -> Result[T]:
         return Result(
             ok=False,
             reason=reason,

@@ -58,7 +58,8 @@ class FetchController:
             state_entry = state.get_series_state(series.id)
             asset = self.get_asset_by_id(series.asset_id)
             if asset is None:
-                yield Failure(reason=f"Could not find asset {series.asset_id} ({series.asset_name})",
+                yield Failure(
+                    reason=f"Could not find asset {series.asset_id} ({series.asset_name})",
                     error=f"Skipped series '{series.name}'",
                 )
                 continue
@@ -94,8 +95,9 @@ class FetchController:
         series: Series, calendar: SeriesCalendar, now: datetime
     ) -> tuple[CandleIdentity, CandleIdentity] | None:
         horizon = series.bootstrap_history_delta()
-        if series.retention_delta() is not None:
-            horizon = min(horizon, series.retention_delta())
+        retention_delta = series.retention_delta()
+        if retention_delta is not None:
+            horizon = min(horizon, retention_delta)
 
         oldest_required = now - horizon
         first_trade_time = calendar.first_trade_time()

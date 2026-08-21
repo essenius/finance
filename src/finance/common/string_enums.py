@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 from enum import StrEnum
+from typing import Self
 
 
 class StringEnum(StrEnum):
@@ -17,13 +18,11 @@ class StringEnum(StrEnum):
         return [entry.value for entry in cls]
 
     @classmethod
-    def validate(cls, value: str, context: str = "") -> str:
-        if context != "":
-            context = f" in {context}"
+    def require(cls, value: str) -> Self:
         try:
-            return cls(value).value
+            return cls(value)
         except ValueError:
-            raise ValueError(f"Invalid {cls.__name__}{context}: {value!r}. Allowed: {cls.values()}") from None
+            raise ValueError(f"Invalid {cls.__name__}: {value!r}. Allowed: {cls.values()}") from None
 
 
 class Candle(StringEnum):

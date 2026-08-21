@@ -30,8 +30,7 @@ class YahooProvider(MarketDataProvider):
         self, series: Series, asset: Asset, start: CandleIdentity, end: CandleIdentity, is_incremental: bool
     ) -> FetchResult:
 
-        def FetchFailure(error: str) -> Failure:
-
+        def fetch_failure(error: str) -> Failure:
             return Failure(f"Could not parse series '{series.name}' in Yahoo fetch result", error=error)
 
         name = series.name
@@ -49,12 +48,12 @@ class YahooProvider(MarketDataProvider):
 
         metadata_result = self._extract_metadata(meta)
         if metadata_result.ok is False:
-            return FetchFailure(error=metadata_result.reason)
+            return fetch_failure(error=metadata_result.reason)
 
         metadata = metadata_result.payload
         points_result = self._extract_candles(series, result.payload, metadata.timezone)
         if points_result.ok is False:
-            return FetchFailure(error=points_result.reason)
+            return fetch_failure(error=points_result.reason)
         result = FetchData(series_id=series.id, points=points_result.payload, metadata=metadata)
         return Success(result)
 

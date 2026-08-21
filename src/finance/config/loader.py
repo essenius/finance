@@ -16,7 +16,7 @@ from ..common.model import BACKEND, Asset, ProviderConfig, Series
 from ..common.paths import resolve_config_path
 from ..common.result import Failure, Result, Success
 from ..common.string_enums import Retention, SeriesType, SupportedProviders
-from ..common.time_utils import check_duration_in
+from ..common.time_utils import validate_duration
 
 
 @dataclass
@@ -98,13 +98,13 @@ def load_yaml_config(yaml_path: Path) -> Result[dict]:
         return Failure(reason="Invalid YAML", error=exc, meta=context)
 
 
-def require(cfg: dict, key: str, context: str) -> str | dict:
+def require_key(cfg: dict, key: str, context: str) -> str | dict:
     """
     Return cfg[key] if present, otherwise raise a ValueError.
     This has to be caught in the function it is used in.
     """
     if key not in cfg:
-        raise ValueError(f"Missing required field '{key}'")
+        raise ValueError(f"Missing required field '{key}' in {context}")
     return cfg[key]
 
 
@@ -147,15 +147,15 @@ def check_template(name: str, input: dict) -> None:
     """Check the values early so of there are errors, it's clear where they are
     (i.e. in the template and not in the asset definition)
     """
-    check_duration_in(input, "interval")
-    check_duration_in(input, "bootstrap_history")
+    validate_duration(input.get("interval"), "interval")
+    validate_duration(input.get("bootstrap_history"), "bootstrap history")
     series_type = input.get("series_type")
     if series_type is not None:
-        SeriesType.validate(series_type)
+        SeriesType.require(series_type)
     retention = input.get("retention")
     if retention is not None:
-        Retention.validate(retention)
-    check_duration_in(input, "publication_offset")
+        Retention.require(retention)
+    validate_duration(input.get("publication_offset"), "publication offset")
 
 
 def check_series_templates(raw_templates: dict | None) -> Result[dict[str, dict]]:
@@ -200,13 +200,13 @@ def normalize_assets_and_series(
 
     for asset_name, cfg in raw_assets.items():
         try:
-            provider_section = require(cfg, "provider", f"asset '{asset_name}'")
+            provider_section = require_key(cfg, "provider", f"asset '{asset_name}'")
             if not isinstance(provider_section, dict):
                 raise ValueError("malformed provider section.")
 
             context = f"asset '{asset_name}' provider"
-            require(provider_section, "name", context)
-            require(provider_section, "code", context)
+            require_key(provider_section, "name", context)
+            require_key(provider_section, "code", context)
 
             meta_def = cfg.get("metadata")
             cfg = _parse_metadata(meta_def, metadata_template, cfg)
@@ -225,7 +225,7 @@ def normalize_assets_and_series(
             asset = Asset.from_config(name=asset_name, config=cfg)
             asset_list.append(asset)
 
-            series_config = require(cfg, "series", context)
+            series_config = require_key(cfg, "series", context)
 
             for code, series_def in series_config.items():
                 config = _parse_metadata(series_def, metadata_template, {})
@@ -239,7 +239,7 @@ def normalize_assets_and_series(
                 # CO:         if template is None:
                 # CO:             return asset_parse_error(asset_name, f"Could not find metadata template '{name}'")
                 # CO:         config = deep_merge(config, template)
-                require(config, "interval", context)
+                require_key(config, "interval", context)
                 series = Series.create(asset=asset, code=code, config=config)
                 series_list.append(series)
 

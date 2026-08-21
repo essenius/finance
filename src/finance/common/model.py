@@ -8,9 +8,11 @@ from dataclasses import dataclass, field, replace
 from datetime import UTC, date, datetime, time, timedelta
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
+from finance.common.guards import require_duration
+
 from ..common.result import Result
 from ..common.string_enums import Candle, Retention, SeriesType
-from ..common.time_utils import check_duration_in, parse_duration, parse_time, parse_weekday
+from ..common.time_utils import parse_duration, parse_time, parse_weekday, validate_duration
 
 BACKEND = "timescaledb"
 
@@ -48,7 +50,7 @@ class SeriesPoint:
             open=data.get("open"),
             high=data.get("high"),
             low=data.get("low"),
-            close=data.get("close"),
+            close=data["close"],  # cannot be None
             volume=data.get("volume"),
         )
 
@@ -80,7 +82,7 @@ class AssetMetadata:
     week_end: str | None = None
 
     @classmethod
-    def from_config(cls, config: dict) -> Asset:
+    def from_config(cls, config: dict) -> AssetMetadata:
         raw_timezone = config.get("timezone")
         timezone = None
         if raw_timezone is not None:
@@ -139,7 +141,7 @@ class ProviderConfig:
     sweep: dict[timedelta, SweepConfig] = field(default_factory=dict)
 
     def timeout_delta(self) -> timedelta:
-        return parse_duration(self.timeout, f"timeout for {self.name}")
+        return require_duration(self.timeout, f"timeout for {self.name}")
 
     @classmethod
     def create(cls, content: dict) -> ProviderConfig:
@@ -149,13 +151,13 @@ class ProviderConfig:
 
         return cls(
             name=content["name"],
-            timeout=check_duration_in(content, "timeout", "10s"),
+            timeout=validate_duration(content.get("timeout"), "timeout") or "10s",
             history_limits=history_limits,
             sweep=sweep,
         )
 
     @staticmethod
-    def parse_sweep_table(config: dict) -> dict[timedelta, SweepConfig | None]:
+    def parse_sweep_table(config: dict) -> dict[timedelta, SweepConfig]:
         sweeps = {}
         for key, sweep_config in config.items():
             sweep_key = timedelta(0) if key == "default" else parse_duration(key, "key")
@@ -173,17 +175,17 @@ class ProviderConfig:
         return limits
 
     @staticmethod
-    def get_from_duration_table(
-        delta: timedelta, table: dict[timedelta, timedelta | SweepConfig] | None
-    ) -> timedelta | SweepConfig | None:
+    def get_from_duration_table[T](delta: timedelta, table: dict[timedelta, T] | None) -> T | None:
         if not table:
-            return None  # unlimited
+            return None
+
         chosen = None
         for threshold, limit in table.items():
             if delta >= threshold:
                 chosen = limit
             else:
                 break
+
         return chosen
 
     def get_history_limit(self, interval: timedelta) -> timedelta | None:
@@ -264,7 +266,7 @@ class Asset:
             # CO: week_end=week_end,
         )
 
-    def with_id(self, new_id: id) -> Asset:
+    def with_id(self, new_id: int) -> Asset:
         return replace(self, id=new_id)
 
     def same_semantics(self, other: Asset) -> bool:
@@ -303,7 +305,7 @@ class Asset:
 @dataclass
 class Series:
     # identity
-    asset_id: int
+    asset_id: int | None
     code: str
 
     # derivative
@@ -313,7 +315,7 @@ class Series:
     # meta-data
     interval: str
     retention: Retention
-    retention_period: str
+    retention_period: str | None
     series_type: SeriesType
     bootstrap_history: str
     publication_offset: str | None
@@ -322,13 +324,13 @@ class Series:
     id: int | None = None
 
     def interval_delta(self) -> timedelta:
-        return parse_duration(self.interval, f"interval for {self.name}")
+        return require_duration(self.interval, f"interval for {self.name}")
 
     def bootstrap_history_delta(self) -> timedelta:
-        return parse_duration(self.bootstrap_history, f"bootstrap history for {self.name}")
+        return require_duration(self.bootstrap_history, f"bootstrap history for {self.name}")
 
-    def retention_delta(self) -> timedelta:
-        return parse_duration(self.retention_period)
+    def retention_delta(self) -> timedelta | None:
+        return parse_duration(self.retention_period, f"retention period for {self.name}")
 
     @classmethod
     def create(cls, asset: Asset, code: str, config: dict) -> Series:
@@ -336,39 +338,35 @@ class Series:
 
         name = f"{asset.name}:{code}"
 
-        def context():
-            return f"asset:series '{name}'"
-
         # the caller must take care of validating this exists
-        interval = parse_duration(config["interval"], context())
-        retention = config.get("retention")
-        # if no retention was specified, then we use long lived if the interval is a day or more
+        interval = require_duration(config["interval"], f"interval for {name}")
         is_intraday = Series.is_intraday_interval(interval)
-        if retention is None:
+        raw_retention = config.get("retention")
+        # if no retention was specified, then we use long lived if the interval is a day or more
+        if raw_retention is None:
             retention = Retention.SHORT_LIVED if is_intraday else Retention.LONG_LIVED
         else:
-            retention = Retention.validate(retention)
-        retention_period = check_duration_in(config, "retention_period")
-        bootstrap_history = check_duration_in(config, "bootstrap_history")
-        if bootstrap_history is None:
-            bootstrap_history = "10y" if retention == Retention.LONG_LIVED else "30d"
+            retention = Retention.require(raw_retention)  # no context, caller will provide it
+        retention_period = validate_duration(config.get("retention_period"), "retention period")
+        bootstrap_history = validate_duration(config.get("bootstrap_history"), "bootstrap history") or (
+            "10y" if retention == Retention.LONG_LIVED else "30d"
+        )
 
-        publication_offset = check_duration_in(config, "publication_offset", None)
-
+        publication_offset = validate_duration(config.get("publication_offset"), "publication offset")
         return cls(
             name=name,
             code=code,
             asset_id=asset.id,
             asset_name=asset.name,
             interval=config["interval"],
-            series_type=SeriesType.validate(config.get("series_type", SeriesType.CANDLE), context()),
+            series_type=SeriesType.require(config.get("series_type", SeriesType.CANDLE)),
             retention=retention,
             retention_period=retention_period,
             bootstrap_history=bootstrap_history,
             publication_offset=publication_offset,
         )
 
-    def with_id(self, new_id: id) -> Series:
+    def with_id(self, new_id: int) -> Series:
         return replace(self, id=new_id)
 
     def same_semantics(self, other: Series) -> bool:
@@ -438,8 +436,8 @@ class SweepConfig:
 
     @classmethod
     def from_config(cls, config: dict, context: str = "") -> SweepConfig:
-        window = parse_duration(config.get("window", "0"), context)
-        cadence = parse_duration(config.get("cadence", "0"), context)
+        window = require_duration(config.get("window", "0"), context)
+        cadence = require_duration(config.get("cadence", "0"), context)
         return cls(window=window, cadence=cadence)
 
     @classmethod

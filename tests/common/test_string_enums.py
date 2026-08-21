@@ -9,8 +9,8 @@ from finance.common.string_enums import Candle, Retention, SeriesType
 
 def test_stringenum_validate():
     with pytest.raises(ValueError) as exc_info:
-        Retention.validate("bogus")
-        assert "Invalid Retention: 'bogus'. Allowed: short_lived, long_lived" in exc_info
+        Retention.require("bogus")
+        assert "Invalid Retention: 'bogus'. Allowed: short_lived, long_lived" in str(exc_info)
 
 
 def test_stringenum_contains():

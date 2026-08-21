@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import Literal
 
@@ -12,7 +13,7 @@ from typing import Literal
 class Success[T]:
     payload: T
     warnings: list[str] = field(default_factory=list)
-    meta: dict[str, object] | None = None
+    meta: Mapping[str, object] | None = None
     ok: Literal[True] = True
 
     def to_log_dict(self) -> dict[str, object]:
@@ -28,7 +29,7 @@ class Failure:
     reason: str
     error: str | Exception | None = None
     warnings: list[str] = field(default_factory=list)
-    meta: dict[str, object] | None = None
+    meta: Mapping[str, object] | None = None
     ok: Literal[False] = False
 
     def to_log_dict(self) -> dict[str, object]:
@@ -38,6 +39,7 @@ class Failure:
             "warnings": self.warnings,
             "meta": self.meta,
         }
+
 
 type Result[T] = Success[T] | Failure
 

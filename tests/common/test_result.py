@@ -39,6 +39,7 @@ def test_result_success_with_empty_warnings():
     assert result.payload == [1]
     assert result.warnings == []
 
+
 def test_result_error_reason_only():
     result: Result = Failure(reason="timeout")
 

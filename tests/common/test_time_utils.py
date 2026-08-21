@@ -8,7 +8,6 @@ from zoneinfo import ZoneInfo
 import pytest
 
 from finance.common.time_utils import (
-    check_duration_in,
     normalize_db_time,
     now_second_precision,
     parse_datetime,
@@ -17,6 +16,7 @@ from finance.common.time_utils import (
     parse_timezone,
     parse_weekday,
     snap_to,
+    validate_duration,
     write_datetime,
     write_time,
     write_timezone,
@@ -51,13 +51,12 @@ def test_parse_duration_accepts_no_context():
     assert str(exc_info.value) == "Invalid duration 'qx'"
 
 
-def test_check_duration_in():
-    input = {"test1": "1d", "test3": "qx"}
-    assert check_duration_in(input, "test1") == "1d"
-    assert check_duration_in(input, "test2") is None
+def test_validate_duration():
+    assert validate_duration("1d", "test") == "1d"
+    assert validate_duration(None, "test") is None
     with pytest.raises(ValueError) as exc_info:
-        check_duration_in(input, "test3")
-    assert str(exc_info.value) == "Invalid duration 'qx' in test3"
+        validate_duration("qx", "test")
+    assert str(exc_info.value) == "Invalid duration 'qx' in test"
 
 
 def test_normalize_db_time_datetime(fixed_now):

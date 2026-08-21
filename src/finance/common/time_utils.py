@@ -19,7 +19,7 @@ DURATION_UNITS = {
 WEEKDAY_ABBR_MAP = {abbr.lower(): i for i, abbr in enumerate(calendar.day_abbr)}
 
 
-def parse_duration(text: str, context: str | None = None) -> timedelta | None:
+def parse_duration(text: str | None, context: str | None = None) -> timedelta | None:
     """
     Convert interval strings like '10m', '1h', '1d', '30s' into seconds.
     Raises ValueError on invalid formats.
@@ -36,14 +36,21 @@ def parse_duration(text: str, context: str | None = None) -> timedelta | None:
     return timedelta(seconds=int(value) * DURATION_UNITS[unit])
 
 
-def check_duration_in(content: dict, name: str, default: str | None = None) -> str:
+def validate_duration(text: str | None, context: str | None = None) -> str | None:
+    parse_duration(text, context)
+    return text
+
+
+'''
+def check_duration_in(content: dict, name: str) -> str | None:
     """check if the dict content contains a valid duration in the entry with key 'name'.
-    If there is no such key, use the default. Raises an error if the duration is not valid."""
-    raw_duration = content.get(name, default)
+    If there is no such key ignore. Raises an error if the duration is not valid."""
+    raw_duration = content.get(name)
     # validate that the duration is correct
     if raw_duration is not None:
         parse_duration(raw_duration, name)
     return raw_duration
+'''
 
 
 def normalize_db_time(value):
@@ -61,7 +68,7 @@ def now_second_precision():
     return datetime.now(tz=UTC).replace(microsecond=0)
 
 
-def parse_weekday(name: str) -> int | None:
+def parse_weekday(name: str | None) -> int | None:
     if name is None:
         return None
     key = name.lower()

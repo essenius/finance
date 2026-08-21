@@ -112,7 +112,7 @@ def test_ecb_malformed_json(
     ecb_provider, make_asset, make_series, json_data, expected, context, assert_error, fixed_now
 ):
     now = make_identity(fixed_now())
-    provider:EcbProvider = ecb_provider()
+    provider: EcbProvider = ecb_provider()
     provider.session.queue(200, json_data)
 
     asset = make_asset(provider_code="EUR_USD")

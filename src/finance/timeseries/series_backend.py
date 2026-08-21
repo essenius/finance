@@ -7,6 +7,8 @@ from __future__ import annotations
 from collections.abc import Callable
 from datetime import datetime, timedelta
 
+from tests.support.types import ConfigurableFactory
+
 from ..common.model import BACKEND, Asset, Series, SeriesPoint, SeriesState
 from ..common.result import Failure, Result, Success
 from ..common.time_utils import write_time, write_timezone
@@ -38,7 +40,7 @@ class SeriesBackend:
     def from_config(
         cls,
         config: dict,
-        sql_factory: BackendProtocol | None = TimescaleSqlClient,
+        sql_factory: ConfigurableFactory[BackendProtocol] = TimescaleSqlClient,
         now: Callable[[], datetime] | None = None,
     ) -> Result[SeriesBackend]:
         try:

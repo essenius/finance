@@ -7,9 +7,9 @@ from typing import Any
 
 import requests
 
-from finance.common.candle_identity import CandleIdentity
-
-from ..common.model import Asset, FetchResult, ProviderConfig, Series
+from ..common.candle_identity import CandleIdentity
+from ..common.configuration import ProviderConfig
+from ..common.model import Asset, FetchResult, Series
 from ..common.result import Failure, Result, Success
 from ..common.time_utils import now_second_precision
 

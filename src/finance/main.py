@@ -9,8 +9,10 @@ from pathlib import Path
 from typing import Any
 
 from .common.applogger import AppLogger, LogConfig
+from .common.configuration import ProviderConfig
 from .common.dict_utils import deep_merge
-from .common.model import BACKEND, Asset, ProviderConfig, Series
+from .common.guards import require
+from .common.model import BACKEND, Asset, Series
 from .common.result import Result
 from .common.time_utils import now_second_precision
 
@@ -42,7 +44,7 @@ def main(argv: list[str] | None = None) -> int:
 
 def run(
     config_path: Path | None = None,
-    load_config: Callable[[], Result[dict[str, Any]]] = None,
+    load_config: Callable[[], Result[dict[str, Any]]] | None = None,
     registry_factory: Callable[[dict[str, Asset], dict[str, Series]], Registry] = Registry,
     sql_factory: Callable[..., BackendProtocol] = TimescaleSqlClient,
     backend_factory: Callable[
@@ -57,7 +59,7 @@ def run(
     wal_factory: Callable[[Path], JsonlWAL] = JsonlWAL,
     orchestrator_factory: Callable[..., Orchestrator] = Orchestrator,
     now: Callable[[], datetime] | None = None,
-) -> None:
+) -> int:
     try:
         # these two have arguments, so shouldn't be used in defaults
         load_config = load_config or ConfigLoader(cwd=Path.cwd(), config_path=config_path).load
@@ -70,7 +72,11 @@ def run(
         # Config loader can have errors, but is also needed to setup logging.
         # So if the config loader fails, we take default logging settings.
         config_result = load_config()
-        log_section = {} if config_result.ok is False else config_result.payload.get("logging")
+        log_section = (
+            {}
+            if config_result.ok is False
+            else require(config_result.payload.get("logging"), "logging entry in config")
+        )
         log_config.setup(log_section)
         # Now we have a valid json logger, and we can start logging.
         config = unwrap(config_result)

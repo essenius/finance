@@ -5,38 +5,18 @@
 from __future__ import annotations
 
 import contextlib
-from dataclasses import dataclass
-from datetime import timedelta
 
 import psycopg
-from psycopg import sql
 
+from ..common.configuration import TimescaleConfig
+from ..common.guards import require
 from ..common.result import Failure, Result, Success
-
-
-@dataclass
-class TimescaleConfig:
-    host: str
-    dbname: str
-    user: str
-    password: str
-    port: int = 5432
-    sslmode: str = "verify-full"
-    sslrootcert: str = "system"
-
-    max_batch_size: int = 1000
-    max_batch_age: timedelta = timedelta(seconds=2.0)
-
-    CONNECTION_FIELDS = ("host", "port", "dbname", "user", "password", "sslmode", "sslrootcert")
-
-    def connect_config(self) -> dict:
-        return {field: getattr(self, field) for field in self.CONNECTION_FIELDS}
 
 
 class TimescaleSqlClient:
     def __init__(self, config: TimescaleConfig):
         self._config = config
-        self._connection = None
+        self._connection: psycopg.Connection | None = None
 
     # --- Public methods ---
 
@@ -46,9 +26,9 @@ class TimescaleSqlClient:
                 self._connection.close()
         self._connection = None
 
-    def execute_read(self, sql_query: str, params: tuple | None = None, context: str = "Read") -> Result:
+    def execute_read(self, query: str, params: tuple | None = None, context: str = "Read") -> Result[dict]:
         def operation(cursor):
-            cursor.execute(sql_query, params or ())
+            cursor.execute(query, params or ())
             rows = cursor.fetchall()
             columns = {desc.name: i for i, desc in enumerate(cursor.description)}
             return {"rows": rows, "columns": columns}
@@ -60,7 +40,7 @@ class TimescaleSqlClient:
             lambda cursor: (cursor.execute(query, params), cursor.fetchone()[0])[1], context
         )
 
-    def execute_many(self, query: str | sql.SQL, params: list[tuple], context: str) -> Result[None]:
+    def execute_many(self, query: str, params: list[tuple], context: str) -> Result[None]:
         return self._database_operation(lambda cur: cur.executemany(query, params), context)
 
     def is_connected(self) -> bool:
@@ -77,18 +57,19 @@ class TimescaleSqlClient:
         if ensure.ok is False:
             return ensure
 
+        connection = require(self._connection)
         try:
-            with self._connection.cursor() as cursor:
+            with connection.cursor() as cursor:
                 result = fn(cursor)
 
             # Commit only if fn succeeded
-            self._connection.commit()
+            connection.commit()
             return Success(result)
 
         except Exception as exc:
             # Roll back aborted transaction state
             with contextlib.suppress(Exception):
-                self._connection.rollback()
+                connection.rollback()
 
             return Failure(reason=f"{context} operation failed", error=exc)
 

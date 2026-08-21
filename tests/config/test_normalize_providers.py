@@ -4,7 +4,7 @@
 
 from datetime import timedelta
 
-from finance.common.model import ProviderConfig
+from finance.common.configuration import ProviderConfig
 from finance.config.loader import normalize_providers
 
 

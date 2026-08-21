@@ -4,7 +4,8 @@
 
 from datetime import timedelta
 
-from finance.common.model import Asset, ProviderConfig, Series
+from finance.common.configuration import ProviderConfig
+from finance.common.model import Asset, Series
 from finance.common.string_enums import Retention, SeriesType
 from finance.config.loader import ConfigLoader, check_series_templates, load_business_config, load_yaml_config
 

@@ -7,7 +7,8 @@ from datetime import datetime
 import pytest
 import requests
 
-from finance.common.model import FetchResult, ProviderConfig
+from finance.common.configuration import ProviderConfig
+from finance.common.model import FetchResult
 from finance.common.string_enums import SupportedProviders
 from finance.fetch.ecb import EcbProvider
 from finance.fetch.fred import FredProvider

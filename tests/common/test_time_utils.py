@@ -89,6 +89,7 @@ def test_parse_weekday():
 
 
 def test_parse_write_time():
+    assert write_time(None) is None
     time_str = write_time(time.min)
     assert time_str == "00:00:00"
     assert parse_time("min") == time.min
@@ -132,6 +133,8 @@ def test_now_second_precision():
 
 
 def test_parse_write_timezone():
+    assert write_timezone(None) is None
+
     timezone_str = "Pacific/Honolulu"
     timezone_obj = parse_timezone(timezone_str)
     assert timezone_obj == ZoneInfo(timezone_str)

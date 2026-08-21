@@ -5,11 +5,11 @@
 from collections.abc import Callable, Iterable
 from datetime import datetime, timedelta
 
-from finance.common.candle_identity import CandleIdentity
-from finance.common.result import Failure
-
 from ..common.applogger import AppLogger
-from ..common.model import Asset, FetchResult, ProviderConfig, Series, SeriesState, SweepConfig
+from ..common.candle_identity import CandleIdentity
+from ..common.configuration import ProviderConfig
+from ..common.model import Asset, FetchResult, Series, SeriesState, SweepConfig
+from ..common.result import Failure
 from ..common.series_calendar import SeriesCalendar
 from ..common.string_enums import SupportedProviders
 from ..common.time_utils import now_second_precision

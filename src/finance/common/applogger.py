@@ -55,6 +55,14 @@ class JsonFormatter(logging.Formatter):
         return json.dumps(payload)
 
 
+class FallbackHandler(logging.StreamHandler):
+    pass
+
+
+class AppHandler(logging.StreamHandler):
+    pass
+
+
 class LogConfig:
     LOG_LEVELS = {
         "debug": logging.DEBUG,
@@ -72,9 +80,8 @@ class LogConfig:
     def bootstrap(self) -> None:
         # If loader or orchestrator logs early, logging must not fail (optional).
         if not self.root.handlers:
-            handler = logging.StreamHandler()
+            handler = FallbackHandler()
             handler.setFormatter(logging.Formatter("%(message)s"))
-            handler._is_fallback_handler = True
             self.root.addHandler(handler)
 
         # Safe default level before config is loaded
@@ -82,19 +89,15 @@ class LogConfig:
 
     def setup(self, config: Mapping[str, Any]) -> None:
         root = logging.getLogger()
-
-        handler = logging.StreamHandler()
+        handler = AppHandler()
         formatter = JsonFormatter(datefmt=config.get("date_format", "%Y-%m-%dT%H:%M:%S%z"))
         handler.setFormatter(formatter)
-
-        # Mark this handler as yours
-        handler._is_app_handler = True
 
         root.addHandler(handler)
 
         # remove fallback handler
         for h in list(root.handlers):
-            if getattr(h, "_is_fallback_handler", False):
+            if isinstance(h, FallbackHandler):
                 root.removeHandler(h)
 
         # Set level
@@ -104,7 +107,7 @@ class LogConfig:
 
 def _is_json_active() -> bool:
     root = logging.getLogger()
-    return any(getattr(h, "_is_app_handler", False) for h in root.handlers)
+    return any(isinstance(h, AppHandler) for h in root.handlers)
 
 
 class AppLogger:

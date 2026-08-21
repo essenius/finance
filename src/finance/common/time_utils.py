@@ -114,7 +114,9 @@ def parse_time(value) -> time | None:
         raise ValueError(f"Cannot understand time '{value}'.") from None
 
 
-def write_time(t: time) -> str:
+def write_time(t: time | None) -> str | None:
+    if t is None:
+        return None
     return time.isoformat(t)
 
 
@@ -125,7 +127,11 @@ def parse_timezone(s: str) -> ZoneInfo:
         raise ValueError(f"Cannot understand timezone '{s}'.") from None
 
 
-def write_timezone(tz: tzinfo) -> str:
+def write_timezone(tz: tzinfo | None) -> str | None:
+
+    if tz is None:
+        return None
+
     # Special-case Python's UTC
     if tz is UTC:
         return "UTC"

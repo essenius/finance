@@ -4,10 +4,9 @@
 
 from datetime import UTC, datetime
 
-from finance.common.candle_identity import CandleIdentity
-from finance.common.result import Failure, Success
-
+from ..common.candle_identity import CandleIdentity
 from ..common.model import Asset, FetchData, FetchResult, Series, SeriesPoint
+from ..common.result import Failure, Success
 from .provider import MarketDataProvider
 
 BASE_URL = "https://api.stlouisfed.org/fred/series/observations"

@@ -8,8 +8,7 @@ from dataclasses import dataclass, replace
 from datetime import UTC, date, datetime, time, timedelta
 from zoneinfo import ZoneInfo
 
-from finance.common.candle_identity import CandleIdentity
-
+from ..common.candle_identity import CandleIdentity
 from ..common.model import AssetMetadata, Series
 from ..common.time_utils import parse_duration, parse_weekday, snap_to
 

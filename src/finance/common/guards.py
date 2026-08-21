@@ -4,7 +4,7 @@
 
 from datetime import timedelta
 
-from finance.common.time_utils import parse_duration
+from ..common.time_utils import parse_duration
 
 
 def _annotate(context: str) -> str:

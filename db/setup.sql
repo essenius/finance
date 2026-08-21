@@ -196,8 +196,8 @@ CREATE TABLE IF NOT EXISTS asset (
     first_trade_date DATE,
 
     timezone         TEXT,
-    week_start       week_day NOT NULL,
-    week_end         week_day NOT NULL,
+    week_start       week_day,
+    week_end         week_day,
     market_open      TIME WITHOUT TIME ZONE,
     market_close     TIME WITHOUT TIME ZONE,
     

@@ -4,8 +4,7 @@
 
 from datetime import datetime
 
-from finance.common.guards import require
-
+from ..common.guards import require
 from ..common.model import SeriesPoint, SeriesState
 from ..common.result import Result, Success
 from ..state.wal import JsonlWAL

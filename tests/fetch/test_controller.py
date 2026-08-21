@@ -9,7 +9,8 @@ from unittest.mock import Mock
 from zoneinfo import ZoneInfo
 
 from finance.common.candle_identity import CandleIdentity
-from finance.common.model import Asset, FetchResult, ProviderConfig, Series, SeriesState, SweepConfig
+from finance.common.configuration import ProviderConfig
+from finance.common.model import Asset, FetchResult, Series, SeriesState, SweepConfig
 from finance.common.result import Failure, Success
 from finance.common.series_calendar import SeriesCalendar
 from finance.common.string_enums import Retention, SupportedProviders

@@ -6,9 +6,8 @@ from datetime import UTC, date, datetime, time
 from urllib.parse import quote
 from zoneinfo import ZoneInfo
 
-from finance.common.applogger import AppLogger
-from finance.common.candle_identity import CandleIdentity
-
+from ..common.applogger import AppLogger
+from ..common.candle_identity import CandleIdentity
 from ..common.model import Asset, AssetMetadata, FetchData, FetchResult, Series, SeriesPoint, SeriesPointsResult
 from ..common.result import Failure, Result, Success
 from ..common.string_enums import Candle

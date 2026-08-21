@@ -10,9 +10,11 @@ from zoneinfo import ZoneInfo
 import yaml
 from dotenv import dotenv_values
 
+from ..common.configuration import ProviderConfig
 from ..common.dict_utils import deep_merge
+from ..common.guards import require_key
 from ..common.introspection import here
-from ..common.model import BACKEND, Asset, ProviderConfig, Series
+from ..common.model import BACKEND, Asset, Series
 from ..common.paths import resolve_config_path
 from ..common.result import Failure, Result, Success
 from ..common.string_enums import Retention, SeriesType, SupportedProviders
@@ -96,16 +98,6 @@ def load_yaml_config(yaml_path: Path) -> Result[dict]:
             return Success(result)
     except yaml.YAMLError as exc:
         return Failure(reason="Invalid YAML", error=exc, meta=context)
-
-
-def require_key(cfg: dict[str, object], key: str, context: str) -> object:
-    """
-    Return cfg[key] if present, otherwise raise a ValueError.
-    This has to be caught in the function it is used in.
-    """
-    if key not in cfg:
-        raise ValueError(f"Missing required field '{key}' in {context}")
-    return cfg[key]
 
 
 # ---------------------------------

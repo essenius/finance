@@ -6,7 +6,8 @@ from datetime import datetime, timedelta
 
 import pytest
 
-from finance.common.model import Asset, AssetMetadata, ProviderConfig, Series, SeriesPoint, SeriesState, SweepConfig
+from finance.common.configuration import ProviderConfig
+from finance.common.model import Asset, AssetMetadata, Series, SeriesPoint, SeriesState, SweepConfig
 from finance.common.string_enums import Retention, SeriesType
 
 

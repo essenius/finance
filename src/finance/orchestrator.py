@@ -7,6 +7,7 @@ from typing import Literal, overload
 import finance
 
 from .common.applogger import AppLogger
+from .common.guards import require
 from .common.model import FetchResult, Series, SeriesPoints
 from .common.result import Result
 from .fetch.controller import FetchController
@@ -105,10 +106,11 @@ class Orchestrator:
                 all_ok = False
 
         if all_ok:
-            self.state.update_state(series.id, batch_first, batch_last)
-            range = self.state.series[series.id]
+            series_id = require(series.id)
+            self.state.update_state(series_id, batch_first, batch_last)
+            range = self.state.series[series_id]
             logger.debug(
-                f"Range for {series.name} after updating: {range.first_point.isoformat()} - {range.last_point.isoformat()}"
+                f"Range for {series.name} after updating: {require(range.first_point).isoformat()} - {require(range.last_point).isoformat()}"
             )
         return all_ok
 
@@ -118,10 +120,13 @@ class Orchestrator:
         if result.ok is False:
             return False
 
+        payload = require(payload)
         series = self.registry.get_series_by_id(payload.series_id)
 
         if payload.metadata is not None:
-            asset_to_save = self.registry.register_provider_metadata(series.asset_id, payload.metadata)
+            asset_to_save = self.registry.register_provider_metadata(
+                require(series.asset_id, "asset ID"), payload.metadata
+            )
             if asset_to_save is not None:
                 stored = unwrap(self.backend.store_asset(asset_to_save))
                 self.registry.register_stored_asset(stored)

@@ -8,6 +8,7 @@ from dataclasses import dataclass, field, replace
 from datetime import UTC, date, datetime, time, timedelta
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
+from finance.common.candle_identity import CandleIdentity
 from finance.common.guards import require_duration
 
 from ..common.result import Result
@@ -427,6 +428,12 @@ class SeriesState:
 
         if self.is_none_or_greater(self.first_point, first):
             self.first_point = first
+
+    def update_sweep_state(self, sweep: SweepConfig, last: CandleIdentity):
+        store_label = last.store_label()
+        self.next_sweep = store_label + sweep.cadence
+        self.sweep_start = store_label - sweep.window
+        self.needs_save = True
 
 
 @dataclass

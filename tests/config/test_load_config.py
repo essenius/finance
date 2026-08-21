@@ -78,6 +78,7 @@ business:
     assert asset.id is None
 
     metadata = asset.config_metadata
+    assert metadata is not None
     assert metadata.instrument == "index"
     assert metadata.currency is None
     assert metadata.exchange == "NYSE"

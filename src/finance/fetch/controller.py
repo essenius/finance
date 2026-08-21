@@ -84,11 +84,13 @@ class FetchController:
             return None
         return state.sweep_start
 
+    """
     def update_sweep_state(self, state: SeriesState, sweep: SweepConfig, last: CandleIdentity):
         store_label = last.store_label()
         state.next_sweep = store_label + sweep.cadence
         state.sweep_start = store_label - sweep.window
         state.needs_save = True
+    """
 
     @staticmethod
     def get_required_range(
@@ -157,7 +159,7 @@ class FetchController:
             start, end = prepend_range
             if end is None:
                 # Full history update, is also a sweep
-                self.update_sweep_state(state, sweep_config, last_req)
+                state.update_sweep_state(sweep_config, last_req)
                 end = last_req
             return (start, end, False)
 
@@ -167,7 +169,7 @@ class FetchController:
             if retention is not None:
                 sweep_start = max(sweep_start, now - retention)
             first_identity = series_calendar.snap_forward_identity(sweep_start)
-            self.update_sweep_state(state, sweep_config, last_req)
+            state.update_sweep_state(sweep_config, last_req)
             return (first_identity, last_req, False)
 
         if last_req.store_label() > state.last_point:

@@ -38,13 +38,16 @@ def test_get_returns_none_when_rebuild_finds_empty(state):
 # ---------------------------------------------------------------------------
 
 
-def test_save_writes_actual_file(state_env):
+def test_save_writes_actual_file(state_env, ts):
 
     state, backend, wal = state_env
 
     backend.flush.return_value = Success(0)
     backend.save_sweep.return_value = None
-    state.series = {1: SeriesState(needs_save=True), 2: SeriesState(needs_save=False)}
+    state.series = {
+        1: SeriesState(needs_save=True, sweep_start=ts(0), next_sweep=ts(0)),
+        2: SeriesState(needs_save=False),
+    }
 
     state.save()
     assert backend.save_sweep.call_count == 1
@@ -85,10 +88,10 @@ def test_update_composite(state):
 # -------------
 
 
-def test_update_state_save_sweep(state_env):
+def test_update_state_save_sweep(state_env, ts):
     state, backend, _ = state_env
     backend.save_sweep.return_value = None
-    state.series = {1: SeriesState(needs_save=True)}
+    state.series = {1: SeriesState(needs_save=True, next_sweep=ts(0), sweep_start=ts(0))}
     state.update_state(1, first=datetime.min, last=datetime.max)
     assert not state.series[1].needs_save
     assert backend.save_sweep.call_count == 1

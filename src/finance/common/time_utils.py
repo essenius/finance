@@ -130,19 +130,18 @@ def write_timezone(tz: tzinfo) -> str:
     if tz is UTC:
         return "UTC"
 
-    # ZoneInfo: use canonical key
-    if hasattr(tz, "key"):
+    if isinstance(tz, ZoneInfo):
         return tz.key
 
     raise ValueError("Cannot write timezone without key field")
 
 
-def parse_datetime(s: str) -> datetime:
+def parse_datetime(s: str) -> datetime | None:
     try:
         return datetime.fromisoformat(s) if s is not None else None
     except Exception:
         raise ValueError(f"Cannot understand datetime '{s}'.") from None
 
 
-def write_datetime(t: time) -> str:
-    return datetime.isoformat(t)
+def write_datetime(dt: datetime) -> str:
+    return datetime.isoformat(dt)

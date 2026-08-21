@@ -4,6 +4,8 @@
 
 from datetime import datetime
 
+from finance.common.guards import require
+
 from ..common.model import SeriesPoint, SeriesState
 from ..common.result import Result, Success
 from ..state.wal import JsonlWAL
@@ -29,14 +31,16 @@ class State:
             series_id = entry.series_id
             timestamp = entry.time
 
-            st = self.get_series_state(series_id)
+            st = require(self.get_series_state(series_id), "series state")
             st.update_point_range(timestamp, timestamp)
 
     def save(self) -> None:
         self.flush_wal()
         for id, state_entry in self.series.items():
             if state_entry.needs_save:
-                self._backend.save_sweep(id, state_entry.next_sweep, state_entry.sweep_start)
+                self._backend.save_sweep(
+                    id, require(state_entry.next_sweep, "next"), require(state_entry.sweep_start, "start")
+                )
                 state_entry.needs_save = False
 
     def get_series_state(self, series_id: int) -> SeriesState | None:
@@ -51,10 +55,10 @@ class State:
         """
         Update the state after a batch has been ingested. Save if needed
         """
-        s = self.get_series_state(series_id)
+        s = require(self.get_series_state(series_id), "series state")
         s.update_point_range(first, last)
         if s.needs_save:
-            self._backend.save_sweep(id, s.next_sweep, s.sweep_start)
+            self._backend.save_sweep(series_id, require(s.next_sweep, "next"), require(s.sweep_start, "start"))
             s.needs_save = False
 
     def flush_wal(self) -> Result[int]:
@@ -72,7 +76,7 @@ class State:
 
         # force the backend to flush to the database
         result = self._backend.flush()
-        if result.ok and (result.payload > 0):
+        if result.ok is True and result.payload > 0:
             self.sync_wal(result.payload)
             flushed_count += result.payload
         return Success(flushed_count, warnings=warnings)

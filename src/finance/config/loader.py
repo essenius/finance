@@ -33,8 +33,7 @@ class ConfigLoader:
 
     def load(self) -> Result[dict]:
 
-        env_vars = self.load_env_variables().payload
-        # can't fail so no need to check for that
+        env_vars = self.load_env_variables().payload  # always Success, so no test needed
 
         cfg_path = self.config_path
         if not cfg_path and env_vars.get("config") is not None:
@@ -42,7 +41,8 @@ class ConfigLoader:
         if not cfg_path:
             cfg_path = "config.yaml"
 
-        yaml_path = cfg_path if Path(cfg_path).is_absolute() else (self.cwd / cfg_path).resolve()
+        cfg_path = Path(cfg_path)
+        yaml_path = cfg_path if cfg_path.is_absolute() else (self.cwd / cfg_path).resolve()
         raw_cfg = load_yaml_config(yaml_path)
         if raw_cfg.ok is False:
             return raw_cfg
@@ -59,7 +59,7 @@ class ConfigLoader:
     # Load secrets from .env
     # -----------------------------
 
-    def load_env_variables(self) -> Result[dict]:
+    def load_env_variables(self) -> Success[dict]:
         env_file_values = dotenv_values(self.env_path)
         # .env overrides environ
         merged = {**self.environ, **env_file_values}
@@ -98,7 +98,7 @@ def load_yaml_config(yaml_path: Path) -> Result[dict]:
         return Failure(reason="Invalid YAML", error=exc, meta=context)
 
 
-def require_key(cfg: dict, key: str, context: str) -> str | dict:
+def require_key(cfg: dict[str, object], key: str, context: str) -> object:
     """
     Return cfg[key] if present, otherwise raise a ValueError.
     This has to be caught in the function it is used in.
@@ -226,6 +226,7 @@ def normalize_assets_and_series(
             asset_list.append(asset)
 
             series_config = require_key(cfg, "series", context)
+            assert isinstance(series_config, dict)
 
             for code, series_def in series_config.items():
                 config = _parse_metadata(series_def, metadata_template, {})

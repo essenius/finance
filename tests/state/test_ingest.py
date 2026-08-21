@@ -3,16 +3,9 @@
 # File: tests/state/test_ingest.py
 
 from dataclasses import replace
-from datetime import UTC, datetime
 
 from finance.common.model import SeriesState
 from finance.common.result import Failure, Success
-
-
-def make_series_state(start: int = 0, end: int = 1200) -> SeriesState:
-    return SeriesState(
-        first_point=datetime.fromtimestamp(start, tz=UTC), last_point=datetime.fromtimestamp(end, tz=UTC)
-    )
 
 
 def test_ingest_enqueues_and_does_not_update_state(state_env, make_entry):
@@ -94,11 +87,11 @@ def test_ingest_first_point(state_env, make_entry, unwrap):
     wal.enqueue.assert_called_once()
 
 
-def test_ingest_no_first_timestamp(state_env, make_entry):
+def test_ingest_no_first_timestamp(state_env, make_entry, ts):
     state, backend, wal = state_env
     backend.add_point.return_value = Success(0)
     # inconsistent state, should treat last as None
-    state.series[1] = SeriesState(last_point=1200)
+    state.series[1] = SeriesState(last_point=ts(1200))
     args = make_entry(timestamp=1200)
     write = replace(args["point"], close=1.11)
 
@@ -109,11 +102,11 @@ def test_ingest_no_first_timestamp(state_env, make_entry):
     wal.enqueue.assert_called_once()
 
 
-def test_ingest_no_last_timestamp(state_env, make_entry):
+def test_ingest_no_last_timestamp(state_env, make_entry, ts):
     state, backend, wal = state_env
     backend.add_point.return_value = Success(0)
     # inconsistent state, should treat last as None
-    state.series[1] = SeriesState(first_point=0)
+    state.series[1] = SeriesState(first_point=ts(0))
 
     args = make_entry(timestamp=0)
     write = replace(args["point"], close=1.11)
@@ -125,7 +118,7 @@ def test_ingest_no_last_timestamp(state_env, make_entry):
     wal.enqueue.assert_called_once()
 
 
-def test_ingest_new_write_with_flush(state_env, make_entry):
+def test_ingest_new_write_with_flush(state_env, make_entry, make_series_state):
     state, backend, wal = state_env
     backend.add_point.return_value = Success(1)
 
@@ -140,7 +133,7 @@ def test_ingest_new_write_with_flush(state_env, make_entry):
     wal.enqueue.assert_called_once()
 
 
-def test_ingest_in_range(state_env, make_entry):
+def test_ingest_in_range(state_env, make_entry, make_series_state):
     state, backend, wal = state_env
     backend.add_point.return_value = Success(2)
 
@@ -156,7 +149,7 @@ def test_ingest_in_range(state_env, make_entry):
     wal.enqueue.assert_called_once()
 
 
-def test_ingest_before_range(state_env, make_entry):
+def test_ingest_before_range(state_env, make_entry, make_series_state):
     state, backend, wal = state_env
     backend.add_point.return_value = Success(1)
     state.series[1] = make_series_state(start=1200, end=1800)

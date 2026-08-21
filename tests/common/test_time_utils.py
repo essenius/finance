@@ -7,6 +7,7 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
+from finance.common.guards import require
 from finance.common.time_utils import (
     normalize_db_time,
     now_second_precision,
@@ -96,11 +97,11 @@ def test_parse_write_time():
     assert time_str == "23:59:59.999999"
     assert parse_time("max") == time.max
 
-    a_datetime = parse_time(955)  # 15:55 in sexagesimal
-    assert a_datetime == time(hour=15, minute=55)
-    assert write_time(a_datetime) == "15:55:00", "writing always in seconds"
+    a_time = require(parse_time(955), "a_time")  # 15:55 in sexagesimal
+    assert a_time == time(hour=15, minute=55)
+    assert write_time(a_time) == "15:55:00", "writing always in seconds"
 
-    a_datetime = parse_time("9:00:05")
+    a_datetime = require(parse_time("9:00:05"), "a_datetime")
     assert a_datetime == time(hour=9, second=5), "string parsing uses seconds too"
     time_str = write_time(a_datetime)
     assert time_str == "09:00:05"

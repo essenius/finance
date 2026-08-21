@@ -31,17 +31,18 @@ def test_normalize_assets_basic(unwrap):
         }
     }
 
-    assets, series = unwrap(normalize_assets_and_series(raw, {}))
+    assets, series_list = unwrap(normalize_assets_and_series(raw, {}))
 
     asset: Asset = assets[0]
     assert asset.provider == "yahoo"
     assert asset.provider_code == "EURUSD=X"
     assert asset.name == "eurusd"
     assert asset.symbol == "EURUSD"
+    assert asset.config_metadata is not None
     assert asset.config_metadata.instrument == "Forex"
 
     # series fields preserved / defaulted
-    series: Series = series[0]
+    series: Series = series_list[0]
     assert series.name == "eurusd:daily"
     assert series.interval == "1d"
     assert series.interval_delta() == timedelta(days=1)

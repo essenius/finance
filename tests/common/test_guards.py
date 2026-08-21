@@ -14,6 +14,9 @@ def test_require():
     with pytest.raises(ValueError) as ve:
         require(None, "N")
     assert "Missing required value in N" in str(ve)
+    with pytest.raises(ValueError) as ve:
+        require(None)
+    assert ve.value.args[0] == "Missing required value"
 
 
 def test_require_key():

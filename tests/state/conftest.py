@@ -6,7 +6,7 @@ from datetime import UTC, datetime
 
 import pytest
 
-from finance.common.model import Series, SeriesPoint
+from finance.common.model import Series, SeriesPoint, SeriesState
 from tests.support.types import ConfigurableFactory, Factory
 
 
@@ -34,3 +34,11 @@ def two_wal_entries(make_entry: ConfigurableFactory) -> Factory[list[SeriesPoint
         ]
 
     return _entries
+
+
+@pytest.fixture
+def make_series_state(ts) -> ConfigurableFactory[SeriesState]:
+    def _make(start: int = 0, end: int = 1200) -> SeriesState:
+        return SeriesState(first_point=ts(start), last_point=ts(end))
+
+    return _make

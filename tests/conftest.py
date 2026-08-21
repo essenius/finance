@@ -199,6 +199,14 @@ def state(state_env) -> State:
     return state
 
 
+@pytest.fixture()
+def ts() -> ConfigurableFactory[datetime]:
+    def _make(ts1: int) -> datetime:
+        return datetime.fromtimestamp(ts1, tz=UTC)
+
+    return _make
+
+
 # ---------------------------------------------------------------------------
 # Logging fixtures
 # ---------------------------------------------------------------------------

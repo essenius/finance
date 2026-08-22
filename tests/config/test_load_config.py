@@ -3,7 +3,9 @@
 # File: tests/config/test_load_config.py
 
 from datetime import timedelta
+from unittest.mock import patch
 
+from finance.common.app_config import AppConfig
 from finance.common.configuration import ProviderConfig
 from finance.common.model import Asset, Series
 from finance.common.string_enums import Retention, SeriesType
@@ -57,21 +59,21 @@ business:
       expression: "fred_10y_daily - fred_2y_daily"
 """)
 
-    env_file.write_text("TIMESCALEDB_URL=http://y\nTIMESCALEDB_DB=db1\n")
+    env_file.write_text("TIMESCALEDB_HOST=y\nTIMESCALEDB_DB=db1\nTIMESCALEDB_PASSWORD=password\n")
 
-    environ = {"TIMESCALEDB_URL": "http://x", "TIMESCALEDB_DB": "db2"}
+    environ = {"TIMESCALEDB_HOST": "x", "TIMESCALEDB_DB": "db2", "TIMESCALEDB_USER": "user"}
 
     loader = ConfigLoader(cwd=tmp_path, environ=environ)
     result = loader.load()
 
-    cfg = unwrap(result)
+    app_config: AppConfig = unwrap(result)
 
     # providers
-    assert cfg["providers"]["yahoo"].timeout == "10s"
+    assert app_config.providers["yahoo"].timeout == "10s"
 
     # assets
-    assert len(cfg["assets"]) == 1
-    asset: Asset = cfg["assets"][0]
+    assert len(app_config.assets) == 1
+    asset: Asset = app_config.assets[0]
     assert asset.provider_code == "^GSPC"
     assert asset.name == "spx"
     assert asset.symbol == "SPX"
@@ -90,8 +92,8 @@ business:
     assert metadata.week_end == "sat"
 
     # series
-    assert len(cfg["series"]) == 1
-    series: Series = cfg["series"][0]
+    assert len(app_config.series) == 1
+    series: Series = app_config.series[0]
     assert series.asset_id is None
     assert series.asset_name == "spx"
     assert series.bootstrap_history == "10y"
@@ -108,13 +110,13 @@ business:
     assert cfg["composites"]["spread"]["asset"].symbol == "SPREAD"
     """
 
-    # secrets -- .env overrides environment
-    assert cfg["secrets"]["timescaledb"]["url"] == "http://y"
-    assert cfg["secrets"]["timescaledb"]["db"] == "db1"
+    backend_config = app_config.timescaledb
+    assert backend_config.host == "y"
+    assert backend_config.dbname == "db1"
 
-    assert cfg["paths"]["wal"].is_absolute()
-
-    assert cfg["paths"]["wal"].name == "mywal.jsonl"
+    wal_path = app_config.paths["wal"]
+    assert wal_path.is_absolute()
+    assert wal_path.name == "mywal.jsonl"
 
 
 def test_load_config_missing_file(tmp_path, assert_error):
@@ -127,18 +129,22 @@ def test_load_config_missing_file(tmp_path, assert_error):
 
 def test_load_config_dev_mode(monkeypatch, tmp_path, unwrap):
     monkeypatch.chdir(tmp_path)
-    monkeypatch.delenv("FINANCE_CONFIG", raising=False)
     (tmp_path / "config.yaml").write_text("business:\n  providers: {}\n  assets: {}\n  composites: {}\n")
-    (tmp_path / ".env").write_text("TIMESCALEDB_URL=http://x\nTIMESCALEDB_DB=db\n")
+    (tmp_path / ".env").write_text(
+        "TIMESCALEDB_HOST=x\nTIMESCALEDB_DB=db\nTIMESCALEDB_USER=user\nTIMESCALEDB_PASSWORD=password"
+    )
 
-    loader = ConfigLoader(cwd=tmp_path)
-    result = loader.load()
+    with patch.dict("os.environ", {}, clear=True):
+        loader = ConfigLoader(cwd=tmp_path)
+        result = loader.load()
+
     cfg = unwrap(result)
     expected_params = {
         "timeout": "10s",
         "history_limits": {},
+        "sweep": {},
     }
-    assert cfg["providers"] == {
+    assert cfg.providers == {
         "yahoo": ProviderConfig(name="yahoo", **expected_params),
         "ecb": ProviderConfig(name="ecb", **expected_params),
         "fred": ProviderConfig(name="fred", **expected_params),
@@ -157,13 +163,13 @@ environment:
     wal: "data/mywal.jsonl"
 """)
 
-    env_file.write_text("TIMESCALEDB_URL=http://x\nTIMESCALEDB_DB=db\nFINANCE_CONFIG=my_config.yaml")
+    env_file.write_text("TIMESCALEDB_HOST=x\nTIMESCALEDB_DB=db\nFINANCE_CONFIG=my_config.yaml")
 
     loader = ConfigLoader(cwd=tmp_path)
     result = loader.load()
-    cfg = unwrap(result)
+    cfg: AppConfig = unwrap(result)
 
-    assert cfg["paths"]["wal"] == tmp_path / "data" / "mywal.jsonl"
+    assert cfg.paths["wal"] == tmp_path / "data" / "mywal.jsonl"
 
 
 def test_load_check_series_templates_minimal(unwrap):
@@ -190,5 +196,5 @@ def test_load_check_series_templates_maximal(unwrap):
 
 def test_load_business_config_template_error(assert_error):
     config = {"series_templates": {"t1": {"interval": "qx"}}}
-    result = load_business_config(config)
+    result = load_business_config(config, {})
     assert_error(result, "Could not parse series template 't1'", "Invalid duration 'qx' in interval")

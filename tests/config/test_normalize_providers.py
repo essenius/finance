@@ -18,7 +18,7 @@ def test_normalize_providers_basic(unwrap):
 
     fred = {}
 
-    providers = unwrap(normalize_providers({"ecb": ecb, "fred": fred, "bogus": "ignored"}))
+    providers = unwrap(normalize_providers({"ecb": ecb, "fred": fred, "bogus": "ignored"}, {}))
 
     default_params = {"timeout": "10s", "history_limits": {}, "sweep": {}}
 
@@ -27,6 +27,7 @@ def test_normalize_providers_basic(unwrap):
     assert providers["ecb"] == ProviderConfig(
         name="ecb",
         timeout="20s",
+        api_key=None,
         history_limits={timedelta(0): timedelta(days=60), timedelta(days=1): None},
         sweep={},
     ), "ECB"
@@ -34,5 +35,5 @@ def test_normalize_providers_basic(unwrap):
 
 def test_normalize_providers_wrong_timeout(assert_error):
     fred = {"timeout": "bogus"}
-    providers = normalize_providers({"fred": fred})
+    providers = normalize_providers({"fred": fred}, {})
     assert_error(providers, "Could not parse provider 'fred'", "Invalid duration 'bogus' in timeout")

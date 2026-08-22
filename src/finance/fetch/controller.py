@@ -19,8 +19,10 @@ from .ecb import EcbProvider
 from .fred import FredProvider
 from .yahoo import YahooProvider
 
-# make sure this aligns with PROVIDERS in config/loader.py
-PROVIDER_REGISTRY = {
+PROVIDER_REGISTRY: dict[
+    SupportedProviders,
+    type[MarketDataProvider],
+] = {
     SupportedProviders.YAHOO: YahooProvider,
     SupportedProviders.FRED: FredProvider,
     SupportedProviders.ECB: EcbProvider,
@@ -30,10 +32,10 @@ logger = AppLogger("fetch")
 
 
 def create_providers(
-    providers_config: dict[str, ProviderConfig], api_keys: dict[str, dict]
+    providers_config: dict[str, ProviderConfig], api_keys: dict[str, str]
 ) -> dict[str, MarketDataProvider]:
     result = {
-        name: provider_class(provider_config=providers_config[name], api_key=api_keys.get(name))
+        name.value: provider_class(provider_config=providers_config[name.value], api_key=api_keys.get(name.value))
         for name, provider_class in PROVIDER_REGISTRY.items()
     }
     return result

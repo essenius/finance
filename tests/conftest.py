@@ -54,8 +54,8 @@ def fixed_now() -> Factory[datetime]:
 def unwrap() -> Callable[[Result], object]:
 
     def _unwrap(result: Result) -> object:
-        assert result.ok is True
-        assert result.payload is not None
+        assert result.ok is True, "result is Success"
+        assert result.payload is not None, "Payload set"
         return result.payload
 
     return _unwrap

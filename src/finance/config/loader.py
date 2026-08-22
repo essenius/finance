@@ -3,14 +3,16 @@
 # File: src/finance/config/loader.py
 
 import os
-from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 from zoneinfo import ZoneInfo
 
 import yaml
 from dotenv import dotenv_values
 
-from ..common.configuration import ProviderConfig
+from finance.common.app_config import AppConfig, BusinessConfig
+
+from ..common.configuration import LoggingConfig, ProviderConfig, TimescaleConfig
 from ..common.dict_utils import deep_merge
 from ..common.guards import require_key
 from ..common.introspection import here
@@ -21,25 +23,22 @@ from ..common.string_enums import Retention, SeriesType, SupportedProviders
 from ..common.time_utils import validate_duration
 
 
-@dataclass
-class EmptyConfig:
-    pass
-
-
 class ConfigLoader:
+    providers: dict[str, ProviderConfig]
+
     def __init__(self, *, cwd: Path, config_path: Path | None = None, environ=os.environ):
         self.cwd = cwd
         self.env_path = (cwd / ".env").resolve()
         self.environ = environ
         self.config_path = config_path
 
-    def load(self) -> Result[dict]:
+    def load(self) -> Result[AppConfig]:
 
-        env_vars = self.load_env_variables().payload  # always Success, so no test needed
+        timescale_env, api_keys, config_path = self.load_env_variables()
 
         cfg_path = self.config_path
-        if not cfg_path and env_vars.get("config") is not None:
-            cfg_path = env_vars["config"]
+        if not cfg_path and config_path is not None:
+            cfg_path = config_path
         if not cfg_path:
             cfg_path = "config.yaml"
 
@@ -49,19 +48,29 @@ class ConfigLoader:
         if raw_cfg.ok is False:
             return raw_cfg
 
-        # cannot fail, so not wrapped in result
-        env = load_environment_config(raw_cfg.payload.get("environment", {}), self.cwd)
-        biz_result = load_business_config(raw_cfg.payload.get("business", {}))
+        paths, timescale_yaml, logging = load_environment_config(raw_cfg.payload.get("environment", {}), self.cwd)
+        merged_config = timescale_env | timescale_yaml
+        result = TimescaleConfig.validate(merged_config)
+        if result.ok is False:
+            return result
+        timescale_cfg = TimescaleConfig.from_config(timescale_env | timescale_yaml)
+        logging_cfg = LoggingConfig.from_config(logging)
+        biz_result = load_business_config(raw_cfg.payload.get("business", {}), api_keys)
         if biz_result.ok is False:
             return biz_result
-
-        return Success(env | biz_result.payload | env_vars)
+        app_config = AppConfig(
+            **vars(biz_result.payload),
+            paths=paths,
+            timescaledb=timescale_cfg,
+            logging=logging_cfg,
+        )
+        return Success(app_config)
 
     # -----------------------------
     # Load secrets from .env
     # -----------------------------
 
-    def load_env_variables(self) -> Success[dict]:
+    def load_env_variables(self) -> tuple[dict[str, Any], dict[str, str], str | None]:
         env_file_values = dotenv_values(self.env_path)
         # .env overrides environ
         merged = {**self.environ, **env_file_values}
@@ -79,7 +88,7 @@ class ConfigLoader:
             elif key == "FINANCE_CONFIG":
                 config = value
 
-        return Success({"secrets": {BACKEND: timescaledb, "api_keys": api_keys}, "config": config})
+        return timescaledb, api_keys, config
 
 
 # -----------------------------
@@ -94,7 +103,7 @@ def load_yaml_config(yaml_path: Path) -> Result[dict]:
 
     try:
         with yaml_path.open("r", encoding="utf-8") as f:
-            result = yaml.safe_load(f)
+            result = yaml.safe_load(f) or {}
             return Success(result)
     except yaml.YAMLError as exc:
         return Failure(reason="Invalid YAML", error=exc, meta=context)
@@ -105,7 +114,7 @@ def load_yaml_config(yaml_path: Path) -> Result[dict]:
 # ---------------------------------
 
 
-def normalize_providers(raw_providers: dict) -> Result[dict[str, ProviderConfig]]:
+def normalize_providers(raw_providers: dict[str, Any], api_keys: dict[str, str]) -> Result[dict[str, ProviderConfig]]:
 
     def fail(error):
         return Failure(reason=f"Could not parse provider '{provider}'", error=error)
@@ -121,7 +130,7 @@ def normalize_providers(raw_providers: dict) -> Result[dict[str, ProviderConfig]
             return fail(f"Invalid timezone '{tz_name}'")
 
         try:
-            config = ProviderConfig.create(content)
+            config = ProviderConfig.from_config(content, api_keys)
         except ValueError as ve:
             return fail(ve)
 
@@ -202,15 +211,6 @@ def normalize_assets_and_series(
 
             meta_def = cfg.get("metadata")
             cfg = _parse_metadata(meta_def, metadata_template, cfg)
-            # CO: if isinstance(meta_def, dict):
-            # CO:     cfg |= meta_def
-            # CO: else:
-            # CO:     template_list = meta_def if isinstance(meta_def, list) else [meta_def]
-            # CO:     for name in template_list:
-            # CO:         template = metadata_template.get(name)
-            # CO:         if template is None:
-            # CO:             return asset_parse_error(asset_name, f"Could not find metadata template '{name}'")
-            # CO:         cfg = deep_merge(cfg, template)
 
             tags = {k.lower(): v for k, v in cfg.get("tags", {}).items()}
             cfg |= tags
@@ -222,16 +222,6 @@ def normalize_assets_and_series(
 
             for code, series_def in series_config.items():
                 config = _parse_metadata(series_def, metadata_template, {})
-                # CO: if isinstance(series_def, dict):
-                # CO:     config = dict(series_def)
-                # CO: else:
-                # CO:     config = {}
-                # CO:     template_list = series_def if isinstance(series_def, list) else [series_def]
-                # CO:     for name in template_list:
-                # CO:         template = metadata_template.get(name)
-                # CO:         if template is None:
-                # CO:             return asset_parse_error(asset_name, f"Could not find metadata template '{name}'")
-                # CO:         config = deep_merge(config, template)
                 require_key(config, "interval", context)
                 series = Series.create(asset=asset, code=code, config=config)
                 series_list.append(series)
@@ -287,30 +277,28 @@ def normalize_composites(raw_composites: dict) -> Result[dict]:
 '''
 
 
-def load_environment_config(env_cfg: dict, project_root: Path) -> dict:
+def load_environment_config(env_cfg: dict, project_root: Path) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
     paths_cfg = env_cfg.get("paths", {})
     paths = {key: resolve_config_path(value, key, project_root) for key, value in paths_cfg.items()}
     timescaledb_cfg = env_cfg.get(BACKEND, {})
     logging_cfg = env_cfg.get("logging", {})
-    return {"paths": paths, BACKEND: timescaledb_cfg, "logging": logging_cfg}
+    return paths, timescaledb_cfg, logging_cfg
 
 
-def load_business_config(biz_cfg: dict) -> Result[dict]:
+def load_business_config(biz_cfg: dict[str, Any], api_keys: dict[str, str]) -> Result[BusinessConfig]:
 
     raw_providers = biz_cfg.get("providers", {})
-    providers = normalize_providers(raw_providers)
-    if providers.ok is False:
-        return providers
+    providers_result = normalize_providers(raw_providers, api_keys)
+    if providers_result.ok is False:
+        return providers_result
 
     raw_series_templates = biz_cfg.get("series_templates")
-
     template_result = check_series_templates(raw_series_templates)
     if template_result.ok is False:
         return template_result
     series_templates = template_result.payload
-    raw_assets = biz_cfg.get("assets", {})
 
-    # Normalize assets section into assets and series.
+    raw_assets = biz_cfg.get("assets", {})
     result = normalize_assets_and_series(raw_assets, series_templates)
     if result.ok is False:
         return result
@@ -325,5 +313,4 @@ def load_business_config(biz_cfg: dict) -> Result[dict]:
         return composites
     """
 
-    return Success({"providers": providers.payload, "assets": assets, "series": series})
-    # , "composites": composites.payload}
+    return Success(BusinessConfig(providers_result.payload, assets, series))

@@ -4,8 +4,11 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import timedelta
+from typing import Any
+
+from finance.common.result import Failure, Result, Success
 
 from ..common.guards import require_duration
 from ..common.time_utils import parse_duration, validate_duration
@@ -13,24 +16,58 @@ from ..common.time_utils import parse_duration, validate_duration
 
 @dataclass
 class LoggingConfig:
-    level: str = "info"
-    use_json: bool = True
+    level: str
+    use_json: bool
+    date_format: str
+
+    @classmethod
+    def from_config(cls, config: dict[str, Any]) -> LoggingConfig:
+        return cls(
+            level=config.get("level", "info"),
+            use_json=config.get("use_json", True),
+            date_format=config.get("date_format", "%Y-%m-%dT%H:%M:%S%z"),
+        )
 
 
 @dataclass
 class TimescaleConfig:
     host: str
     dbname: str
-    user: str | None = None
-    password: str | None = None
-    port: int = 5432
-    sslmode: str = "verify-full"
-    sslrootcert: str = "system"
+    user: str
+    password: str
+    port: int
+    sslmode: str
+    sslrootcert: str
 
-    max_batch_size: int = 1000
-    max_batch_age: str = "2s"
+    max_batch_size: int
+    max_batch_age: timedelta
 
     CONNECTION_FIELDS = ("host", "port", "dbname", "user", "password", "sslmode", "sslrootcert")
+    MANDATORY_FIELDS = ("host", "db", "user", "password")
+
+    @classmethod
+    def validate(cls, config: dict[str, Any]) -> Result[None]:
+        missing = []
+        for field in cls.MANDATORY_FIELDS:
+            if not config.get(field):
+                missing.append(field)
+        if len(missing) == 0:
+            return Success(None)
+        return Failure(reason="TimescaleDB configuration incomplete", error=f"Missing mandatory fields: {missing}")
+
+    @classmethod
+    def from_config(cls, config: dict[str, Any]) -> TimescaleConfig:
+        return cls(
+            host=config["host"],
+            port=config.get("port", 5432),
+            dbname=config["db"],
+            user=config["user"],
+            password=config["password"],
+            sslmode=config.get("ssl_mode", "verify-full"),
+            sslrootcert=config.get("ssl_root_cert", "system"),
+            max_batch_size=config.get("max_batch_size", 1000),
+            max_batch_age=timedelta(seconds=config.get("max_batch_age_seconds", 2.0)),
+        )
 
     def connect_config(self) -> dict:
         return {field: getattr(self, field) for field in self.CONNECTION_FIELDS}
@@ -55,23 +92,25 @@ class SweepConfig:
 @dataclass(frozen=True)
 class ProviderConfig:
     name: str
-    timeout: str = "10s"
+    timeout: str
+    history_limits: dict[timedelta, timedelta | None]
+    sweep: dict[timedelta, SweepConfig]
     api_key: str | None = None
-    history_limits: dict[timedelta, timedelta | None] = field(default_factory=dict)
-    sweep: dict[timedelta, SweepConfig] = field(default_factory=dict)
 
     def timeout_delta(self) -> timedelta:
         return require_duration(self.timeout, f"timeout for {self.name}")
 
     @classmethod
-    def create(cls, content: dict) -> ProviderConfig:
+    def from_config(cls, content: dict[str, Any], api_keys: dict[str, str]) -> ProviderConfig:
+        name = content["name"]
         raw_history_limits = content.get("constraints", {}).get("history_limits", {})
         history_limits: dict[timedelta, timedelta | None] = ProviderConfig.parse_duration_table(raw_history_limits)
         sweep: dict[timedelta, SweepConfig] = ProviderConfig.parse_sweep_table(content.get("sweep", {}))
 
         return cls(
-            name=content["name"],
+            name=name,
             timeout=validate_duration(content.get("timeout"), "timeout") or "10s",
+            api_key=api_keys.get(name),
             history_limits=history_limits,
             sweep=sweep,
         )

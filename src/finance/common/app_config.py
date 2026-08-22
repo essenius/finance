@@ -10,10 +10,14 @@ from ..common.model import Asset, Series
 
 
 @dataclass
-class AppConfig:
-    paths: dict[str, Path]
-    timescaledb: TimescaleConfig
-    logging: LoggingConfig
+class BusinessConfig:
     providers: dict[str, ProviderConfig]
     assets: list[Asset]
     series: list[Series]
+
+
+@dataclass
+class AppConfig(BusinessConfig):
+    paths: dict[str, Path]
+    timescaledb: TimescaleConfig
+    logging: LoggingConfig

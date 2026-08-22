@@ -3,15 +3,26 @@
 # File: tests/config/test_loader_errors.py
 
 
-import pytest
+from unittest.mock import patch
 
 from finance.config.loader import ConfigLoader, load_yaml_config
 
+COMPLETE_TIMESCALE_CONFIG = "TIMESCALEDB_HOST=x\nTIMESCALEDB_DB=y\nTIMESCALEDB_USER=u\nTIMESCALEDB_PASSWORD=p\n"
 
-@pytest.fixture(autouse=True)
-def clean_env(monkeypatch):
-    monkeypatch.delenv("FINANCE_CONFIG")
-    # Remove all TIMESCALEDB_* and *_API_KEY variables
+
+def test_load_config_incomplete_timescaledb(tmp_path, assert_error):
+    yaml_file = tmp_path / "config.yaml"
+    yaml_file.write_text("")
+
+    env_file = tmp_path / ".env"
+    env_file.write_text("TIMESCALEDB_HOST=x\nTIMESCALEDB_DB=y\n")
+
+    loader = ConfigLoader(cwd=tmp_path)
+    with patch.dict("os.environ", {}, clear=True):
+        result = loader.load()
+    assert_error(
+        result, reason="TimescaleDB configuration incomplete", error="Missing mandatory fields: ['user', 'password']"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -43,10 +54,11 @@ business:
 """)
 
     env_file = tmp_path / ".env"
-    env_file.write_text("TIMESCALEDB_URL=x\nTIMESCALEDB_DB=y\n")
+    env_file.write_text(COMPLETE_TIMESCALE_CONFIG)
 
     loader = ConfigLoader(cwd=tmp_path)
-    result = loader.load()
+    with patch.dict("os.environ", {}, clear=True):
+        result = loader.load()
     assert_error(result, "Could not parse asset 'spx'", "Missing required field 'provider'")
 
 
@@ -65,10 +77,11 @@ business:
 """)
 
     env_file = tmp_path / ".env"
-    env_file.write_text("TIMESCALEDB_URL=x\nTIMESCALEDB_DB=y\n")
+    env_file.write_text(COMPLETE_TIMESCALE_CONFIG)
 
     loader = ConfigLoader(cwd=tmp_path)
-    result = loader.load()
+    with patch.dict("os.environ", {}, clear=True):
+        result = loader.load()
     assert_error(result, "Could not parse provider 'ecb'", "Invalid timezone 'bogus'")
 
 
@@ -82,8 +95,9 @@ business:
 """)
 
     env_file = tmp_path / ".env"
-    env_file.write_text("TIMESCALEDB_URL=x\nTIMESCALEDB_DB=y\n")
+    env_file.write_text(COMPLETE_TIMESCALE_CONFIG)
 
     loader = ConfigLoader(cwd=tmp_path)
-    result = loader.load()
+    with patch.dict("os.environ", {}, clear=True):
+        result = loader.load()
     assert_error(result, "Could not parse provider 'ecb'", "Invalid duration 'qx' in timeout")

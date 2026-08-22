@@ -3,14 +3,14 @@
 # File: tests/timeseries/conftest.py
 
 from contextlib import contextmanager
-from datetime import timedelta
 from unittest.mock import MagicMock, patch
 
 import pytest
 
+from finance.common.configuration import TimescaleConfig
 from finance.common.model import SeriesPoint
 from finance.common.string_enums import Retention
-from finance.timeseries.series_backend import SeriesBackend, TimescaleConfig
+from finance.timeseries.series_backend import SeriesBackend
 from finance.timeseries.timescale_sql import TimescaleSqlClient
 from tests.support.types import ConfigurableFactory, ContextManagerFactory, Factory, FakeClock
 
@@ -67,23 +67,24 @@ def sql_with_fake_psycopg(make_backend_config: Factory[TimescaleConfig]) -> Cont
 
 
 @pytest.fixture
-def make_backend_config() -> Factory[TimescaleConfig]:
+def make_backend_config() -> ConfigurableFactory[TimescaleConfig]:
     def _make(max_batch_size: int = 2, max_batch_age_seconds: int = 2) -> TimescaleConfig:
-        return TimescaleConfig(
-            host="x",
-            dbname="finance",
-            user="u",
-            password="p",
-            max_batch_size=max_batch_size,
-            max_batch_age=timedelta(seconds=max_batch_age_seconds),
-        )
+        config = {
+            "host": "x",
+            "db": "finance",
+            "user": "u",
+            "password": "p",
+            "max_batch_size": max_batch_size,
+            "max_batch_age_seconds": max_batch_age_seconds,
+        }
+        return TimescaleConfig.from_config(config)
 
     return _make
 
 
 @pytest.fixture
 def make_backend(
-    make_backend_config: Factory[TimescaleConfig],
+    make_backend_config: ConfigurableFactory[TimescaleConfig],
     sql_with_fake_connection: ConfigurableFactory[tuple[TimescaleSqlClient, MagicMock]],
 ) -> ConfigurableFactory[SeriesBackend]:
     def _make(

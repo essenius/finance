@@ -18,6 +18,7 @@ from finance.common.time_utils import snap_to
 from finance.fetch.controller import PROVIDER_REGISTRY, FetchController, create_providers
 from finance.fetch.ecb import EcbProvider
 from finance.fetch.fred import FredProvider
+from finance.fetch.provider import MarketDataProvider
 from finance.fetch.yahoo import YahooProvider
 from finance.state.state import State
 
@@ -30,7 +31,7 @@ def always_none(*args, **kwargs):
     return None
 
 
-def make_assets(assets: list[Asset]):
+def make_assets(assets: list[Asset]) -> dict[int, Asset]:
     result = {}
     for asset in assets:
         result[asset.id] = asset
@@ -60,10 +61,13 @@ def make_fetch_controller(
 ):
     fake_provider = make_fake_provider(fetch_result)
 
-    # Build provider registry based on assets
-    providers = dict.fromkeys(PROVIDER_REGISTRY, fake_provider)
+    def get_provider(name: str) -> MarketDataProvider:
+        return providers[name]
 
-    return FetchController(series, get_asset, providers.get, now_provider=now_provider)
+    # Build provider registry based on assets
+    providers: dict[str, MarketDataProvider] = dict.fromkeys(PROVIDER_REGISTRY, fake_provider)
+
+    return FetchController(series, get_asset, get_provider, now_provider=now_provider)
 
 
 # ----------------------------------------------------------------------
@@ -72,10 +76,10 @@ def make_fetch_controller(
 
 
 def test_create_providers():
-    providers_config = {
-        SupportedProviders.YAHOO: ProviderConfig(name=SupportedProviders.YAHOO),
-        SupportedProviders.ECB: ProviderConfig(name=SupportedProviders.ECB),
-        SupportedProviders.FRED: ProviderConfig(name=SupportedProviders.FRED),
+    providers_config: dict[str, ProviderConfig] = {
+        SupportedProviders.YAHOO: ProviderConfig.from_config({"name": SupportedProviders.YAHOO}, {}),
+        SupportedProviders.ECB: ProviderConfig.from_config({"name": SupportedProviders.ECB}, {}),
+        SupportedProviders.FRED: ProviderConfig.from_config({"name": SupportedProviders.FRED}, {}),
     }
     p = create_providers(providers_config, {})
     assert isinstance(p[SupportedProviders.YAHOO], YahooProvider)
@@ -86,7 +90,7 @@ def test_create_providers():
 def test_controller_skips_fresh(state, make_asset, make_series):
     asset = make_asset()
     assets = make_assets([asset])
-    series = [
+    series_list = [
         make_series(
             asset,
             interval="1h",
@@ -97,7 +101,10 @@ def test_controller_skips_fresh(state, make_asset, make_series):
         # this is a Wednesday
         return datetime(2025, 6, 11, 15, 6, 40, tzinfo=UTC)
 
-    fc = make_fetch_controller(series, assets.get, fake_now)
+    def get_asset(id: int) -> Asset:
+        return assets[id]
+
+    fc = make_fetch_controller(series_list, get_asset, fake_now)
 
     now = fake_now()
     last = snap_to(now, timedelta(hours=1))

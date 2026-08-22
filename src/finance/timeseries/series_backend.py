@@ -5,7 +5,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from datetime import datetime, timedelta
+from datetime import datetime
 
 from tests.support.types import ConfigurableFactory
 
@@ -44,17 +44,8 @@ class SeriesBackend:
         now: Callable[[], datetime] | None = None,
     ) -> Result[SeriesBackend]:
         try:
-            ts_config = TimescaleConfig(
-                host=config["host"],
-                port=config.get("port", 5432),
-                dbname=config["db"],
-                user=config["user"],
-                password=config["password"],
-                sslmode=config.get("ssl_mode", "verify-full"),
-                sslrootcert=config.get("ssl_root_cert", "system"),
-                max_batch_size=config.get("max_batch_size", 1000),
-                max_batch_age=timedelta(seconds=config.get("max_batch_age_seconds", 2.0)),
-            )
+            # TODO remove after moving to configuration.py
+            ts_config = TimescaleConfig.from_config(config)
 
             if ts_config.sslmode == "verify-ca" and ts_config.sslrootcert == "system":
                 return Failure(

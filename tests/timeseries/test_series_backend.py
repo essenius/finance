@@ -4,10 +4,10 @@
 
 from datetime import timedelta
 
+from finance.common.configuration import TimescaleConfig
 from finance.common.model import SeriesPoint, SeriesState
 from finance.common.result import Failure, Result, Success
 from finance.timeseries.series_backend import SeriesBackend
-from finance.timeseries.timescale_sql import TimescaleConfig
 
 default_config = {
     "host": "host123",

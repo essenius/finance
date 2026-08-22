@@ -33,15 +33,13 @@ def test_load_env_secrets_timescaledb(tmp_path, unwrap):
 
     loader = ConfigLoader(cwd=tmp_path, environ=fake_env)
 
-    vars = unwrap(loader.load_env_variables())
-    secrets = vars["secrets"]
+    timescale, api_keys, config = loader.load_env_variables()
 
-    assert secrets[BACKEND]["url"] == "http://x"
-    assert secrets[BACKEND]["db"] == "db"
-    assert secrets[BACKEND]["user"] == "u"
-    assert secrets[BACKEND]["password"] == "p"
+    assert timescale["db"] == "db"
+    assert timescale["user"] == "u"
+    assert timescale["password"] == "p"
 
-    assert secrets["api_keys"]["fred"] == "abc"  # from .env
-    assert secrets["api_keys"]["yahoo"] == "yahoo123"  # from getenv
+    assert api_keys["fred"] == "abc"  # from .env
+    assert api_keys["yahoo"] == "yahoo123"  # from getenv
 
-    assert vars["config"] == "my_config.yaml"
+    assert config == "my_config.yaml"

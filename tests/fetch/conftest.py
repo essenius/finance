@@ -79,7 +79,7 @@ def ecb_provider(fixed_now, fake_session) -> Factory[EcbProvider]:
     def _make() -> EcbProvider:
         return EcbProvider(
             api_key=None,
-            provider_config=ProviderConfig(name=SupportedProviders.ECB),
+            provider_config=ProviderConfig.from_config({"name": SupportedProviders.ECB}, {}),
             now_provider=fixed_now,
             session=fake_session(),
         )
@@ -92,7 +92,7 @@ def fred_provider(fixed_now, fake_session) -> Factory[FredProvider]:
     def _make(api_key: str = "TESTKEY") -> FredProvider:
         return FredProvider(
             api_key=api_key,
-            provider_config=ProviderConfig(name=SupportedProviders.FRED),
+            provider_config=ProviderConfig.from_config({"name": SupportedProviders.FRED}, {}),
             now_provider=fixed_now,
             session=fake_session(),
         )
@@ -107,7 +107,7 @@ def yahoo_provider(
     def _make(now_provider: Factory[datetime] = fixed_now) -> YahooProvider:
         return YahooProvider(
             asset_config={},
-            provider_config=ProviderConfig(name=SupportedProviders.YAHOO),
+            provider_config=ProviderConfig.from_config({"name": SupportedProviders.YAHOO}, {}),
             now_provider=now_provider,
             session=fake_session(),
         )
@@ -119,7 +119,7 @@ def yahoo_provider(
 def dummy_provider() -> Factory[MarketDataProvider]:
     def _make() -> MarketDataProvider:
         return MarketDataProvider(
-            provider_config=ProviderConfig(name="dummy"),
+            provider_config=ProviderConfig.from_config({"name": "dummy"}, {}),
         )
 
     return _make

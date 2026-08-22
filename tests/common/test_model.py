@@ -6,8 +6,7 @@ from datetime import datetime, timedelta
 
 import pytest
 
-from finance.common.configuration import ProviderConfig
-from finance.common.model import Asset, AssetMetadata, Series, SeriesPoint, SeriesState, SweepConfig
+from finance.common.model import Asset, AssetMetadata, Series, SeriesPoint, SeriesState
 from finance.common.string_enums import Retention, SeriesType
 
 
@@ -139,60 +138,6 @@ def test_series_create_with_defaults_daily(make_asset):
     assert series.bootstrap_history == "10y"
     assert series.bootstrap_history_delta() == timedelta(days=3652.5)
     assert series.publication_offset is None
-
-
-def test_provider_config_defaults():
-    config = ProviderConfig.create({"name": "x"})
-    assert config.name == "x"
-    assert config.timeout == "10s"
-    assert config.history_limits == {}
-    assert config.timeout_delta() == timedelta(seconds=10)
-
-
-def test_provider_config_history_limits_and_overlap():
-    config = ProviderConfig.create(
-        {
-            "name": "x",
-            "timeout": "20s",
-            "constraints": {"history_limits": {"default": "5d", "1h": "60d", "1d": None}},
-            "sweep": {"default": {"window": "2h", "cadence": "30m"}, "1d": {"window": "7d", "cadence": "1d"}},
-        }
-    )
-    assert config.name == "x"
-    assert config.timeout == "20s"
-    assert config.history_limits == {
-        timedelta(0): timedelta(days=5),
-        timedelta(hours=1): timedelta(days=60),
-        timedelta(days=1): None,
-    }
-    assert config.timeout_delta() == timedelta(seconds=20)
-
-    assert config.get_history_limit(timedelta(minutes=0)) == timedelta(days=5)
-    assert config.get_history_limit(timedelta(minutes=5)) == timedelta(days=5)
-    assert config.get_history_limit(timedelta(hours=1)) == timedelta(days=60)
-    assert config.get_history_limit(timedelta(hours=6)) == timedelta(days=60)
-    assert config.get_history_limit(timedelta(days=1)) is None
-    assert config.get_history_limit(timedelta(weeks=1)) is None
-
-    intraday_sweep = SweepConfig(timedelta(hours=2), timedelta(minutes=30))
-    daily_sweep = SweepConfig(timedelta(days=7), timedelta(days=1))
-    assert config.sweep == {timedelta(0): intraday_sweep, timedelta(days=1): daily_sweep}
-    assert config.get_sweep(timedelta(hours=8)) == intraday_sweep
-    assert config.get_sweep(timedelta(days=1)) == daily_sweep
-
-
-def test_provider_config_empty_history_limits_and_overlaps():
-    config = ProviderConfig.create(
-        {
-            "name": "x",
-        }
-    )
-    assert config.name == "x"
-    assert config.history_limits == {}
-
-    assert config.get_history_limit(timedelta(minutes=0)) is None
-    assert config.get_history_limit(timedelta(weeks=1)) is None
-    assert config.get_sweep(timedelta(weeks=1)) == SweepConfig(window=timedelta(0), cadence=timedelta(0))
 
 
 def test_update_point_range():

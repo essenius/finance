@@ -2,13 +2,14 @@
 # Licensed under the Apache License, Version 2.0. See the LICENSE file for details.
 # File: tests/test_orchestrator.py
 
-from datetime import UTC, datetime
+from datetime import datetime
 from unittest.mock import Mock, call
 
 import pytest
 
 from finance.common.model import FetchData, FetchResult
 from finance.common.result import Failure, Success
+from finance.common.time_utils import UTC
 from finance.orchestrator import Orchestrator, unwrap
 
 

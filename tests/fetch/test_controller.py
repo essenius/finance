@@ -4,7 +4,7 @@
 
 from collections.abc import Callable, Iterable
 from dataclasses import replace
-from datetime import UTC, date, datetime, time, timedelta
+from datetime import date, datetime, time, timedelta
 from unittest.mock import Mock
 from zoneinfo import ZoneInfo
 
@@ -14,7 +14,7 @@ from finance.common.model import Asset, FetchResult, Series, SeriesState, SweepC
 from finance.common.result import Failure, Success
 from finance.common.series_calendar import SeriesCalendar
 from finance.common.string_enums import Retention, SupportedProviders
-from finance.common.time_utils import snap_to
+from finance.common.time_utils import UTC, snap_to
 from finance.fetch.controller import PROVIDER_REGISTRY, FetchController, create_providers
 from finance.fetch.ecb import EcbProvider
 from finance.fetch.fred import FredProvider
@@ -77,9 +77,9 @@ def make_fetch_controller(
 
 def test_create_providers():
     providers_config: dict[str, ProviderConfig] = {
-        SupportedProviders.YAHOO: ProviderConfig.from_config({"name": SupportedProviders.YAHOO}, {}),
-        SupportedProviders.ECB: ProviderConfig.from_config({"name": SupportedProviders.ECB}, {}),
-        SupportedProviders.FRED: ProviderConfig.from_config({"name": SupportedProviders.FRED}, {}),
+        SupportedProviders.YAHOO: ProviderConfig.from_config({"name": SupportedProviders.YAHOO.value}, {}),
+        SupportedProviders.ECB: ProviderConfig.from_config({"name": SupportedProviders.ECB.value}, {}),
+        SupportedProviders.FRED: ProviderConfig.from_config({"name": SupportedProviders.FRED.value}, {}),
     }
     p = create_providers(providers_config, {})
     assert isinstance(p[SupportedProviders.YAHOO], YahooProvider)

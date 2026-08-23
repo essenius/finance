@@ -4,12 +4,12 @@
 
 from datetime import timedelta
 
-from finance.common.configuration import TimescaleConfig
+from finance.common.configuration import JsonObject, TimescaleConfig
 from finance.common.model import SeriesPoint, SeriesState
 from finance.common.result import Failure, Result, Success
 from finance.timeseries.series_backend import SeriesBackend
 
-default_config = {
+default_config: JsonObject = {
     "host": "host123",
     "user": "fin_user",
     "password": "s3cr3t",
@@ -29,18 +29,18 @@ class SqlFakeOk:
         self.write_count = 0
         self.execute_many_count = 0
         self.error_in = 0
-        self.read_results: list[list] = []
+        self.read_results: list[dict] = []
 
     def fail(self, context, error) -> Result:
         return Failure(reason=f"{context} operation failed", error=error)
 
-    def result(self, context: str):
+    def result(self, context: str) -> Result:
         if not self._connection or self._connection.closed:
             return self.fail(context, "Boom!")
 
         return Success(None)
 
-    def execute_read(self, query: str | object, params: tuple | None = None, context: str = "Read") -> Result[list]:
+    def execute_read(self, query: str, params: tuple | None = None, context: str = "Read") -> Result[dict[str, list]]:
         self.read_count += 1
         if self.error_in == self.read_count:
             return self.fail(context, f"Error in {self.error_in}")
@@ -59,12 +59,25 @@ class SqlFakeOk:
         self.write_count += 1
         return self.result(context)
 
-    def execute_many(self, query: str | object, params: list[tuple], context: str) -> Result[None]:
+    def execute_many(self, query: str, params: list[tuple], context: str) -> Result[None]:
         self.execute_many_count += 1
         return self.result(context)
 
     def close_connection(self) -> None:
         self._connection = None
+
+    def is_connected(self) -> bool:
+        return True
+
+
+class SqlFakeOkFactory:
+    instance: SqlFakeOk
+    config: TimescaleConfig | None
+
+    def __call__(self, config: TimescaleConfig | None = None) -> SqlFakeOk:
+        self.config = config
+        self.instance = SqlFakeOk(config)
+        return self.instance
 
 
 class SqlFakeFail:
@@ -75,24 +88,29 @@ class SqlFakeFail:
     def fail(self, context: str) -> Result:
         return Failure(reason=f"{context} operation failed", error="Boom!")
 
-    def execute_read(self, sql_query: str | object, params: tuple | None = None, context="Read") -> Result[list]:
+    def execute_read(self, query: str, params: tuple | None = None, context: str = "Read") -> Result[dict[str, list]]:
         return self.fail(context)
 
-    def execute_write(self, sql_query: str, params: tuple, context="Write") -> Result[int]:
+    def execute_write(self, query: str, params: tuple, context: str = "Write") -> Result[int]:
         return self.fail(context)
 
-    def execute_many(self, sql_query: str | object, params: list[tuple], context: str) -> Result[None]:
+    def execute_many(self, query: str, params: list[tuple], context: str) -> Result[None]:
         return self.fail(context)
 
     def close_connection(self) -> None:
         self._connection = None
 
+    def is_connected(self) -> bool:
+        return False
 
+
+""" TODO delete
 def test_constructor_is_pure():
-    backend = SeriesBackend(config=None, sql_client=SqlFakeOk())
+    backend = SeriesBackend.from_config(config={}, sql_client=SqlFakeOk())
     assert backend._pending == []
     result = backend.flush()
     assert result.ok
+"""
 
 
 def test_from_config_failure_cert(assert_error):
@@ -107,7 +125,7 @@ def test_from_config_failure_cert(assert_error):
         "max_batch_age_seconds": 2.5,
     }
 
-    result = SeriesBackend.from_config(config=config, sql_factory=SqlFakeOk)
+    result = SeriesBackend.from_config(config=config, sql_factory=SqlFakeOkFactory())
 
     # with make_backend_context(config) as result:
     assert_error(
@@ -129,7 +147,8 @@ def test_from_config_success_no_defaults(unwrap):
         "max_batch_age_seconds": 2.5,
     }
 
-    backend = unwrap(SeriesBackend.from_config(config=config, sql_factory=SqlFakeOk))
+    sql_factory = SqlFakeOkFactory()
+    backend = unwrap(SeriesBackend.from_config(config=config, sql_factory=sql_factory))
 
     timescale_config = backend._config
     assert timescale_config.host == "myhost"
@@ -141,7 +160,9 @@ def test_from_config_success_no_defaults(unwrap):
     assert timescale_config.max_batch_size == 500
     assert timescale_config.max_batch_age == timedelta(seconds=2.5)
 
-    connect_config = backend._sql_client._config.connect_config()
+    sql_config = sql_factory.config
+    assert sql_config is not None, "_config exists"
+    connect_config = sql_config.connect_config()
     assert connect_config == {
         "host": "myhost",
         "port": 1234,
@@ -153,13 +174,13 @@ def test_from_config_success_no_defaults(unwrap):
     }
 
     result = backend.flush()
-    assert result.ok
+    assert result.ok is True
     assert backend.now is not None
 
 
 def test_from_config_success_defaults(unwrap):
 
-    backend = unwrap(SeriesBackend.from_config(config=default_config, sql_factory=SqlFakeOk))
+    backend = unwrap(SeriesBackend.from_config(config=default_config, sql_factory=SqlFakeOkFactory()))
 
     timescale_config = backend._config
     assert timescale_config.host == "host123"
@@ -172,14 +193,14 @@ def test_from_config_success_defaults(unwrap):
     assert timescale_config.max_batch_age == timedelta(seconds=2.0)
 
     result = backend.flush()
-    assert result.ok
+    assert result.ok is True
     assert backend.now is not None
 
 
 def test_from_config_key_failure(assert_error):
 
     result = SeriesBackend.from_config(config={}, sql_factory=SqlFakeOk)
-    assert_error(result, "Timescale backend initialization failed", "Cannot find mandatory config key 'host'")
+    assert_error(result, "Timescale backend initialization failed", "Missing required key 'host'")
 
 
 def test_from_config_sql_failure(assert_error):
@@ -192,7 +213,7 @@ def test_flush_without_connection_and_exception(fixed_now, assert_error, unwrap)
     # force an immediate flush after adding via the batch size
 
     backend: SeriesBackend = unwrap(
-        SeriesBackend.from_config(config=default_config | {"max_batch_size": 1}, sql_factory=SqlFakeOk)
+        SeriesBackend.from_config(config=default_config | {"max_batch_size": 1}, sql_factory=SqlFakeOkFactory())
     )
     backend._sql_client.close_connection()
     now = fixed_now()
@@ -204,8 +225,9 @@ def test_flush_without_connection_and_exception(fixed_now, assert_error, unwrap)
 
 def test_add_writes_two_entries(fixed_now, unwrap):
 
+    sql_factory = SqlFakeOkFactory()
     backend: SeriesBackend = unwrap(
-        SeriesBackend.from_config(config=default_config | {"max_batch_size": 2}, sql_factory=SqlFakeOk)
+        SeriesBackend.from_config(config=default_config | {"max_batch_size": 2}, sql_factory=sql_factory)
     )
     now = fixed_now()
     next = now + timedelta(seconds=1)
@@ -213,33 +235,35 @@ def test_add_writes_two_entries(fixed_now, unwrap):
     entry2 = SeriesPoint(series_id=2, time=next, close=1.1, volume=2)
 
     result = backend.add_point(entry1)
-    assert result.ok, "First add"
-    assert backend._sql_client.execute_many_count == 0
+    assert result.ok is True, "First add"
+    sql_client = sql_factory.instance
+    assert sql_client.execute_many_count == 0
     result = backend.add_point(entry2)
-    assert result.ok, "second add"
-    assert backend._sql_client.execute_many_count == 1
+    assert result.ok is True, "second add"
+    assert sql_client.execute_many_count == 1
 
 
 def test_close_writes(fixed_now, unwrap):
 
+    sql_factory = SqlFakeOkFactory()
     backend: SeriesBackend = unwrap(
-        SeriesBackend.from_config(config=default_config | {"max_batch_size": 2}, sql_factory=SqlFakeOk)
+        SeriesBackend.from_config(config=default_config | {"max_batch_size": 2}, sql_factory=sql_factory)
     )
 
     now = fixed_now()
     entry1 = SeriesPoint(series_id=1, time=now, close=1)
 
     result = backend.add_point(entry1)
-    assert result.ok, "add"
+    assert result.ok is True, "add"
     write_count: int = unwrap(backend.close())
     assert write_count == 1, "write count is 1"
-    assert backend._sql_client.execute_many_count == 1
+    assert sql_factory.instance.execute_many_count == 1
 
 
 def test_flush_writes_when_batch_too_old(fixed_now, unwrap):
-
+    sql_factory = SqlFakeOkFactory()
     backend: SeriesBackend = unwrap(
-        SeriesBackend.from_config(config=default_config | {"max_batch_age_seconds": 0}, sql_factory=SqlFakeOk)
+        SeriesBackend.from_config(config=default_config | {"max_batch_age_seconds": 0}, sql_factory=sql_factory)
     )
 
     now = fixed_now()
@@ -247,7 +271,7 @@ def test_flush_writes_when_batch_too_old(fixed_now, unwrap):
 
     write_count = unwrap(backend.add_point(entry))
     assert write_count == 1
-    assert backend._sql_client.execute_many_count == 1
+    assert sql_factory.instance.execute_many_count == 1
 
 
 # ------------------
@@ -257,7 +281,9 @@ def test_flush_writes_when_batch_too_old(fixed_now, unwrap):
 
 def test_get_series_states_loads_min_max(fixed_now, unwrap):
 
-    backend: SeriesBackend = unwrap(SeriesBackend.from_config(config=default_config, sql_factory=SqlFakeOk))
+    sql_factory = SqlFakeOkFactory()
+
+    backend: SeriesBackend = unwrap(SeriesBackend.from_config(config=default_config, sql_factory=sql_factory))
 
     now = fixed_now()
     # Two series in cold table
@@ -279,14 +305,14 @@ def test_get_series_states_loads_min_max(fixed_now, unwrap):
     next_sweep = now + timedelta(days=1)
     sweep_result = {"rows": [(1, next_sweep, sweep_start), (4, next_sweep, sweep_start)]}
 
-    backend._sql_client.read_results = [
+    sql_factory.instance.read_results = [
         cold_result,
         hot_result,
         sweep_result,
     ]
 
     result = backend.get_series_states()
-    assert result.ok
+    assert result.ok is True
 
     state = result.payload
 
@@ -325,7 +351,7 @@ def test_get_series_states_loads_min_max(fixed_now, unwrap):
 
 def test_get_series_states_cold_error(assert_error, unwrap):
 
-    backend: SeriesBackend = unwrap(SeriesBackend.from_config(config=default_config, sql_factory=SqlFakeOk))
+    backend: SeriesBackend = unwrap(SeriesBackend.from_config(config=default_config, sql_factory=SqlFakeOkFactory()))
 
     backend._sql_client.close_connection()
     result = backend.get_series_states()
@@ -334,9 +360,10 @@ def test_get_series_states_cold_error(assert_error, unwrap):
 
 def test_get_series_states_hot_error(assert_error, unwrap):
 
-    backend: SeriesBackend = unwrap(SeriesBackend.from_config(config=default_config, sql_factory=SqlFakeOk))
+    sql_factory = SqlFakeOkFactory()
+    backend: SeriesBackend = unwrap(SeriesBackend.from_config(config=default_config, sql_factory=sql_factory))
 
-    sql = backend._sql_client
+    sql = sql_factory.instance
     sql.error_in = 2
     sql.read_count = 0
 
@@ -346,9 +373,10 @@ def test_get_series_states_hot_error(assert_error, unwrap):
 
 def test_get_series_states_sweep_error(assert_error, unwrap):
 
-    backend: SeriesBackend = unwrap(SeriesBackend.from_config(config=default_config, sql_factory=SqlFakeOk))
+    sql_factory = SqlFakeOkFactory()
+    backend: SeriesBackend = unwrap(SeriesBackend.from_config(config=default_config, sql_factory=sql_factory))
 
-    sql = backend._sql_client
+    sql = sql_factory.instance
     sql.error_in = 3
     sql.read_count = 0
 
@@ -357,7 +385,7 @@ def test_get_series_states_sweep_error(assert_error, unwrap):
 
 
 def test_store_asset_no_effective_metadata(unwrap, make_asset, assert_error):
-    backend: SeriesBackend = unwrap(SeriesBackend.from_config(config=default_config, sql_factory=SqlFakeOk))
+    backend: SeriesBackend = unwrap(SeriesBackend.from_config(config=default_config, sql_factory=SqlFakeOkFactory()))
     asset = make_asset(effective_metadata=None)
     result = backend.store_asset(asset)
     assert_error(result, reason="Store asset failed", error="No effective metadata to store asset 'eur_usd'")

@@ -5,6 +5,8 @@
 from collections.abc import Callable, Iterable
 from datetime import datetime, timedelta
 
+from finance.common.guards import require
+
 from ..common.applogger import AppLogger
 from ..common.candle_identity import CandleIdentity
 from ..common.configuration import ProviderConfig
@@ -45,8 +47,8 @@ class FetchController:
     def __init__(
         self,
         series: Iterable[Series],
-        get_asset_by_id: Callable[[int], Asset],
-        get_provider: Callable[[str], MarketDataProvider],
+        get_asset_by_id: Callable[[int], Asset | None],
+        get_provider: Callable[[str], MarketDataProvider | None],
         **kwargs,
     ):
         self.series_list: Iterable[Series] = series
@@ -57,8 +59,9 @@ class FetchController:
     def fetch_incrementally(self, state: State) -> Iterable[FetchResult]:
 
         for series in self.series_list:
-            state_entry = state.get_series_state(series.id)
-            asset = self.get_asset_by_id(series.asset_id)
+            series_id, asset_id = series.require_ids()
+            state_entry = state.get_series_state(series_id)
+            asset = self.get_asset_by_id(asset_id)
             if asset is None:
                 yield Failure(
                     reason=f"Could not find asset {series.asset_id} ({series.asset_name})",
@@ -69,7 +72,8 @@ class FetchController:
             if not provider:
                 yield Failure(reason=f"no provider '{asset.provider}'", error=f"Skipped series '{series.name}'")
                 continue
-            calendar = SeriesCalendar.from_asset_metadata(asset.effective_metadata)
+            metadata = require(asset.effective_metadata)
+            calendar = SeriesCalendar.from_asset_metadata(metadata)
             range = self.get_fetch_range(series=series, provider=provider, state=state_entry, calendar=calendar)
             if range is None:
                 continue
@@ -97,7 +101,7 @@ class FetchController:
     @staticmethod
     def get_required_range(
         series: Series, calendar: SeriesCalendar, now: datetime
-    ) -> tuple[CandleIdentity, CandleIdentity] | None:
+    ) -> tuple[CandleIdentity, CandleIdentity]:
         horizon = series.bootstrap_history_delta()
         retention_delta = series.retention_delta()
         if retention_delta is not None:
@@ -136,7 +140,7 @@ class FetchController:
         self,
         series: Series,
         provider: MarketDataProvider,
-        state: SeriesState | None,
+        state: SeriesState,
         calendar: SeriesCalendar,
     ) -> tuple[CandleIdentity, CandleIdentity, bool] | None:
         """
@@ -174,7 +178,8 @@ class FetchController:
             state.update_sweep_state(sweep_config, last_req)
             return (first_identity, last_req, False)
 
-        if last_req.store_label() > state.last_point:
-            first_identity = series_calendar.snap_forward_identity(state.last_point + series.interval_delta())
+        last_point = require(state.last_point, "state.last_point")
+        if last_req.store_label() > last_point:
+            first_identity = series_calendar.snap_forward_identity(last_point + series.interval_delta())
             return (first_identity, last_req, True)
         return None

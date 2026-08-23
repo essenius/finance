@@ -3,12 +3,13 @@
 # File: tests/state/test_wal.py
 
 import json
-from datetime import UTC, datetime
+from datetime import datetime
 
 import pytest
 from pytest import File
 
 from finance.common.model import SeriesPoint
+from finance.common.time_utils import UTC
 from finance.state.wal import JsonlWAL, WALCorruptionError
 
 

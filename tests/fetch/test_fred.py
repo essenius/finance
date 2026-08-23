@@ -2,10 +2,11 @@
 # Licensed under the Apache License, Version 2.0. See the LICENSE file for details.
 # File: tests/fetch/test_fred.py
 
-from datetime import UTC, datetime
+from datetime import datetime
 
 import pytest
 
+from finance.common.time_utils import UTC
 from finance.fetch.fred import FredProvider
 
 

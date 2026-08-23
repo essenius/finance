@@ -5,12 +5,12 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
-from datetime import UTC, date, datetime, time, timedelta
+from datetime import date, datetime, time, timedelta
 from zoneinfo import ZoneInfo
 
 from ..common.candle_identity import CandleIdentity
 from ..common.model import AssetMetadata, Series
-from ..common.time_utils import parse_duration, parse_weekday, snap_to
+from ..common.time_utils import UTC, parse_duration, parse_weekday, snap_to
 
 ONE_DAY = timedelta(days=1)
 ONE_WEEK = timedelta(weeks=1)

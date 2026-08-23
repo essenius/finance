@@ -5,15 +5,15 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
-from datetime import UTC, date, datetime, time, timedelta
+from datetime import date, datetime, time, timedelta
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from ..common.candle_identity import CandleIdentity
 from ..common.configuration import SweepConfig
-from ..common.guards import require_duration
+from ..common.guards import require, require_duration
 from ..common.result import Result
 from ..common.string_enums import Candle, Retention, SeriesType
-from ..common.time_utils import parse_duration, parse_time, parse_weekday, validate_duration
+from ..common.time_utils import UTC, parse_duration, parse_time, parse_weekday, validate_duration
 
 BACKEND = "timescaledb"
 
@@ -146,22 +146,6 @@ class Asset:
     config_metadata: AssetMetadata | None = None
     provider_metadata: AssetMetadata | None = None
     effective_metadata: AssetMetadata | None = None
-    # TODO continue here with implementing  AssetMetadata
-    # CO: long_name: str | None = None
-    # CO: short_name: str | None = None
-    # CO: instrument: str | None = None
-    # CO: exchange: str | None = None
-    # CO: region: str | None = None
-    # CO: currency: str | None = None
-    # CO: unit: str | None = None
-
-    # calendar
-    # CO: first_trade_date: date | None = None
-    # CO: timezone: ZoneInfo | None = None
-    # CO: market_open: time | None = None
-    # CO: market_close: time | None = None
-    # CO: week_start: str | None = None
-    # CO: week_end: str | None = None
 
     # assigned by the backend
     id: int | None = None
@@ -169,20 +153,7 @@ class Asset:
     @classmethod
     def from_config(cls, name: str, config: dict) -> Asset:
         provider_config = config.get("provider", {})
-
         config_meta = AssetMetadata.from_config(config)
-        # CO: raw_timezone = config.get("timezone", "UTC")
-        # CO: try:
-        # CO:     timezone = ZoneInfo(raw_timezone)
-        # CO: except ZoneInfoNotFoundError:
-        # CO:     raise ValueError(f"Cannot understand timezone '{raw_timezone}'.") from None
-
-        # CO: week_start = config.get("week_start", "mon")
-        # CO: # check and raise error if wrong, but keep string representation
-        # CO: parse_weekday(week_start)
-
-        # CO: week_end = config.get("week_end", "fri")
-        # CO: parse_weekday(week_end)
 
         return cls(
             name=name,
@@ -190,23 +161,13 @@ class Asset:
             provider=provider_config["name"],
             provider_code=provider_config["code"],
             config_metadata=config_meta,
-            # CO: long_name=config.get("long_name", name),
-            # CO: short_name=config.get("short_name"),
-            # CO: instrument=tags.get("instrument"),
-            # CO: region=tags.get("region"),
-            # CO: exchange=tags.get("exchange"),
-            # CO: currency=tags.get("currency"),
-            # CO: unit=tags.get("unit"),
-            # CO: first_trade_date=config.get("first_trade_date"),
-            # CO: timezone=timezone,
-            # CO: market_open=parse_time(config.get("market_open", "min")),
-            # CO: market_close=parse_time(config.get("market_close", "max")),
-            # CO: week_start=week_start,
-            # CO: week_end=week_end,
         )
 
     def with_id(self, new_id: int) -> Asset:
         return replace(self, id=new_id)
+
+    def require_id(self) -> int:
+        return require(self.id, "asset.id")
 
     def same_semantics(self, other: Asset) -> bool:
         """check if two assets are semantically the same (e.g. indicating a rename)"""
@@ -222,19 +183,6 @@ class Asset:
             or self.symbol != other.symbol
             or not self.same_semantics(other)
             or self.effective_metadata != other.effective_metadata
-            # CO: or self.long_name != other.long_name
-            # CO: or self.short_name != other.short_name
-            # CO: or self.instrument != other.instrument
-            # CO: or self.region != other.region
-            # CO: or self.exchange != other.exchange
-            # CO: or self.currency != other.currency
-            # CO: or self.unit != other.unit
-            # CO: or self.first_trade_date != other.first_trade_date
-            # CO: or self.timezone != other.timezone
-            # CO: or self.market_open != other.market_open
-            # CO: or self.market_close != other.market_close
-            # CO: or self.week_start != other.week_start
-            # CO: or self.week_end != other.week_end
         )
 
     def __repr__(self):
@@ -307,6 +255,14 @@ class Series:
 
     def with_id(self, new_id: int) -> Series:
         return replace(self, id=new_id)
+
+    def require_id(self) -> int:
+        return require(self.id, "series.id")
+
+    def require_ids(self) -> tuple[int, int]:
+        id = self.require_id()
+        asset_id = require(self.asset_id, "series.asset_id")
+        return id, asset_id
 
     def same_semantics(self, other: Series) -> bool:
         """check if two series are semantically the same (e.g. indicating a rename of the code)"""

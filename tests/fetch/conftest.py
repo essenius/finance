@@ -3,6 +3,7 @@
 # File: tests/fetch/conftest.py
 
 from datetime import datetime
+from typing import Any
 
 import pytest
 import requests
@@ -20,7 +21,7 @@ from tests.support.types import ConfigurableFactory, Factory
 @pytest.fixture
 def assert_ok():
     def _assert_ok(result: FetchResult, time: datetime, close: float) -> None:
-        assert result.ok
+        assert result.ok is True
         point = result.payload.points[0]
         assert point.time == time
         assert point.close == close
@@ -55,15 +56,15 @@ class FakeSession:
         self.responses.append(exc)
         return self
 
-    def get(self, url, params=None, timeout=None, **kwargs):
+    def get(self, url: str, params: dict[str, Any] | None = None, timeout: float | None = None, **kwargs: Any):
         self.url = url
         self.params = params
         self.timeout = timeout
-        r = self.responses[self.calls]
+        response = self.responses[self.calls]
         self.calls += 1
-        if isinstance(r, Exception):
-            raise r
-        return r
+        if isinstance(response, Exception):
+            raise response
+        return response
 
 
 @pytest.fixture
@@ -79,7 +80,7 @@ def ecb_provider(fixed_now, fake_session) -> Factory[EcbProvider]:
     def _make() -> EcbProvider:
         return EcbProvider(
             api_key=None,
-            provider_config=ProviderConfig.from_config({"name": SupportedProviders.ECB}, {}),
+            provider_config=ProviderConfig.from_config({"name": SupportedProviders.ECB.value}, {}),
             now_provider=fixed_now,
             session=fake_session(),
         )
@@ -92,7 +93,7 @@ def fred_provider(fixed_now, fake_session) -> Factory[FredProvider]:
     def _make(api_key: str = "TESTKEY") -> FredProvider:
         return FredProvider(
             api_key=api_key,
-            provider_config=ProviderConfig.from_config({"name": SupportedProviders.FRED}, {}),
+            provider_config=ProviderConfig.from_config({"name": SupportedProviders.FRED.value}, {}),
             now_provider=fixed_now,
             session=fake_session(),
         )
@@ -106,8 +107,7 @@ def yahoo_provider(
 ) -> ConfigurableFactory[YahooProvider]:
     def _make(now_provider: Factory[datetime] = fixed_now) -> YahooProvider:
         return YahooProvider(
-            asset_config={},
-            provider_config=ProviderConfig.from_config({"name": SupportedProviders.YAHOO}, {}),
+            provider_config=ProviderConfig.from_config({"name": SupportedProviders.YAHOO.value}, {}),
             now_provider=now_provider,
             session=fake_session(),
         )

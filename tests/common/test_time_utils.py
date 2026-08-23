@@ -2,13 +2,14 @@
 # Licensed under the Apache License, Version 2.0. See the LICENSE file for details.
 # File: tests/common/test_time_utils.py
 
-from datetime import UTC, datetime, time, timedelta, timezone
+from datetime import datetime, time, timedelta
 from zoneinfo import ZoneInfo
 
 import pytest
 
 from finance.common.guards import require
 from finance.common.time_utils import (
+    UTC,
     normalize_db_time,
     now_second_precision,
     parse_datetime,
@@ -151,10 +152,6 @@ def test_parse_write_timezone():
     with pytest.raises(ValueError) as exc_info:
         parse_timezone("bogus")
     assert str(exc_info.value) == "Cannot understand timezone 'bogus'."
-
-    with pytest.raises(ValueError) as exc_info:
-        write_timezone(timezone(timedelta(hours=3)))
-    assert str(exc_info.value) == "Cannot write timezone without key field"
 
 
 def test_parse_write_datetime():

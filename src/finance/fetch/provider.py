@@ -3,7 +3,8 @@
 # File: src/finance/fetch/provider.py
 
 from collections.abc import Callable
-from typing import Any
+from datetime import datetime
+from typing import Any, Protocol
 
 import requests
 
@@ -14,17 +15,42 @@ from ..common.result import Failure, Result, Success
 from ..common.time_utils import now_second_precision
 
 
+class ResponseProtocol(Protocol):
+    status_code: int
+    text: str
+
+    def json(self) -> Any: ...
+    def raise_for_status(self) -> None: ...
+
+
+class SessionProtocol(Protocol):
+    def get(
+        self,
+        url: str,
+        params: dict[str, Any] | None = None,
+        timeout: float | None = None,
+        **kwargs: Any,
+    ) -> ResponseProtocol: ...
+
+
 class MarketDataProvider:
     """Base interface for all market data providers."""
 
-    def __init__(self, provider_config: ProviderConfig, api_key: str | None = None, **kwargs):
+    def __init__(
+        self,
+        provider_config: ProviderConfig,
+        api_key: str | None = None,
+        *,
+        session: SessionProtocol | None = None,
+        now_provider: Callable[[], datetime] = now_second_precision,
+    ):
         self.provider_config = provider_config
         self.api_key = api_key
         # not taking requests.session as the default, to avoid unnecessary construction
-        self.session = kwargs.pop("session", None) or requests.Session()
-        self.now = kwargs.pop("now_provider", now_second_precision)
+        self.session = session or requests.Session()
+        self.now = now_provider
 
-    def _safe_call[T](self, measurement: str, fn: Callable[[], Result[T]], context: str) -> Result[T]:
+    def _safe_call[T](self, fn: Callable[[], Result[T]], context: str) -> Result[T]:
         try:
             return fn()
         except Exception as exc:

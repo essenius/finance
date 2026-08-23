@@ -42,7 +42,7 @@ class State:
                 )
                 state_entry.needs_save = False
 
-    def get_series_state(self, series_id: int) -> SeriesState | None:
+    def get_series_state(self, series_id: int) -> SeriesState:
         entry = self.series.get(series_id)
         if entry is not None:
             return entry

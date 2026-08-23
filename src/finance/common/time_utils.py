@@ -4,8 +4,11 @@
 
 import calendar
 import re
-from datetime import UTC, date, datetime, time, timedelta, tzinfo
+from datetime import date, datetime, time, timedelta
 from zoneinfo import ZoneInfo
+
+# UTC based on ZoneInfo instead of tzinfo. Then we have a consistent model
+UTC = ZoneInfo("UTC")
 
 DURATION_UNITS = {
     "s": 1,
@@ -127,19 +130,12 @@ def parse_timezone(s: str) -> ZoneInfo:
         raise ValueError(f"Cannot understand timezone '{s}'.") from None
 
 
-def write_timezone(tz: tzinfo | None) -> str | None:
+def write_timezone(tz: ZoneInfo | None) -> str | None:
 
     if tz is None:
         return None
 
-    # Special-case Python's UTC
-    if tz is UTC:
-        return "UTC"
-
-    if isinstance(tz, ZoneInfo):
-        return tz.key
-
-    raise ValueError("Cannot write timezone without key field")
+    return tz.key
 
 
 def parse_datetime(s: str) -> datetime | None:

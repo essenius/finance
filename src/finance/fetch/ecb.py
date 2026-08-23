@@ -2,11 +2,12 @@
 # Licensed under the Apache License, Version 2.0. See the LICENSE file for details.
 # File: src/finance/fetch/ecb.py
 
-from datetime import UTC, datetime
+from datetime import datetime
 
 from ..common.candle_identity import CandleIdentity
 from ..common.model import Asset, FetchData, FetchResult, Series, SeriesPoint
 from ..common.result import Failure, Result, Success
+from ..common.time_utils import UTC
 from .provider import MarketDataProvider
 
 BASE_URL = "https://data-api.ecb.europa.eu/service/data"
@@ -27,9 +28,7 @@ class EcbProvider(MarketDataProvider):
         params = params | {"format": "jsondata", "detail": "dataonly"}
 
         return self._safe_call(
-            measurement=series.name,
-            fn=lambda: self._fetch(series, asset.provider_code, params),
-            context=f"ECB fetch of {series.name}",
+            fn=lambda: self._fetch(series, asset.provider_code, params), context=f"ECB fetch of {series.name}"
         )
 
     def _make_url(self, provider_code) -> str | None:
@@ -85,7 +84,7 @@ class EcbProvider(MarketDataProvider):
             except Exception:
                 continue
 
-            points.append(SeriesPoint(series_id=series.id, time=time, close=value))
+            points.append(SeriesPoint(series_id=series.require_id(), time=time, close=value))
 
         return points
 
@@ -115,6 +114,6 @@ class EcbProvider(MarketDataProvider):
 
         points = self._parse_points(series, observations, date_values)
 
-        result = FetchData(series_id=series.id, points=points, metadata=None)
+        result = FetchData(series_id=series.require_id(), points=points, metadata=None)
 
         return Success(result)

@@ -3,12 +3,13 @@
 # File: tests/common/test_candle_identity.py
 
 from dataclasses import replace
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
 import pytest
 
 from finance.common.candle_identity import CandleIdentity
+from finance.common.time_utils import UTC
 
 
 def test_candle_identity_intraday():

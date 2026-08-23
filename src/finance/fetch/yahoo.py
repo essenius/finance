@@ -2,15 +2,19 @@
 # Licensed under the Apache License, Version 2.0. See the LICENSE file for details.
 # File: src/finance/fetch/yahoo.py
 
-from datetime import UTC, date, datetime, time
+from datetime import date, datetime, time
+from typing import Any
 from urllib.parse import quote
 from zoneinfo import ZoneInfo
+
+from finance.common.guards import require
 
 from ..common.applogger import AppLogger
 from ..common.candle_identity import CandleIdentity
 from ..common.model import Asset, AssetMetadata, FetchData, FetchResult, Series, SeriesPoint, SeriesPointsResult
 from ..common.result import Failure, Result, Success
 from ..common.string_enums import Candle
+from ..common.time_utils import UTC
 from .provider import MarketDataProvider
 
 logger = AppLogger("yahoo")
@@ -36,9 +40,7 @@ class YahooProvider(MarketDataProvider):
         start_timestamp = start.start_timestamp()
         end_timestamp = end.end_timestamp()
         url, params = self._build_url(asset.provider_code, series.interval, start_timestamp, end_timestamp)
-        result = self._safe_call(
-            measurement=name, fn=lambda: self._fetch_impl(url, name, params), context="Yahoo fetch"
-        )
+        result = self._safe_call(fn=lambda: self._fetch_impl(url, name, params), context="Yahoo fetch")
 
         if result.ok is False:
             return result
@@ -50,10 +52,10 @@ class YahooProvider(MarketDataProvider):
             return fetch_failure(error=metadata_result.reason)
 
         metadata = metadata_result.payload
-        points_result = self._extract_candles(series, result.payload, metadata.timezone)
+        points_result = self._extract_candles(series, result.payload, require(metadata.timezone, "metadata timezone"))
         if points_result.ok is False:
             return fetch_failure(error=points_result.reason)
-        result = FetchData(series_id=series.id, points=points_result.payload, metadata=metadata)
+        result = FetchData(series_id=series.require_id(), points=points_result.payload, metadata=metadata)
         return Success(result)
 
     # -----------
@@ -103,7 +105,7 @@ class YahooProvider(MarketDataProvider):
     # Extract metadata
     # -----------------------------
 
-    def _extract_metadata(self, meta: dict) -> Result[AssetMetadata]:
+    def _extract_metadata(self, meta: dict[str, Any]) -> Result[AssetMetadata]:
 
         def time_from_timestamp(timestamp: int | None, timezone: ZoneInfo) -> time | None:
             return None if timestamp is None else datetime.fromtimestamp(timestamp, UTC).astimezone(timezone).time()
@@ -202,7 +204,7 @@ class YahooProvider(MarketDataProvider):
 
             if incomplete:
                 incomplete_count += 1
-            point = SeriesPoint(series_id=series.id, time=identity.store_label(), **values)
+            point = SeriesPoint(series_id=series.require_id(), time=identity.store_label(), **values)
             candles.append(point)
 
         warnings = []

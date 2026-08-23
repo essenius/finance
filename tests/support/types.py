@@ -4,7 +4,9 @@
 
 from collections.abc import Callable
 from contextlib import AbstractContextManager
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta
+
+from finance.common.time_utils import UTC
 
 type Factory[T] = Callable[[], T]
 type ConfigurableFactory[T] = Callable[..., T]

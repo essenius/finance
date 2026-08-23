@@ -2,10 +2,11 @@
 # Licensed under the Apache License, Version 2.0. See the LICENSE file for details.
 # File: tests/common/test_series_calendar.py
 
-from datetime import UTC, date, datetime, time, timedelta
+from datetime import date, datetime, time, timedelta
 from zoneinfo import ZoneInfo
 
 from finance.common.series_calendar import SeriesCalendar
+from finance.common.time_utils import UTC
 
 
 def make_calendar(

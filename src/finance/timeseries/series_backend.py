@@ -7,6 +7,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from datetime import datetime
 
+from finance.common.configuration import JsonObject
 from tests.support.types import ConfigurableFactory
 
 from ..common.model import BACKEND, Asset, Series, SeriesPoint, SeriesState
@@ -39,12 +40,11 @@ class SeriesBackend:
     @classmethod
     def from_config(
         cls,
-        config: dict,
+        config: JsonObject,
         sql_factory: ConfigurableFactory[BackendProtocol] = TimescaleSqlClient,
         now: Callable[[], datetime] | None = None,
     ) -> Result[SeriesBackend]:
         try:
-            # TODO remove after moving to configuration.py
             ts_config = TimescaleConfig.from_config(config)
 
             if ts_config.sslmode == "verify-ca" and ts_config.sslrootcert == "system":
@@ -59,10 +59,8 @@ class SeriesBackend:
                 return refresh_result
             return Success(backend)
 
-        except KeyError as ke:
-            return Failure(
-                reason="Timescale backend initialization failed", error=f"Cannot find mandatory config key {ke}"
-            )
+        except ValueError as ke:
+            return Failure(reason="Timescale backend initialization failed", error=ke)
 
     def add_point(self, entry: SeriesPoint) -> Result[int]:
         self._pending.append(entry)

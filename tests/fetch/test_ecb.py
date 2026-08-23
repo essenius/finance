@@ -3,12 +3,13 @@
 # File: tests/fetch/test_ecb.py
 
 import json
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
 import pytest
 
 from finance.common.candle_identity import CandleIdentity
+from finance.common.time_utils import UTC
 from finance.fetch.ecb import EcbProvider
 
 

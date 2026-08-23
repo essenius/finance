@@ -8,15 +8,9 @@ from ..common.result import Result
 
 
 class BackendProtocol(Protocol):
-    """TODO delete
-    @property
-    def config(self): ...
-
-    @property
-    def connection(self): ...
-    """
-
-    def execute_read(self, query: str, params: tuple | None = None, context: str = "Read") -> Result[dict]: ...
+    def execute_read(
+        self, query: str, params: tuple | None = None, context: str = "Read"
+    ) -> Result[dict[str, list]]: ...
 
     def execute_write(self, query: str, params: tuple, context: str = "Write") -> Result[int]: ...
 

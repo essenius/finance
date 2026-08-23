@@ -2,10 +2,11 @@
 # Licensed under the Apache License, Version 2.0. See the LICENSE file for details.
 # File: tests/state/test_state.py
 
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta
 
 from finance.common.model import SeriesState
 from finance.common.result import Failure, Success
+from finance.common.time_utils import UTC
 
 # ---------------------------------------------------------------------------
 # get() tests

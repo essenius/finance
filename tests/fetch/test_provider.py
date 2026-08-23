@@ -2,7 +2,7 @@
 # Licensed under the Apache License, Version 2.0. See the LICENSE file for details.
 # File: tests/fetch/test_provider.py
 
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta
 from typing import Any
 
 import pytest
@@ -10,6 +10,7 @@ import requests
 
 from finance.common.candle_identity import CandleIdentity
 from finance.common.result import Success
+from finance.common.time_utils import UTC
 
 
 def test_init_defaults(dummy_provider):
@@ -29,7 +30,7 @@ def test_safe_call_success(dummy_provider):
     def good():
         return Success([1, 2, 3])
 
-    result = p._safe_call("ABC", good, "context")
+    result = p._safe_call(good, "context")
     assert result.ok
     assert result.payload == [1, 2, 3]
 
@@ -40,7 +41,7 @@ def test_safe_call_exception(dummy_provider):
     def bad():
         raise ValueError("kaboom")
 
-    result = p._safe_call("ABC", bad, "context")
+    result = p._safe_call(bad, "context")
     assert result.ok is False
     assert "Exception during context" in result.reason
     assert "kaboom" in str(result.error)

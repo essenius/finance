@@ -68,7 +68,7 @@ def sql_with_fake_psycopg(make_backend_config: Factory[TimescaleConfig]) -> Cont
 
 @pytest.fixture
 def make_backend_config() -> ConfigurableFactory[TimescaleConfig]:
-    def _make(max_batch_size: int = 2, max_batch_age_seconds: int = 2) -> TimescaleConfig:
+    def _make(max_batch_size: int = 2, max_batch_age_seconds: float = 2) -> TimescaleConfig:
         config = {
             "host": "x",
             "db": "finance",

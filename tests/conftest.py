@@ -4,7 +4,7 @@
 
 import logging
 from collections.abc import Callable
-from datetime import UTC, datetime, time
+from datetime import datetime, time
 from pathlib import Path
 from unittest.mock import Mock
 
@@ -14,6 +14,7 @@ from finance.common.applogger import JsonFormatter, LogConfig
 from finance.common.model import Asset, AssetMetadata, Series
 from finance.common.result import Failure, Result
 from finance.common.string_enums import Retention, SeriesType
+from finance.common.time_utils import UTC
 from finance.state.state import State
 from finance.state.wal import JsonlWAL
 from finance.timeseries.series_backend import SeriesBackend

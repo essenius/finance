@@ -3,7 +3,7 @@
 # File: tests/fetch/yahoo/test_fetch.py
 
 import json
-from datetime import UTC, date, datetime, time, timedelta
+from datetime import date, datetime, time, timedelta
 from unittest.mock import Mock, patch
 
 import pytest
@@ -11,6 +11,7 @@ import pytest
 from finance.common.candle_identity import CandleIdentity
 from finance.common.model import AssetMetadata, SeriesPoint
 from finance.common.string_enums import Retention, SeriesType
+from finance.common.time_utils import UTC
 from finance.fetch.yahoo import YahooProvider
 
 # ----------------------------------------------------------------------

@@ -3,10 +3,11 @@
 # File: tests/fetch/yahoo/test_candles.py
 
 
-from datetime import UTC, datetime
+from datetime import datetime
 
 from finance.common.model import SeriesPoint
 from finance.common.string_enums import Retention, SeriesType
+from finance.common.time_utils import UTC
 
 # ----------------------------------------------------------------------
 # _extract_candles() tests (new provider)

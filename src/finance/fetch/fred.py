@@ -2,11 +2,14 @@
 # Licensed under the Apache License, Version 2.0. See the LICENSE file for details.
 # File: src/finance/fetch/fred.py
 
-from datetime import UTC, datetime
+from datetime import datetime
+
+from finance.common.guards import require
 
 from ..common.candle_identity import CandleIdentity
 from ..common.model import Asset, FetchData, FetchResult, Series, SeriesPoint
 from ..common.result import Failure, Success
+from ..common.time_utils import UTC
 from .provider import MarketDataProvider
 
 BASE_URL = "https://api.stlouisfed.org/fred/series/observations"
@@ -35,7 +38,7 @@ class FredProvider(MarketDataProvider):
             "observation_end": end_date,
         }
 
-        return self._safe_call(measurement=series.name, fn=lambda: self._fetch(series, params), context="FRED fetch")
+        return self._safe_call(fn=lambda: self._fetch(series, params), context="FRED fetch")
 
     def _fetch(self, series: Series, params: dict) -> FetchResult:
 
@@ -66,8 +69,9 @@ class FredProvider(MarketDataProvider):
                 continue
 
             value = float(value_str)
-            points.append(SeriesPoint(series_id=series.id, time=time, close=value))
+            series_id = require(series.id)
+            points.append(SeriesPoint(series_id=series_id, time=time, close=value))
 
-            result = FetchData(series_id=series.id, points=points, metadata=None)
+            result = FetchData(series_id=series_id, points=points, metadata=None)
 
         return Success(result)

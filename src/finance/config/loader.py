@@ -15,7 +15,6 @@ from finance.common.app_config import AppConfig, BusinessConfig
 from ..common.configuration import LoggingConfig, ProviderConfig, TimescaleConfig
 from ..common.dict_utils import deep_merge
 from ..common.guards import require_key
-from ..common.introspection import here
 from ..common.model import BACKEND, Asset, Series
 from ..common.paths import resolve_config_path
 from ..common.result import Failure, Result, Success
@@ -97,16 +96,15 @@ class ConfigLoader:
 
 
 def load_yaml_config(yaml_path: Path) -> Result[dict]:
-    context = {"location": here()}
     if not yaml_path.exists():
-        return Failure(reason=f"Config file not found: {yaml_path}", meta=context)
+        return Failure(reason=f"Config file not found: {yaml_path}")
 
     try:
         with yaml_path.open("r", encoding="utf-8") as f:
             result = yaml.safe_load(f) or {}
             return Success(result)
     except yaml.YAMLError as exc:
-        return Failure(reason="Invalid YAML", error=exc, meta=context)
+        return Failure(reason="Invalid YAML", error=exc)
 
 
 # ---------------------------------

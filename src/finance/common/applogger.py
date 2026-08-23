@@ -119,7 +119,7 @@ class AppLogger:
     def logger(self):
         return logging.getLogger(self.name)
 
-    def log(self, level: str, msg: str | None = None, **context: Any) -> dict[str, Any]:
+    def log(self, level: str, msg: str | None = None, **context: Any) -> None:
         py_level = LogConfig.LOG_LEVELS[level]
 
         # Determine correct stacklevel (skip wrapper frames)
@@ -145,35 +145,26 @@ class AppLogger:
             self.logger.log(py_level, line)
             return
 
-        # Build structured payload for JSON logging
-        payload = {"level": level, "message": msg, **clean_context}
-
         # Emit JSON log (formatter handles serialization)
         self.logger.log(py_level, msg, extra=clean_context, stacklevel=stacklevel)
 
-        return payload
-
     def error(self, msg=None, **context):
-        return self.log("error", msg, **context)
+        self.log("error", msg, **context)
 
     def warning(self, msg=None, **context):
-        return self.log("warning", msg, **context)
+        self.log("warning", msg, **context)
 
     def info(self, msg=None, **context):
-        return self.log("info", msg, **context)
+        self.log("info", msg, **context)
 
     def debug(self, msg=None, **context):
-        return self.log("debug", msg, **context)
+        self.log("debug", msg, **context)
 
     def exception(self, msg=None, **context):
         # Add structured fields
         exc_type, exc_value, exc_tb = sys.exc_info()
-
+        assert exc_type is not None
         context["exception.message"] = str(exc_value)
         context["exception.type"] = exc_type.__name__
         context["exception.trace"] = "".join(traceback.format_exception(exc_type, exc_value, exc_tb))
-        # Add exception info to context
-        # context["exc_info"] = True
-
-        # Delegate to your log() wrapper
-        return self.log("error", msg, **context)
+        self.log("error", msg, **context)

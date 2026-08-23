@@ -6,12 +6,55 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import timedelta
-from typing import Any
+from typing import cast
 
 from finance.common.result import Failure, Result, Success
 
-from ..common.guards import require_duration
-from ..common.time_utils import parse_duration, validate_duration
+from ..common.guards import require_duration, validate_required_duration
+from ..common.time_utils import parse_duration
+
+type JsonValue = str | int | float | bool | None
+type JsonObject = dict[str, JsonLike]
+type JsonArray = list[JsonLike]
+type JsonContainer = dict[str, JsonLike] | list[JsonLike]
+type JsonLike = JsonValue | JsonContainer
+
+
+class ConfigReader:
+    def __init__(self, config: JsonObject):
+        self.config = config
+
+    def get[T: JsonLike](self, key: str, expected_type: type[T], default: T) -> T:
+        value = self.config.get(key, default)
+        return self._validate(key, value, expected_type)
+
+    def get_object(self, key: str, default: JsonObject | None = None) -> JsonObject:
+        value = self.config.get(key, default)
+
+        if not isinstance(value, dict):
+            raise ValueError(f"'{key}' must be an object")
+
+        return value
+
+    def require[T: JsonLike](self, key: str, expected_type: type[T]) -> T:
+        value = self.config.get(key)
+        if value is None:
+            raise ValueError(f"Missing required key '{key}'")
+
+        return self._validate(key, value, expected_type)
+
+    def _validate[T: JsonLike](self, key: str, value: JsonLike, expected_type: type[T]) -> T:
+        if type(value) is expected_type:
+            return cast(T, value)
+
+        if expected_type is float and type(value) is int:
+            return cast(T, float(value))
+
+        raise ValueError(f"'{key}' must be {expected_type.__name__}")
+
+    def reader_for(self, key: str) -> ConfigReader:
+        value = self.get_object(key)
+        return ConfigReader(value)
 
 
 @dataclass
@@ -21,11 +64,12 @@ class LoggingConfig:
     date_format: str
 
     @classmethod
-    def from_config(cls, config: dict[str, Any]) -> LoggingConfig:
+    def from_config(cls, config: JsonObject) -> LoggingConfig:
+        reader = ConfigReader(config)
         return cls(
-            level=config.get("level", "info"),
-            use_json=config.get("use_json", True),
-            date_format=config.get("date_format", "%Y-%m-%dT%H:%M:%S%z"),
+            level=reader.get("level", str, "info"),
+            use_json=reader.get("use_json", bool, True),
+            date_format=reader.get("date_format", str, "%Y-%m-%dT%H:%M:%S%z"),
         )
 
 
@@ -46,27 +90,29 @@ class TimescaleConfig:
     MANDATORY_FIELDS = ("host", "db", "user", "password")
 
     @classmethod
-    def validate(cls, config: dict[str, Any]) -> Result[None]:
+    def validate(cls, config: JsonObject) -> Result[None]:
+        reader = ConfigReader(config)
         missing = []
         for field in cls.MANDATORY_FIELDS:
-            if not config.get(field):
+            if not reader.get(field, str, ""):
                 missing.append(field)
         if len(missing) == 0:
             return Success(None)
         return Failure(reason="TimescaleDB configuration incomplete", error=f"Missing mandatory fields: {missing}")
 
     @classmethod
-    def from_config(cls, config: dict[str, Any]) -> TimescaleConfig:
+    def from_config(cls, config: JsonObject) -> TimescaleConfig:
+        reader = ConfigReader(config)
         return cls(
-            host=config["host"],
-            port=config.get("port", 5432),
-            dbname=config["db"],
-            user=config["user"],
-            password=config["password"],
-            sslmode=config.get("ssl_mode", "verify-full"),
-            sslrootcert=config.get("ssl_root_cert", "system"),
-            max_batch_size=config.get("max_batch_size", 1000),
-            max_batch_age=timedelta(seconds=config.get("max_batch_age_seconds", 2.0)),
+            host=reader.require("host", str),
+            port=reader.get("port", int, 5432),
+            dbname=reader.require("db", str),
+            user=reader.require("user", str),
+            password=reader.require("password", str),
+            sslmode=reader.get("ssl_mode", str, "verify-full"),
+            sslrootcert=reader.get("ssl_root_cert", str, "system"),
+            max_batch_size=reader.get("max_batch_size", int, 1000),
+            max_batch_age=timedelta(seconds=reader.get("max_batch_age_seconds", float, 2.0)),
         )
 
     def connect_config(self) -> dict:
@@ -79,9 +125,10 @@ class SweepConfig:
     cadence: timedelta
 
     @classmethod
-    def from_config(cls, config: dict, context: str = "") -> SweepConfig:
-        window = require_duration(config.get("window", "0"), context)
-        cadence = require_duration(config.get("cadence", "0"), context)
+    def from_config(cls, config: JsonObject, context: str = "") -> SweepConfig:
+        reader = ConfigReader(config)
+        window = require_duration(reader.get("window", str, "0"), context)
+        cadence = require_duration(reader.get("cadence", str, "0"), context)
         return cls(window=window, cadence=cadence)
 
     @classmethod
@@ -101,16 +148,21 @@ class ProviderConfig:
         return require_duration(self.timeout, f"timeout for {self.name}")
 
     @classmethod
-    def from_config(cls, content: dict[str, Any], api_keys: dict[str, str]) -> ProviderConfig:
-        name = content["name"]
-        raw_history_limits = content.get("constraints", {}).get("history_limits", {})
+    def from_config(cls, config: JsonObject, api_keys: JsonObject) -> ProviderConfig:
+        reader = ConfigReader(config)
+        key_reader = ConfigReader(api_keys)
+        name = reader.require("name", str)
+        raw_history_limits = reader.get_object("constraints", {}).get("history_limits", {})
         history_limits: dict[timedelta, timedelta | None] = ProviderConfig.parse_duration_table(raw_history_limits)
-        sweep: dict[timedelta, SweepConfig] = ProviderConfig.parse_sweep_table(content.get("sweep", {}))
-
+        sweep_config = reader.get_object("sweep", {})
+        sweep: dict[timedelta, SweepConfig] = ProviderConfig.parse_sweep_table(sweep_config)
+        api_key = key_reader.get(name, str, "")
+        if api_key == "":
+            api_key = None
         return cls(
             name=name,
-            timeout=validate_duration(content.get("timeout"), "timeout") or "10s",
-            api_key=api_keys.get(name),
+            timeout=validate_required_duration(reader.get("timeout", str, "10s"), "timeout"),
+            api_key=api_key,
             history_limits=history_limits,
             sweep=sweep,
         )

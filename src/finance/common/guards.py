@@ -5,6 +5,7 @@
 from datetime import timedelta
 
 from ..common.time_utils import parse_duration
+from ..common.types import ParseError
 
 
 def _annotate(context: str) -> str:
@@ -16,18 +17,18 @@ def _annotate(context: str) -> str:
 def require[T](value: T | None, context: str = "") -> T:
     if value is None:
         context = _annotate(context)
-        raise ValueError(f"Missing required value{context}")
+        raise ParseError(f"Missing required value{context}")
     return value
 
 
 def require_key(cfg: dict, key: str, context: str = "") -> object:
     """
-    Return cfg[key] if present, otherwise raise a ValueError.
+    Return cfg[key] if present, otherwise raise a ParseError.
     This has to be caught in the function it is used in.
     """
     if key not in cfg:
         context = _annotate(context)
-        raise ValueError(f"Missing required field '{key}'{context}")
+        raise ParseError(f"Missing required field '{key}'{context}")
     return cfg[key]
 
 

@@ -7,8 +7,9 @@ import json
 import logging
 import sys
 import traceback
-from collections.abc import Mapping
 from typing import Any
+
+from finance.common.configuration import LogConfig
 
 RESERVED_LOG_KEYS = (
     "args",
@@ -63,7 +64,10 @@ class AppHandler(logging.StreamHandler):
     pass
 
 
-class LogConfig:
+class LogConfigurator:
+    """Configures the logging infrastructure. Provides a minimal bootstrap logger for when the configuration hasn't
+    been loaded yet, and replaces that by the final logger once loaded."""
+
     LOG_LEVELS = {
         "debug": logging.DEBUG,
         "info": logging.INFO,
@@ -87,10 +91,10 @@ class LogConfig:
         # Safe default level before config is loaded
         self.root.setLevel(logging.INFO)
 
-    def setup(self, config: Mapping[str, Any]) -> None:
+    def setup(self, config: LogConfig) -> None:
         root = logging.getLogger()
         handler = AppHandler()
-        formatter = JsonFormatter(datefmt=config.get("date_format", "%Y-%m-%dT%H:%M:%S%z"))
+        formatter = JsonFormatter(datefmt=config.date_format)
         handler.setFormatter(formatter)
 
         root.addHandler(handler)
@@ -101,7 +105,7 @@ class LogConfig:
                 root.removeHandler(h)
 
         # Set level
-        level_name = config.get("level", "info").lower()
+        level_name = config.level
         root.setLevel(self.LOG_LEVELS.get(level_name, logging.INFO))
 
 
@@ -120,7 +124,7 @@ class AppLogger:
         return logging.getLogger(self.name)
 
     def log(self, level: str, msg: str | None = None, **context: Any) -> None:
-        py_level = LogConfig.LOG_LEVELS[level]
+        py_level = LogConfigurator.LOG_LEVELS[level]
 
         # Determine correct stacklevel (skip wrapper frames)
         frame = inspect.currentframe()

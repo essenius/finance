@@ -11,10 +11,10 @@ from ..common.applogger import AppLogger
 from ..common.candle_identity import CandleIdentity
 from ..common.configuration import ProviderConfig
 from ..common.model import Asset, FetchResult, Series, SeriesState, SweepConfig
-from ..common.result import Failure
 from ..common.series_calendar import SeriesCalendar
 from ..common.string_enums import SupportedProviders
 from ..common.time_utils import now_second_precision
+from ..common.types import Failure
 from ..fetch.provider import MarketDataProvider
 from ..state.state import State
 from .ecb import EcbProvider
@@ -33,11 +33,9 @@ PROVIDER_REGISTRY: dict[
 logger = AppLogger("fetch")
 
 
-def create_providers(
-    providers_config: dict[str, ProviderConfig], api_keys: dict[str, str]
-) -> dict[str, MarketDataProvider]:
+def create_providers(providers_config: dict[str, ProviderConfig]) -> dict[str, MarketDataProvider]:
     result = {
-        name.value: provider_class(provider_config=providers_config[name.value], api_key=api_keys.get(name.value))
+        name.value: provider_class(provider_config=providers_config[name.value])
         for name, provider_class in PROVIDER_REGISTRY.items()
     }
     return result

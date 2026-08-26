@@ -7,12 +7,9 @@ from __future__ import annotations
 from collections.abc import Callable
 from datetime import datetime
 
-from finance.common.configuration import JsonObject
-from tests.support.types import ConfigurableFactory
-
 from ..common.model import BACKEND, Asset, Series, SeriesPoint, SeriesState
-from ..common.result import Failure, Result, Success
 from ..common.time_utils import write_time, write_timezone
+from ..common.types import Failure, Result, Success
 from .backend_protocol import BackendProtocol
 from .timescale_mapper import (
     asset_from_row,
@@ -21,6 +18,8 @@ from .timescale_mapper import (
     series_state_merge_sweep_info,
 )
 from .timescale_sql import TimescaleConfig, TimescaleSqlClient
+
+type SqlClientFactory = Callable[[TimescaleConfig], BackendProtocol]
 
 
 class SeriesBackend:
@@ -40,27 +39,21 @@ class SeriesBackend:
     @classmethod
     def from_config(
         cls,
-        config: JsonObject,
-        sql_factory: ConfigurableFactory[BackendProtocol] = TimescaleSqlClient,
+        config: TimescaleConfig,
+        sql_factory: SqlClientFactory = TimescaleSqlClient,
         now: Callable[[], datetime] | None = None,
     ) -> Result[SeriesBackend]:
-        try:
-            ts_config = TimescaleConfig.from_config(config)
+        if config.sslmode == "verify-ca" and config.sslrootcert == "system":
+            return Failure(
+                reason="Timescale backend initialization failed",
+                error=f"verify-ca requires path in {BACKEND.upper()}_SSL_ROOT_CERT in .env or ssl_root_cert in yaml",
+            )
 
-            if ts_config.sslmode == "verify-ca" and ts_config.sslrootcert == "system":
-                return Failure(
-                    reason="Timescale backend initialization failed",
-                    error=f"verify-ca requires path in {BACKEND.upper()}_SSL_ROOT_CERT in .env or ssl_root_cert in yaml",
-                )
-
-            backend = cls(ts_config, sql_factory(ts_config), now)
-            refresh_result = backend.refresh_short_lived_series_ids()
-            if refresh_result.ok is False:
-                return refresh_result
-            return Success(backend)
-
-        except ValueError as ke:
-            return Failure(reason="Timescale backend initialization failed", error=ke)
+        backend = cls(config, sql_factory(config), now)
+        refresh_result = backend.refresh_short_lived_series_ids()
+        if refresh_result.ok is False:
+            return refresh_result
+        return Success(backend)
 
     def add_point(self, entry: SeriesPoint) -> Result[int]:
         self._pending.append(entry)

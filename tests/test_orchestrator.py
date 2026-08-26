@@ -8,13 +8,40 @@ from unittest.mock import Mock, call
 import pytest
 
 from finance.common.model import FetchData, FetchResult
-from finance.common.result import Failure, Success
 from finance.common.time_utils import UTC
+from finance.common.types import AppError, Failure, Success
 from finance.orchestrator import Orchestrator, unwrap
 
 
 def ok_fetch_result(points: list) -> FetchResult:
     return Success(FetchData(series_id=1, points=points, metadata=None))
+
+
+@pytest.fixture
+def backend():
+    return Mock()
+
+
+@pytest.fixture
+def registry():
+    return Mock()
+
+
+@pytest.fixture
+def state():
+    state = Mock()
+    state.series = {}
+    return state
+
+
+@pytest.fixture
+def fetcher():
+    return Mock()
+
+
+@pytest.fixture
+def orchestrator(backend, registry, state, fetcher):
+    return Orchestrator(backend=backend, registry=registry, state=state, fetcher=fetcher)
 
 
 # ---------------------------------------------------------------------------
@@ -46,77 +73,13 @@ def test_unwrap_failure_no_throw(json_caplog):
 
 def test_unwrap_failure_with_throw():
     f1 = Failure(reason="x", error="boom")
-    with pytest.raises(ValueError) as exc:
+    with pytest.raises(AppError) as exc:
         unwrap(f1, throw=True)
     assert "x: boom" in str(exc)
     f2 = Failure(reason="x")
-    with pytest.raises(ValueError) as exc:
+    with pytest.raises(AppError) as exc:
         unwrap(f2, throw=True)
     assert exc.value.args[0] == "x"
-
-
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
-'''
-class FakeState:
-    """State that records ingest calls."""
-
-    def __init__(self):
-        self.calls = []
-        self.series = {}
-
-    def ingest(self, point: SeriesPoint):
-        self.calls.append(point)
-        return Success(point)  # success
-
-    def update_state(self, series_id: int, first: int, last: int) -> None:
-        self.series[series_id] = SeriesState(first_point=first, last_point=last)
-
-
-class SkipState(FakeState):
-    """State that returns skip (payload=None)."""
-
-    def ingest(self, point: SeriesPoint):
-        self.calls.append(point)
-        return Success(None)  # skip
-
-
-class FailingState(FakeState):
-    """State that returns failure."""
-
-    def ingest(self, point: SeriesPoint):
-        self.calls.append(point)
-        return Failure(reason="spx", error="ingest failed")
-'''
-
-
-@pytest.fixture
-def backend():
-    return Mock()
-
-
-@pytest.fixture
-def registry():
-    return Mock()
-
-
-@pytest.fixture
-def state():
-    state = Mock()
-    state.series = {}
-    return state
-
-
-@pytest.fixture
-def fetcher():
-    return Mock()
-
-
-@pytest.fixture
-def orchestrator(backend, registry, state, fetcher):
-    return Orchestrator(backend=backend, registry=registry, state=state, fetcher=fetcher)
 
 
 def test_prepare_loads_state_and_reconciles_backend(orchestrator, backend, registry, state):

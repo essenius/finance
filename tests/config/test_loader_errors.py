@@ -59,7 +59,7 @@ business:
     loader = ConfigLoader(cwd=tmp_path)
     with patch.dict("os.environ", {}, clear=True):
         result = loader.load()
-    assert_error(result, "Could not parse asset 'spx'", "Missing required field 'provider'")
+    assert_error(result, "Could not parse asset 'spx'", "['provider', 'name']: Missing required key `provider`")
 
 
 # ---------------------------------------------------------------------------
@@ -82,7 +82,7 @@ business:
     loader = ConfigLoader(cwd=tmp_path)
     with patch.dict("os.environ", {}, clear=True):
         result = loader.load()
-    assert_error(result, "Could not parse provider 'ecb'", "Invalid timezone 'bogus'")
+    assert_error(result, "Could not parse provider 'ecb'", "No time zone found with key bogus")
 
 
 def test_load_config_provider_duration_failure(tmp_path, assert_error):

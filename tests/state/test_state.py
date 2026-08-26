@@ -5,8 +5,8 @@
 from datetime import datetime, timedelta
 
 from finance.common.model import SeriesState
-from finance.common.result import Failure, Success
 from finance.common.time_utils import UTC
+from finance.common.types import Failure, Success
 
 # ---------------------------------------------------------------------------
 # get() tests

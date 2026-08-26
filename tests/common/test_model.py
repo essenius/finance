@@ -8,6 +8,7 @@ import pytest
 
 from finance.common.model import Asset, AssetMetadata, Series, SeriesPoint, SeriesState
 from finance.common.string_enums import Retention, SeriesType
+from finance.common.types import ParseError
 
 
 def test_seriespoint_from_to_dict(fixed_now):
@@ -70,7 +71,7 @@ def test_asset_create_with_id_differs():
 def test_asset_create_with_wrong_timezone():
 
     config = {"symbol": "SPX", "provider": {"name": "yahoo", "code": "^SPX"}, "timezone": "bogus"}
-    with pytest.raises(ValueError) as ve:
+    with pytest.raises(ParseError) as ve:
         Asset.from_config(name="spx", config=config)
     assert "Cannot understand timezone 'bogus'" in str(ve.value)
 

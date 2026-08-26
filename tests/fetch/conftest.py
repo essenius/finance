@@ -13,7 +13,7 @@ from finance.common.model import FetchResult
 from finance.common.string_enums import SupportedProviders
 from finance.fetch.ecb import EcbProvider
 from finance.fetch.fred import FredProvider
-from finance.fetch.provider import MarketDataProvider
+from finance.fetch.provider import MarketDataProvider, ResponseProtocol
 from finance.fetch.yahoo import YahooProvider
 from tests.support.types import ConfigurableFactory, Factory
 
@@ -30,25 +30,31 @@ def assert_ok():
 
 
 class FakeResponse:
-    def __init__(self, status, json_data, text=None):
+    status_code: int
+    text: str
+    def __init__(self, status: int, json_data: object, text: str=""):
         self.status_code = status
         self._json = json_data
         self.text = text
 
-    def json(self):
+    def json(self) -> object:
         return self._json
 
-    def raise_for_status(self):
+    def raise_for_status(self) -> None:
         if self.status_code != 200:
             raise requests.exceptions.HTTPError(self.text or "boom")
 
 
 class FakeSession:
+    url: str
+    params: dict[str, Any] | None
+    timeout: float | None
+
     def __init__(self):
-        self.responses = []
+        self.responses: list[ResponseProtocol|Exception] = []
         self.calls = 0
 
-    def queue(self, status: int, json_data, text=None):
+    def queue(self, status: int, json_data: object, text:str=""):
         self.responses.append(FakeResponse(status, json_data, text))
         return self
 
@@ -56,7 +62,7 @@ class FakeSession:
         self.responses.append(exc)
         return self
 
-    def get(self, url: str, params: dict[str, Any] | None = None, timeout: float | None = None, **kwargs: Any):
+    def get(self, url: str, params: dict[str, Any] | None = None, timeout: float | None = None, **kwargs: Any) -> ResponseProtocol:
         self.url = url
         self.params = params
         self.timeout = timeout
@@ -79,8 +85,7 @@ def fake_session() -> Factory[FakeSession]:
 def ecb_provider(fixed_now, fake_session) -> Factory[EcbProvider]:
     def _make() -> EcbProvider:
         return EcbProvider(
-            api_key=None,
-            provider_config=ProviderConfig.from_config({"name": SupportedProviders.ECB.value}, {}),
+            provider_config=ProviderConfig.from_config({"name": SupportedProviders.ECB.value}),
             now_provider=fixed_now,
             session=fake_session(),
         )
@@ -92,8 +97,7 @@ def ecb_provider(fixed_now, fake_session) -> Factory[EcbProvider]:
 def fred_provider(fixed_now, fake_session) -> Factory[FredProvider]:
     def _make(api_key: str = "TESTKEY") -> FredProvider:
         return FredProvider(
-            api_key=api_key,
-            provider_config=ProviderConfig.from_config({"name": SupportedProviders.FRED.value}, {}),
+            provider_config=ProviderConfig.from_config({"name": SupportedProviders.FRED.value, "api_key": api_key}),
             now_provider=fixed_now,
             session=fake_session(),
         )
@@ -107,7 +111,7 @@ def yahoo_provider(
 ) -> ConfigurableFactory[YahooProvider]:
     def _make(now_provider: Factory[datetime] = fixed_now) -> YahooProvider:
         return YahooProvider(
-            provider_config=ProviderConfig.from_config({"name": SupportedProviders.YAHOO.value}, {}),
+            provider_config=ProviderConfig.from_config({"name": SupportedProviders.YAHOO.value}),
             now_provider=now_provider,
             session=fake_session(),
         )
@@ -119,7 +123,7 @@ def yahoo_provider(
 def dummy_provider() -> Factory[MarketDataProvider]:
     def _make() -> MarketDataProvider:
         return MarketDataProvider(
-            provider_config=ProviderConfig.from_config({"name": "dummy"}, {}),
+            provider_config=ProviderConfig.from_config({"name": "dummy"}),
         )
 
     return _make

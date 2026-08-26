@@ -49,7 +49,7 @@ MALFORMED_CASES = [
     (
         "TESTKEY",
         {"foo": "bar"},
-        "no 'observations' in response",
+        "['observations']: Missing required key `observations`",
     ),
 ]
 
@@ -70,7 +70,7 @@ def test_fred_malformed_cases(
 
 
 def test_fred_fetch_network_error(assert_error, fred_provider, make_asset, make_series, fixed_now):
-    provider = fred_provider()
+    provider:FredProvider = fred_provider()
     provider.session.queue_error(Exception("Boom!"))
 
     asset = make_asset(provider_code="T10YIE")

@@ -3,16 +3,36 @@
 # File: tests/timeseries/conftest.py
 
 from contextlib import contextmanager
+from typing import Protocol, cast
 from unittest.mock import MagicMock, patch
 
 import pytest
 
 from finance.common.configuration import TimescaleConfig
-from finance.common.model import SeriesPoint
-from finance.common.string_enums import Retention
 from finance.timeseries.series_backend import SeriesBackend
 from finance.timeseries.timescale_sql import TimescaleSqlClient
-from tests.support.types import ConfigurableFactory, ContextManagerFactory, Factory, FakeClock
+from tests.support.fakes import FakeClock
+from tests.support.types import ConfigurableFactory, ContextManagerFactory, Factory
+
+
+
+class SqlWithMockCursor(Protocol):
+    mock_cursor: MagicMock
+@pytest.fixture
+def make_timescale_config() -> ConfigurableFactory[TimescaleConfig]:
+    def _make(**overrides) -> TimescaleConfig:
+        defaults = {
+            "host": "host123",
+            "user": "fin_user",
+            "password": "s3cr3t",
+            "db": "fin2",
+        }
+
+        params = defaults | overrides
+
+        return TimescaleConfig.from_config(params)
+
+    return _make
 
 
 @pytest.fixture
@@ -26,15 +46,17 @@ def sql_with_fake_connection(
         sql._connection = MagicMock()
         sql._connection.closed = not connected
 
-        sql.mock_cursor = MagicMock()
-        fetch_one = kwargs.get("fetchone")
-        sql.mock_cursor.fetchone.return_value = fetch_one
-        fetch_all = kwargs.get("fetchall")
-        sql.mock_cursor.fetchall.return_value = fetch_all
-        execute = kwargs.get("execute")
-        sql.mock_cursor.execute.return_value = execute
-        sql._connection.cursor.return_value.__enter__.return_value = sql.mock_cursor
-        return sql, sql.mock_cursor
+        sql_with_cursor = cast(SqlWithMockCursor, sql)
+
+        mock_cursor = MagicMock()
+        mock_cursor.fetchone.return_value = kwargs.get("fetchone")
+        mock_cursor.fetchall.return_value = kwargs.get("fetchall")
+        mock_cursor.execute.return_value = kwargs.get("execute")
+
+        sql_with_cursor.mock_cursor = mock_cursor
+        sql._connection.cursor.return_value.__enter__.return_value = mock_cursor
+
+        return sql, mock_cursor
 
     return _make
 
@@ -98,6 +120,7 @@ def make_backend(
     return _make
 
 
+"""
 @pytest.fixture
 def make_entry() -> ConfigurableFactory[SeriesPoint]:
     def _make(
@@ -114,3 +137,4 @@ def make_entries(make_entry: ConfigurableFactory[SeriesPoint]) -> Factory[list[S
         return [make_entry(fields={"v": i}, timestamp=i) for i in range(n)]
 
     return _make
+"""

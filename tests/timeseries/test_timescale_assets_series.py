@@ -7,8 +7,8 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 from finance.common.model import Asset
-from finance.common.result import Failure, Success
 from finance.common.string_enums import Retention, SeriesType
+from finance.common.types import Failure, Success
 from finance.timeseries.series_backend import SeriesBackend
 from tests.support.types import Factory
 

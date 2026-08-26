@@ -5,10 +5,11 @@
 import pytest
 
 from finance.common.string_enums import Candle, Retention, SeriesType
+from finance.common.types import ParseError
 
 
 def test_stringenum_validate():
-    with pytest.raises(ValueError) as exc_info:
+    with pytest.raises(ParseError) as exc_info:
         Retention.require("bogus")
         assert "Invalid Retention: 'bogus'. Allowed: short_lived, long_lived" in str(exc_info)
 

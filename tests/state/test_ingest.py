@@ -5,7 +5,7 @@
 from dataclasses import replace
 
 from finance.common.model import SeriesState
-from finance.common.result import Failure, Success
+from finance.common.types import Failure, Success
 
 
 def test_ingest_enqueues_and_does_not_update_state(state_env, make_entry):

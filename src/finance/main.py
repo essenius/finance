@@ -6,18 +6,16 @@ import argparse
 from collections.abc import Callable, Iterable
 from datetime import datetime
 from pathlib import Path
-from typing import Any
 
-from .common.applogger import AppLogger, LogConfig
-from .common.configuration import ProviderConfig
-from .common.dict_utils import deep_merge
-from .common.guards import require
-from .common.model import BACKEND, Asset, Series
-from .common.result import Result
+from finance.common.configuration import ProviderConfig, TimescaleConfig
+
+from .common.applogger import AppLogger, LogConfigurator
+from .common.model import Asset, Series
 from .common.time_utils import now_second_precision
+from .common.types import Result
 
 # from .composites.engine import CompositeEngine
-from .config.loader import ConfigLoader
+from .config.loader import AppConfig, ConfigLoader
 from .fetch.controller import FetchController, create_providers
 from .fetch.provider import MarketDataProvider
 from .orchestrator import Orchestrator, unwrap
@@ -44,16 +42,16 @@ def main(argv: list[str] | None = None) -> int:
 
 def run(
     config_path: Path | None = None,
-    load_config: Callable[[], Result[dict[str, Any]]] | None = None,
-    registry_factory: Callable[[dict[str, Asset], dict[str, Series]], Registry] = Registry,
+    load_config: Callable[[], Result[AppConfig]] | None = None,
+    registry_factory: Callable[[Iterable[Asset], Iterable[Series]], Registry] = Registry,
     sql_factory: Callable[..., BackendProtocol] = TimescaleSqlClient,
     backend_factory: Callable[
-        [dict[str, Any], Callable[..., BackendProtocol]], Result[SeriesBackend]
+        [TimescaleConfig, Callable[..., BackendProtocol]], Result[SeriesBackend]
     ] = SeriesBackend.from_config,
-    provider_factory: Callable[[dict[str, Any], dict[str, Any]], dict[str, MarketDataProvider]] = create_providers,
+    provider_factory: Callable[[dict[str, ProviderConfig]], dict[str, MarketDataProvider]] = create_providers,
     state_factory: Callable[..., State] = State,
     fetch_controller_factory: Callable[
-        [Iterable[Series], Callable[[int], Asset], Callable[[str], ProviderConfig]], FetchController
+        [Iterable[Series], Callable[[int], Asset | None], Callable[[str], MarketDataProvider]], FetchController
     ] = FetchController,
     # composite_engine_builder: Callable[[dict[str, Any], State], Result[CompositeEngine]] = CompositeEngine.build,
     wal_factory: Callable[[Path], JsonlWAL] = JsonlWAL,
@@ -65,37 +63,30 @@ def run(
         load_config = load_config or ConfigLoader(cwd=Path.cwd(), config_path=config_path).load
         now = now or now_second_precision
 
-        log_config = LogConfig()
+        log_configurator = LogConfigurator()
         # bootstrap logger is a minimal text logger, so if an exception happens
         # before the json logger is configured, we can still log it.
-        log_config.bootstrap()
+        log_configurator.bootstrap()
         # Config loader can have errors, but is also needed to setup logging.
         # So if the config loader fails, we take default logging settings.
-        config_result = load_config()
-        log_section = (
-            {}
-            if config_result.ok is False
-            else require(config_result.payload.get("logging"), "logging entry in config")
-        )
-        log_config.setup(log_section)
-        # Now we have a valid json logger, and we can start logging.
-        config = unwrap(config_result)
+        config: AppConfig = unwrap(load_config())
+        log_configurator.setup(config.logging)
+        # Now we have a valid json logger.
 
         # CO: composites = config["composites"]
-        secrets = config["secrets"]
 
-        registry = registry_factory(config["assets"], config["series"])
+        registry = registry_factory(config.assets, config.series)
 
-        backend_result = backend_factory(deep_merge(secrets[BACKEND], config[BACKEND]), sql_factory)
+        backend_result = backend_factory(config.timescaledb, sql_factory)
         if backend_result.ok is False:
             logger.error(reason=backend_result.reason, error=backend_result.error)
             return 1
 
         backend: SeriesBackend = backend_result.payload
 
-        wal = wal_factory(config["paths"].get("wal"))
+        wal = wal_factory(config.paths["wal"])
         state = state_factory(backend=backend, wal=wal)
-        providers = provider_factory(api_keys=secrets.get("api_keys"), providers_config=config["providers"])
+        providers = provider_factory(config.providers)
         fetch_controller = fetch_controller_factory(registry.all_series(), registry.get_asset_by_id, providers.get)
 
         orchestrator = orchestrator_factory(backend=backend, registry=registry, state=state, fetcher=fetch_controller)

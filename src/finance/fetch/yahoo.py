@@ -3,18 +3,17 @@
 # File: src/finance/fetch/yahoo.py
 
 from datetime import date, datetime, time
-from typing import Any
 from urllib.parse import quote
 from zoneinfo import ZoneInfo
 
-from finance.common.guards import require
-
 from ..common.applogger import AppLogger
 from ..common.candle_identity import CandleIdentity
+from ..common.guards import require
+from ..common.json_utils import JsonObject, JsonReader
 from ..common.model import Asset, AssetMetadata, FetchData, FetchResult, Series, SeriesPoint, SeriesPointsResult
-from ..common.result import Failure, Result, Success
 from ..common.string_enums import Candle
 from ..common.time_utils import UTC
+from ..common.types import Failure, ParseError, Result, Success
 from .provider import MarketDataProvider
 
 logger = AppLogger("yahoo")
@@ -36,23 +35,22 @@ class YahooProvider(MarketDataProvider):
         def fetch_failure(error: str) -> Failure:
             return Failure(f"Could not parse series '{series.name}' in Yahoo fetch result", error=error)
 
-        name = series.name
         start_timestamp = start.start_timestamp()
         end_timestamp = end.end_timestamp()
         url, params = self._build_url(asset.provider_code, series.interval, start_timestamp, end_timestamp)
-        result = self._safe_call(fn=lambda: self._fetch_impl(url, name, params), context="Yahoo fetch")
+        result = self._safe_call(fn=lambda: self._fetch_impl(url=url, params=params), context="Yahoo fetch")
 
         if result.ok is False:
             return result
+        reader = JsonReader(result.payload)
+        meta_reader = reader.reader_for("meta")
 
-        meta = result.payload.get("meta", {})
-
-        metadata_result = self._extract_metadata(meta)
+        metadata_result = self._extract_metadata(meta_reader)
         if metadata_result.ok is False:
             return fetch_failure(error=metadata_result.reason)
 
         metadata = metadata_result.payload
-        points_result = self._extract_candles(series, result.payload, require(metadata.timezone, "metadata timezone"))
+        points_result = self._extract_candles(series, reader, require(metadata.timezone, "metadata timezone"))
         if points_result.ok is False:
             return fetch_failure(error=points_result.reason)
         result = FetchData(series_id=series.require_id(), points=points_result.payload, metadata=metadata)
@@ -73,39 +71,37 @@ class YahooProvider(MarketDataProvider):
         }
         return f"{self.BASE_URL.format(symbol=encoded)}", params
 
-    def _fetch_impl(self, url, name, params) -> Result[dict]:
+    def _fetch_impl(self, url, params) -> Result[JsonObject]:
         """fetch the response from the provider. Is called from a _safe_call wrapper so can throw"""
         headers = {"User-Agent": "Mozilla/5.0"}
         response = self.session.get(
             url, params=params, headers=headers, timeout=self.provider_config.timeout_delta().seconds
         )
         response.raise_for_status()
-        data = response.json()
+        reader = JsonReader(response.json()).reader_for("chart", allow_missing="yes")
+        return self._parse_result(reader)
 
-        error_response = self._error_response(data)
-        if error_response:
-            return Failure(reason="Could not interpret fetch response", error=error_response)
+    def _parse_result(self, reader: JsonReader) -> Result[JsonObject]:
+        def fail(message: str):
+            return Failure(reason="Could not interpret fetch response", error=message)
 
-        # must work since is_error_response checks for it
-        value = data["chart"]["result"][0]
-        return Success(value)
+        try:
+            if reader.is_empty():
+                return fail("no 'chart' in response")
+            error_object = reader.get_object("error", allow_missing="yes")
+            if error_object:
+                return fail(str(error_object))
+            result = reader.get_object(["result", 0], allow_missing="no")
+            return Success(result)
 
-    def _error_response(self, data) -> str | None:
-        chart = data.get("chart", {})
-        if chart == {}:
-            return "no 'chart' in response"
-        if chart.get("error"):
-            return str(chart["error"])
-        result = chart.get("result")
-        if result is None or result == []:
-            return "result empty"
-        return None
+        except ParseError as ve:
+            return fail(str(ve))
 
     # -----------------------------
     # Extract metadata
     # -----------------------------
 
-    def _extract_metadata(self, meta: dict[str, Any]) -> Result[AssetMetadata]:
+    def _extract_metadata(self, meta_reader: JsonReader) -> Result[AssetMetadata]:
 
         def time_from_timestamp(timestamp: int | None, timezone: ZoneInfo) -> time | None:
             return None if timestamp is None else datetime.fromtimestamp(timestamp, UTC).astimezone(timezone).time()
@@ -113,8 +109,8 @@ class YahooProvider(MarketDataProvider):
         def date_from_timestamp(timestamp: int | None, timezone: ZoneInfo) -> date | None:
             return None if timestamp is None else datetime.fromtimestamp(timestamp, UTC).astimezone(timezone).date()
 
-        timezone_name = meta.get("exchangeTimezoneName")
-        if timezone_name is None:
+        timezone_name = meta_reader.get(str, "exchangeTimezoneName", default="")
+        if not timezone_name:
             return Failure(reason="missing exchangeTimezoneName in meta")
 
         try:
@@ -123,26 +119,26 @@ class YahooProvider(MarketDataProvider):
             return Failure(reason=f"invalid exchange timezone '{timezone_name}': {e}")
 
         first_trade_date = None
-        first_trade_timestamp = meta.get("firstTradeDate")
+        first_trade_timestamp = meta_reader.get(int, "firstTradeDate", default=0)
         first_trade_date = date_from_timestamp(first_trade_timestamp, timezone)
 
         market_open = None
         market_close = None
 
-        regular_period = meta.get("currentTradingPeriod", {}).get("regular", {})
-        if regular_period:
-            start = regular_period.get("start")
-            end = regular_period.get("end")
+        period_reader = meta_reader.reader_for(["currentTradingPeriod", "regular"], allow_missing="yes")
+        if not period_reader.is_empty():
+            start = period_reader.get(int, "start")
+            end = period_reader.get(int, "end")
             market_open = time_from_timestamp(start, timezone)
             market_close = time_from_timestamp(end, timezone)
 
         return Success(
             AssetMetadata(
-                short_name=meta.get("shortName"),
-                long_name=meta.get("longName"),
-                instrument=meta.get("instrumentType"),
-                exchange=meta.get("exchangeName"),
-                currency=meta.get("currency"),
+                short_name=meta_reader.get(str, "shortName"),
+                long_name=meta_reader.get(str, "longName"),
+                instrument=meta_reader.get(str, "instrumentType"),
+                exchange=meta_reader.get(str, "exchangeName"),
+                currency=meta_reader.get(str, "currency"),
                 first_trade_date=first_trade_date,
                 timezone=timezone,
                 market_open=market_open,
@@ -161,22 +157,22 @@ class YahooProvider(MarketDataProvider):
         seconds = int(series.interval_delta().total_seconds())
         return int(ts) % seconds == 0
 
-    def _extract_arrays(self, payload: dict) -> Result[tuple[list[int], dict[str, list]] | None]:
+    def _extract_arrays(self, reader: JsonReader) -> Result[tuple[list[int], dict[str, list[float | None]]] | None]:
+        try:
+            timestamps = reader.get_array("timestamp", expected_type=int)
+            if not timestamps:
+                return Success(None, warnings=["no timestamp in result"])
 
-        timestamps = payload.get("timestamp")
-        if not timestamps:
-            return Success(None, warnings=["no timestamp in result"])
-
-        quote_result = self._safe_get(payload, ["indicators", "quote", 0])
-        if quote_result.ok is False:
-            return Failure(reason=quote_result.reason)
-
-        quote = quote_result.payload
-        arrays = {f: quote.get(f) or [] for f in Candle.values()}
-        return Success((timestamps, arrays))
+            quote_reader = reader.reader_for(["indicators", "quote", 0])
+            arrays = {
+                f: quote_reader.get_nullable_array(f, expected_type=float, allow_missing="yes") for f in Candle.values()
+            }
+            return Success((timestamps, arrays))
+        except ParseError as ve:
+            return Failure(reason=str(ve))
 
     def _build_candles(
-        self, timestamps, arrays, series: Series, timezone: ZoneInfo
+        self, timestamps: list[int], arrays: dict[str, list[float | None]], series: Series, timezone: ZoneInfo
     ) -> tuple[list[SeriesPoint], list[str]]:
         """
         Grab the candle values from the input arrays, optimizing the number of fields read.
@@ -221,10 +217,8 @@ class YahooProvider(MarketDataProvider):
 
         return candles, warnings
 
-    def _extract_candles(
-        self, series: Series, payload: dict | None = None, timezone: ZoneInfo = UTC
-    ) -> SeriesPointsResult:
-        arrays_result = self._extract_arrays(payload)
+    def _extract_candles(self, series: Series, reader: JsonReader, timezone: ZoneInfo = UTC) -> SeriesPointsResult:
+        arrays_result = self._extract_arrays(reader)
         if arrays_result.ok is False:
             return arrays_result
         if arrays_result.payload is None:

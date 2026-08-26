@@ -5,9 +5,10 @@
 from datetime import datetime
 
 from ..common.candle_identity import CandleIdentity
+from ..common.json_utils import JsonArray, JsonObject, JsonReader
 from ..common.model import Asset, FetchData, FetchResult, Series, SeriesPoint
-from ..common.result import Failure, Result, Success
 from ..common.time_utils import UTC
+from ..common.types import Failure, ParseError, Success
 from .provider import MarketDataProvider
 
 BASE_URL = "https://data-api.ecb.europa.eu/service/data"
@@ -40,39 +41,17 @@ class EcbProvider(MarketDataProvider):
             return None
         return f"{BASE_URL}/EXR/D.{base}.{quote}.SP00.A"
 
-    def _extract_observations(self, series: Series, data: dict) -> Result[dict]:
-        series_result = self._safe_get(data, ["dataSets", 0, "series"])
-        if series_result.ok is False:
-            return Failure(reason="Could not find ECB series in response", error=series_result.reason)
-
-        raw_series = series_result.payload
-
-        try:
-            first_key = next(iter(raw_series))
-        except StopIteration:
-            return Failure(reason="Could not find ECB series entry in response")
-
-        observations_result = self._safe_get(raw_series, [first_key, "observations"])
-        if observations_result.ok is False:
-            return Failure(reason="Could not find ECB observations", error=observations_result.reason)
-
-        return Success(observations_result.payload)
-
-    def _extract_dates(self, name: str, data: dict) -> Result[list]:
-        date_values_result = self._safe_get(data, ["structure", "dimensions", "observation", 0, "values"])
-        if date_values_result.ok is False:
-            return Failure(reason="Could not find ECB date metadata", error=date_values_result.reason)
-
-        return Success(date_values_result.payload)
-
-    def _parse_points(self, series: Series, observations: dict, date_values: list) -> list[SeriesPoint]:
+    def _parse_points(self, series: Series, observations: JsonObject, date_values: JsonArray) -> list[SeriesPoint]:
         points: list[SeriesPoint] = []
 
+        date_reader = JsonReader(date_values)
         for obs_index, obs_value in observations.items():
             try:
                 # we use the id field as we only need the date.
-                date_str = date_values[int(obs_index)]["id"]
-                value = float(obs_value[0])
+                date_str = date_reader.require(str, [int(obs_index), "id"])
+
+                value_reader = JsonReader(obs_value)
+                value = value_reader.get_array(expected_type=float)[0]
             except Exception:
                 continue
 
@@ -91,29 +70,37 @@ class EcbProvider(MarketDataProvider):
     def _fetch(self, series: Series, provider_code: str, params: dict) -> FetchResult:
         """provider_code: e.g. 'USD_EUR'"""
 
-        name = series.name
         url = self._make_url(provider_code)
         if url is None:
             return Failure(reason=f"Could not split provider code '{provider_code}' into base_quote for url")
 
         response = self.session.get(url, params=params, timeout=self.provider_config.timeout_delta().seconds)
         response.raise_for_status()
-        data = response.json()
+        reader = JsonReader(response.json())
 
-        # Extract series
-        observations_result = self._extract_observations(series, data)
-        if observations_result.ok is False:
-            return observations_result
-        observations = observations_result.payload
+        # Extract series values
 
-        # Extract date metadata
-        dates_result = self._extract_dates(name, data)
-        if dates_result.ok is False:
-            return dates_result
-        date_values = dates_result.payload
+        try:
+            # go into the "0:0:0:0:0" key, which might have other numbers in it
+            series_obj = reader.get_first_object_value(["dataSets", 0, "series"])
+        except ParseError as ve:
+            return Failure(reason="Could not find ECB series", error=str(ve))
+
+        series_reader = JsonReader(series_obj)
+        try:
+            observations = series_reader.get_object("observations", allow_missing="no")
+        except ParseError as ve:
+            return Failure(reason="Could not find ECB observations", error=str(ve))
+
+        # Extract date structures for series
+
+        try:
+            date_values = reader.get_array(["structure", "dimensions", "observation", 0, "values"])
+        except ParseError as ve:
+            return Failure(reason="Could not find ECB date metadata", error=str(ve))
+
+        # Extract data points
 
         points = self._parse_points(series, observations, date_values)
-
         result = FetchData(series_id=series.require_id(), points=points, metadata=None)
-
         return Success(result)

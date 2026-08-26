@@ -5,18 +5,24 @@
 from datetime import timedelta
 from unittest.mock import patch
 
-from finance.common.app_config import AppConfig
 from finance.common.configuration import ProviderConfig
+from finance.common.json_utils import JsonReader
 from finance.common.model import Asset, Series
 from finance.common.string_enums import Retention, SeriesType
-from finance.config.loader import ConfigLoader, check_series_templates, load_business_config, load_yaml_config
+from finance.config.loader import (
+    AppConfig,
+    ConfigLoader,
+    check_series_templates,
+    load_business_config,
+    load_yaml_config,
+)
 
 
 def test_load_yaml_config(tmp_path, unwrap):
     yaml_file = tmp_path / "config.yaml"
     yaml_file.write_text("providers:\n  yahoo:\n    default_interval: 10m\n")
-    cfg = unwrap(load_yaml_config(yaml_file))
-    assert cfg["providers"]["yahoo"]["default_interval"] == "10m"
+    reader: JsonReader = unwrap(load_yaml_config(yaml_file))
+    assert reader.get(str, ["providers", "yahoo", "default_interval"]) == "10m"
 
 
 def test_load_config_end_to_end(tmp_path, unwrap):
@@ -33,7 +39,7 @@ business:
     yahoo:
       timeout: 10s
 
-  series_templates:
+  templates:
     daily:
       interval: 1d
     24x7:
@@ -61,7 +67,7 @@ business:
 
     env_file.write_text("TIMESCALEDB_HOST=y\nTIMESCALEDB_DB=db1\nTIMESCALEDB_PASSWORD=password\n")
 
-    environ = {"TIMESCALEDB_HOST": "x", "TIMESCALEDB_DB": "db2", "TIMESCALEDB_USER": "user"}
+    environ = {"TIMESCALEDB_HOST": "x", "TIMESCALEDB_DB": "db2", "TIMESCALEDB_USER": "user", "FRED_API_KEY": "123abc"}
 
     loader = ConfigLoader(cwd=tmp_path, environ=environ)
     result = loader.load()
@@ -70,6 +76,7 @@ business:
 
     # providers
     assert app_config.providers["yahoo"].timeout == "10s"
+    assert app_config.providers["fred"].api_key == "123abc"
 
     # assets
     assert len(app_config.assets) == 1
@@ -157,15 +164,19 @@ def test_load_config_resolves_paths(tmp_path, unwrap):
     env_file = tmp_path / ".env"
 
     yaml_file.write_text("""
-business: {}
+business:
+  providers: {}
+  assets: {}
 environment:
   paths:
     wal: "data/mywal.jsonl"
 """)
 
-    env_file.write_text("TIMESCALEDB_HOST=x\nTIMESCALEDB_DB=db\nFINANCE_CONFIG=my_config.yaml")
+    env_file.write_text(
+        "TIMESCALEDB_HOST=x\nTIMESCALEDB_DB=db\nTIMESCALEDB_USER=u\nTIMESCALEDB_PASSWORD=p\nCONFIG_PATH=my_config.yaml"
+    )
 
-    loader = ConfigLoader(cwd=tmp_path)
+    loader = ConfigLoader(cwd=tmp_path, environ={})
     result = loader.load()
     cfg: AppConfig = unwrap(result)
 
@@ -173,28 +184,30 @@ environment:
 
 
 def test_load_check_series_templates_minimal(unwrap):
-    input = {"t1": {"interval": "1d"}}
-    result = check_series_templates(input)
+    reader = JsonReader({"t1": {"interval": "1d"}})
+    result = check_series_templates(reader)
     output = unwrap(result)
-    assert input == output
+    assert reader.value == output
 
 
 def test_load_check_series_templates_maximal(unwrap):
-    input = {
-        "t1": {
-            "interval": "1d",
-            "series_type": "value",
-            "retention": "short_lived",
-            "bootstrap_history": "30d",
-            "publication_offset": "16h",
+    reader = JsonReader(
+        {
+            "t1": {
+                "interval": "1d",
+                "series_type": "value",
+                "retention": "short_lived",
+                "bootstrap_history": "30d",
+                "publication_offset": "16h",
+            }
         }
-    }
-    result = check_series_templates(input)
+    )
+    result = check_series_templates(reader)
     output = unwrap(result)
-    assert input == output
+    assert reader.value == output
 
 
 def test_load_business_config_template_error(assert_error):
-    config = {"series_templates": {"t1": {"interval": "qx"}}}
-    result = load_business_config(config, {})
+    reader = JsonReader({"providers": None, "assets": None, "templates": {"t1": {"interval": "qx"}}})
+    result = load_business_config(reader, {})
     assert_error(result, "Could not parse series template 't1'", "Invalid duration 'qx' in interval")

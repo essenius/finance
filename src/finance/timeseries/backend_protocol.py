@@ -2,15 +2,20 @@
 # Licensed under the Apache License, Version 2.0. See the LICENSE file for details.
 # File: src/finance/timeseries/backend_protocol.py
 
-from typing import Protocol
+from typing import Protocol, TypedDict
 
-from ..common.result import Result
+from ..common.types import Result
+
+
+class SqlReadPayload(TypedDict):
+    rows: list[tuple]
+    columns: dict[str, int]
 
 
 class BackendProtocol(Protocol):
     def execute_read(
         self, query: str, params: tuple | None = None, context: str = "Read"
-    ) -> Result[dict[str, list]]: ...
+    ) -> Result[SqlReadPayload]: ...
 
     def execute_write(self, query: str, params: tuple, context: str = "Write") -> Result[int]: ...
 

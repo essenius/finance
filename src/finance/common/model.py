@@ -11,9 +11,10 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from ..common.candle_identity import CandleIdentity
 from ..common.configuration import SweepConfig
 from ..common.guards import require, require_duration
-from ..common.result import Result
 from ..common.string_enums import Candle, Retention, SeriesType
 from ..common.time_utils import UTC, parse_duration, parse_time, parse_weekday, validate_duration
+from ..common.types import ParseError
+from .types import Result
 
 BACKEND = "timescaledb"
 
@@ -90,7 +91,7 @@ class AssetMetadata:
             try:
                 timezone = ZoneInfo(raw_timezone)
             except ZoneInfoNotFoundError:
-                raise ValueError(f"Cannot understand timezone '{raw_timezone}'.") from None
+                raise ParseError(f"Cannot understand timezone '{raw_timezone}'.") from None
 
         week_start = config.get("week_start")
         # check and raise error if filled and wrong, but keep string representation
@@ -166,9 +167,6 @@ class Asset:
     def with_id(self, new_id: int) -> Asset:
         return replace(self, id=new_id)
 
-    def require_id(self) -> int:
-        return require(self.id, "asset.id")
-
     def same_semantics(self, other: Asset) -> bool:
         """check if two assets are semantically the same (e.g. indicating a rename)"""
         return self.provider == other.provider and self.provider_code == other.provider_code
@@ -221,7 +219,7 @@ class Series:
 
     @classmethod
     def create(cls, asset: Asset, code: str, config: dict) -> Series:
-        """Create a new Series instance. Checks values and can raise ValueError"""
+        """Create a new Series instance. Checks values and can raise ParseError"""
 
         name = f"{asset.name}:{code}"
 

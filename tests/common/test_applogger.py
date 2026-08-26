@@ -25,9 +25,9 @@ def cover_empty_root_handlers():
     root.handlers.clear()
 
     # Call the code containing the branch *right now*
-    from finance.common.applogger import LogConfig
+    from finance.common.applogger import LogConfigurator
 
-    LogConfig().bootstrap()  # <-- branch is hit here
+    LogConfigurator().bootstrap()  # <-- branch is hit here
 
     yield
 

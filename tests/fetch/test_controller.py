@@ -11,10 +11,10 @@ from zoneinfo import ZoneInfo
 from finance.common.candle_identity import CandleIdentity
 from finance.common.configuration import ProviderConfig
 from finance.common.model import Asset, FetchResult, Series, SeriesState, SweepConfig
-from finance.common.result import Failure, Success
 from finance.common.series_calendar import SeriesCalendar
 from finance.common.string_enums import Retention, SupportedProviders
 from finance.common.time_utils import UTC, snap_to
+from finance.common.types import Failure, Success
 from finance.fetch.controller import PROVIDER_REGISTRY, FetchController, create_providers
 from finance.fetch.ecb import EcbProvider
 from finance.fetch.fred import FredProvider
@@ -77,11 +77,11 @@ def make_fetch_controller(
 
 def test_create_providers():
     providers_config: dict[str, ProviderConfig] = {
-        SupportedProviders.YAHOO: ProviderConfig.from_config({"name": SupportedProviders.YAHOO.value}, {}),
-        SupportedProviders.ECB: ProviderConfig.from_config({"name": SupportedProviders.ECB.value}, {}),
-        SupportedProviders.FRED: ProviderConfig.from_config({"name": SupportedProviders.FRED.value}, {}),
+        SupportedProviders.YAHOO: ProviderConfig.from_config({"name": SupportedProviders.YAHOO.value}),
+        SupportedProviders.ECB: ProviderConfig.from_config({"name": SupportedProviders.ECB.value}),
+        SupportedProviders.FRED: ProviderConfig.from_config({"name": SupportedProviders.FRED.value}),
     }
-    p = create_providers(providers_config, {})
+    p = create_providers(providers_config)
     assert isinstance(p[SupportedProviders.YAHOO], YahooProvider)
     assert isinstance(p[SupportedProviders.ECB], EcbProvider)
     assert isinstance(p[SupportedProviders.FRED], FredProvider)

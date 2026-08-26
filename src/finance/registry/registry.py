@@ -3,18 +3,21 @@
 # File: src/finance/registry/registry.py
 
 from collections.abc import Iterable
-from dataclasses import dataclass, fields, replace
+from dataclasses import dataclass, fields, is_dataclass, replace
+from typing import Any, cast
 
 from ..common.model import Asset, AssetMetadata, Series
+from ..common.types import AppError
 
 
 def apply_overrides[T](base: T, overrides: T) -> T:
-    values = {
-        field.name: getattr(overrides, field.name)
-        for field in fields(base)
-        if getattr(overrides, field.name) is not None
-    }
-    return replace(base, **values)
+    assert is_dataclass(base) and is_dataclass(overrides)
+
+    values = {field.name: value for field in fields(base) if (value := getattr(overrides, field.name)) is not None}
+
+    # Pyright cannot express the generic relationship between a dataclass instance
+    # and dataclasses.replace(): the argument needs Any, while the return preserves T.
+    return cast(T, replace(cast(Any, base), **values))
 
 
 # CO: @dataclass
@@ -48,11 +51,8 @@ class Registry:
 
     def __init__(self, assets: Iterable[Asset] | None = None, series: Iterable[Series] | None = None):
         # Accumulated inputs
-        self._yaml_assets: list[Asset] = {} if assets is None else list(assets)
-        self._yaml_series: list[Series] = {} if series is None else list(series)
-
-        # self._db_assets: list[Asset] = {}
-        # self._db_series_list: list[Series] = {}
+        self._yaml_assets: list[Asset] = [] if assets is None else list(assets)
+        self._yaml_series: list[Series] = [] if series is None else list(series)
 
         # Final authoritative registry
         self._assets_by_id: dict[int, Asset] = {}
@@ -62,33 +62,8 @@ class Registry:
         self._series_by_name: dict[str, Series] = {}
 
     # ------------------------------------------------------------
-    # Progressive loading API
-    # ------------------------------------------------------------
-
-    # def load_yaml_assets(self, assets: Iterable[Asset]):
-    #     self._yaml_assets = list(assets)
-
-    # def load_yaml_series(self, series: Iterable[Series]):
-    #     self._yaml_series = list(series)
-
-    # def load_db_assets(self, assets: Iterable[Asset]):
-    #    self._db_assets = list(assets)
-
-    # def load_db_series(self, series: Iterable[Series]):
-    #    self._db_series_list = list(series)
-
-    # ------------------------------------------------------------
     # Reconciliation entry point
     # ------------------------------------------------------------
-
-    # CO: def reconcile_assets(self) -> ReconciledAssets:
-    # CO:     assets_result = self._reconcile_assets()
-
-    # CO:     # Register authoritative assets
-    # CO:     for a in assets_result.final:
-    # CO:         self.register_stored_asset(a)
-
-    # CO:     return assets_result
 
     def reconcile_series(self, saved_series: list[Series]) -> ReconciledSeries:
         series_result = self._reconcile_series(saved_series=saved_series)
@@ -141,44 +116,6 @@ class Registry:
 
         return to_persist
 
-    """ TODO delete
-    def _reconcile_assets(self) -> ReconciledAssets:
-        db_by_name = {a.name: a for a in self._db_assets}
-
-        to_persist = []
-        final = []
-
-        def find_existing_asset(yaml_asset):
-            # First match by name (YAML identity)
-            db_asset = db_by_name.get(yaml_asset.name)
-            if db_asset:
-                return db_asset
-
-            # Then check if there is any record that is the same semantically.
-            # This indicates a rename. Not likely to happen often, so using an
-            # index cache isn't worth the overhead (other than with name).
-            return next(
-                (s for s in self._db_assets if s.same_semantics(yaml_asset)),
-                None,
-            )
-
-        for yaml_asset in self._yaml_assets:
-            db_asset = find_existing_asset(yaml_asset)
-            if db_asset is None:
-                to_persist.append(yaml_asset)
-            elif yaml_asset.differs_from(db_asset):
-                to_persist.append(yaml_asset.with_id(db_asset.id))
-            else:
-                final.append(db_asset)
-
-        orphans = [
-            db_asset
-            for db_asset in self._db_assets
-            if not any(find_existing_asset(yaml_asset) == db_asset for yaml_asset in self._yaml_assets)
-        ]
-
-        return ReconciledAssets(final, to_persist, orphans)
-    """
     # ------------------------------------------------------------
     # Series reconciliation
     # ------------------------------------------------------------
@@ -235,7 +172,7 @@ class Registry:
         yaml_asset = self._assets_by_id.get(asset_id)
 
         if yaml_asset is None:
-            raise ValueError(f"Cannot register provider metadata for unknown asset id {asset_id}")
+            raise AppError(f"Cannot register provider metadata for unknown asset id {asset_id}")
 
         yaml_asset.provider_metadata = metadata
 
@@ -258,7 +195,7 @@ class Registry:
                 asset_dict[key].effective_metadata = asset.effective_metadata
 
         if asset.id is None:
-            raise ValueError("Cannot register asset without an id")
+            raise AppError("Cannot register asset without an id")
 
         store(self._assets_by_id, asset.id, asset)
         store(self._assets_by_name, asset.name, asset)
@@ -269,7 +206,7 @@ class Registry:
         The series must have a valid id (assigned by the backend).
         """
         if series.id is None:
-            raise ValueError("Cannot register series without an id")
+            raise AppError("Cannot register series without an id")
 
         self._series_by_id[series.id] = series
         self._series_by_name[series.name] = series

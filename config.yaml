@@ -35,7 +35,6 @@ business:
     
     ecb:
       timeout: 20s
-      timezone: Europe/Berlin
       overlap:
         default:
           window: 0
@@ -43,7 +42,6 @@ business:
 
     fred:
       timeout: 10s
-      timezone: America/Chicago
       sweep: 
         default: 
           window: 30d
@@ -53,7 +51,7 @@ business:
           # not used as way beyond usage, just capturing 
           requests_per_minute: 120
 
-  series_templates:
+  templates:
 
     daily:
       interval: 1d
@@ -114,6 +112,17 @@ business:
     us_treasury:
       timezone: America/New_York
 
+    us_commodities:
+      timezone: America/New_York
+      week_start: sun
+      week_end: sat
+
+    new_york:
+      timezone: America/New_York
+    
+    london:
+      timezone: Europe/London
+
     ecb:
       timezone: Europe/Berlin
       publication_offset: 16h
@@ -130,6 +139,7 @@ business:
         name: yahoo
         code: EURUSD=X
       symbol: EURUSD
+      metadata: [24x5, london]
       tags:
         instrument: forex
         exchange: FOREX
@@ -137,7 +147,7 @@ business:
         currency: USD
         unit: ratio
       series:
-        daily: [daily, 24x5]
+        daily: daily
 
     # -------------------------
     # FOREX: EURUSD (ECB)
@@ -147,6 +157,7 @@ business:
         name: ecb
         code: USD_EUR
       symbol: EURUSD
+      metadata: ecb
       tags:
         instrument: forex
         exchange: FOREX
@@ -164,6 +175,7 @@ business:
         name: yahoo
         code: GC=F
       symbol: GOLD
+      metadata: us_commodities
       tags:
         instrument: commodity
         exchange: COMMODITY
@@ -171,14 +183,15 @@ business:
         currency: USD
         unit: 100_troy_ounce
       series:
-        intraday: [intraday, 24x7]
-        daily: [daily, 24x7]
+        intraday: intraday
+        daily: daily
 
     wti:
       provider:
         name: yahoo
         code: CL=F
       symbol: WTI
+      metadata: us_commodities
       tags:
         instrument: commodity
         exchange: COMMODITY
@@ -186,14 +199,15 @@ business:
         currency: USD
         unit: barrel
       series:
-        intraday: [intraday, 24x7]
-        daily: [daily, 24x7]
+        intraday: intraday
+        daily: daily
 
     brent:
       provider:
         name: yahoo
         code: BZ=F
       symbol: BRENT
+      metadata: us_commodities
       tags:
         instrument: commodity
         exchange: COMMODITY
@@ -201,8 +215,8 @@ business:
         currency: USD
         unit: barrel
       series:
-        intraday: [intraday, 24x7]
-        daily: [daily, 24x7]
+        intraday: intraday
+        daily: daily
 
     # -------------------------
     # EQUITIES
@@ -212,6 +226,7 @@ business:
       provider:
         name: yahoo
         code: SHEL
+      metadata: us_equities
       tags:
         instrument: equity
         exchange: NYSE
@@ -219,14 +234,15 @@ business:
         currency: USD
         unit: share
       series:
-        intraday: [intraday, us_equities]
-        daily: [daily, us_equities]
+        intraday: intraday
+        daily: daily
 
     shell_as:
       provider:
         name: yahoo
         code: SHELL.AS
       symbol: SHELL.AS
+      metadata: eu_equities
       tags:
         instrument: equity
         exchange: EURONEXT
@@ -234,8 +250,30 @@ business:
         currency: EUR
         unit: share
       series:
-        intraday: [intraday, eu_equities]
-        daily: [daily, eu_equities]
+        intraday: intraday
+        daily: daily
+
+    # -------------------------
+    # ETFs
+    # -------------------------
+
+    vwce:
+      provider:
+        name: yahoo
+        code: VWCE.AS
+      symbol: VWCE
+      long_name: Vanguard FTSE All-World UCITS ETF USD Acc
+      first_trade_date: 2019-07-23
+      metadata: eu_equities
+      tags:
+        instrument: ETF
+        exchange: AMS
+        region: WORLD
+        currency: EUR
+        unit: share
+      series:
+        intraday: intraday
+        daily: daily
 
     # -------------------------
     # INDEXES
@@ -245,6 +283,7 @@ business:
         name: yahoo
         code: ^GSPC
       symbol: SPX
+      metadata: us_equities
       tags:
         instrument: index
         exchange: NYSE
@@ -252,13 +291,14 @@ business:
         currency: USD
         unit: index_point
       series:
-        daily: [daily, us_equities]
+        daily: daily
 
     vix:
       provider:
         name: yahoo
         code: ^VIX
       symbol: VIX
+      metadata: cboe_equities
       tags:
         instrument: index
         exchange: CBOE
@@ -266,7 +306,7 @@ business:
         currency: USD
         unit: index_point
       series:
-        daily: [daily, cboe_equities]
+        daily: daily
 
     # -------------------------
     # CRYPTO
@@ -276,6 +316,7 @@ business:
         name: yahoo
         code: "BTC-USD"
       symbol: BTCUSD
+      metadata: 24x7
       tags:
         instrument: crypto
         exchange: CRYPTO
@@ -283,8 +324,8 @@ business:
         currency: USD
         unit: coin
       series:
-        intraday: [intraday, 24x7]
-        daily: [daily, 24x7]
+        intraday: intraday
+        daily: daily
 
     # -------------------------
     # MACRO (FRED + Treasury)
@@ -294,6 +335,7 @@ business:
         name: fred
         code: DGS10
       symbol: 10Y_NOMINAL
+      metadata: us_treasury
       tags:
         instrument: macro
         region: US
@@ -306,24 +348,26 @@ business:
         name: fred
         code: T10YIE
       symbol: 10Y_BREAKEVEN
+      metadata: us_treasury
       tags:
         instrument: macro
         region: US
         unit: percent
       series:
-        daily: [daily, value, us_treasury]
+        daily: [daily, value]
 
     fed_balance_sheet:
       provider:
         name: fred
         code: WALCL
       symbol: BALANCE_SHEET
+      metadata: us_treasury
       tags:
         instrument: macro
         region: US
         unit: billions_usd
       series:
-        daily: [daily, value, us_treasury]
+        daily: [daily, value]
 
    # CO: treasury_avg:
    # CO:   provider: treasury

@@ -10,11 +10,11 @@ from unittest.mock import Mock
 
 import pytest
 
-from finance.common.applogger import JsonFormatter, LogConfig
+from finance.common.applogger import JsonFormatter, LogConfig, LogConfigurator
 from finance.common.model import Asset, AssetMetadata, Series
-from finance.common.result import Failure, Result
 from finance.common.string_enums import Retention, SeriesType
 from finance.common.time_utils import UTC
+from finance.common.types import Failure, Result
 from finance.state.state import State
 from finance.state.wal import JsonlWAL
 from finance.timeseries.series_backend import SeriesBackend
@@ -215,12 +215,9 @@ def ts() -> ConfigurableFactory[datetime]:
 
 @pytest.fixture
 def setup_logging():
-    cfg = {
-        "level": "debug",
-        "json": True,
-    }
+    cfg = LogConfig.from_config({"level": "debug"})
 
-    log_config = LogConfig()
+    log_config = LogConfigurator()
     log_config.bootstrap()
     log_config.setup(cfg)
     yield

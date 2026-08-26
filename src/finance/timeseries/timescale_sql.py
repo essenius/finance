@@ -8,9 +8,11 @@ import contextlib
 
 import psycopg
 
+from finance.timeseries.backend_protocol import SqlReadPayload
+
 from ..common.configuration import TimescaleConfig
 from ..common.guards import require
-from ..common.result import Failure, Result, Success
+from ..common.types import Failure, Result, Success
 
 
 class TimescaleSqlClient:
@@ -26,7 +28,7 @@ class TimescaleSqlClient:
                 self._connection.close()
         self._connection = None
 
-    def execute_read(self, query: str, params: tuple | None = None, context: str = "Read") -> Result[dict]:
+    def execute_read(self, query: str, params: tuple | None = None, context: str = "Read") -> Result[SqlReadPayload]:
         def operation(cursor):
             cursor.execute(query, params or ())
             rows = cursor.fetchall()

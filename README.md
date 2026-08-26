@@ -12,7 +12,7 @@ There are two files involve in configuration:
 As secrets are not to be shared, the repo only has an example .env file, which you can use as example. 
 
 Supported entries
-- `FINANCE_CONFIG`: the YAML configuration file (default config.yaml). Relative to the current directory (or absolute).
+- `CONFIG_PATH`: the YAML configuration file (default config.yaml). Relative to the current directory (or absolute).
 - `FRED_API_KEY`: the API key for FRED (mandatory). 
 - `YAHOO_API_KEY`: the API key for Yahoo (optional).
 - `TIMESCALEDB_HOST`: the TimescaleDB host e.g. `localhost`.
@@ -22,7 +22,7 @@ Supported entries
 - `TIMESCALEDB_SSL_MODE`: the SSL mode in PostgreSQL format. Default is `verify-full`. You can use `disable` to use plain TCP instead of TLS, or `require` to use TLS but not validate the certs. You can also use `verify-ca` to verify the CA cert but not the hostname. 
 - `TIMESCALEDB_SSL_ROOT_CERT`: the location of the CA certificate to be used. If omitted, the standard CA cert storage will be used. 
 
-Everything except the secrets (API keys, credentials) and `FINANCE_CONFIG` can also be specified in the Environment configuration section of `config.yaml`.
+Everything except the secrets (API keys, credentials) and `CONFIG_PATH` can also be specified in the Environment configuration section of `config.yaml`.
 
 ### Environment Configuration
 
@@ -83,16 +83,17 @@ A sweep means that already retrieved data will be retrieved again, to catch late
 For ECB, the interval is 0, because ECB has a mode where you can retrieve everything that changed since a certain timestamp.
 That makes the sweep unnecessary.
 
-#### Series templates
+#### Templates
 
 We distinguish assets and series. Asset is a specific financial instrument, such as a share of a company, an currency exchange rate or an published interest rate.
 Every asset can have one or more (usually max 2) series, a longer term one (interval 1 day or more) and a short term one with interval less than a day (intraday).
+Because many assets and series will have similar properties, you can use templates to avoid repetition.
 
-You define as them follows:
+You define templates as follows:
 
 ```yaml
 business:
-  series_templates:
+  templates:
     daily:
       interval: 1d
       retention: long_lived
@@ -125,7 +126,7 @@ business:
     
 ```
 
-This means we define a re-usable series template named `daily` which defines an interval of a day, is long lived, and the initial fetch will be for 10 years, and another template called `intraday` with an interval of 5 minutes, short lived, and having an initial fetch of 30 days. Short-lived and long-lived determine which back-end table the series is stored into: one without retention policy or one with. 
+This means we define a re-usable template named `daily` which defines an interval of a day, is long lived, and the initial fetch will be for 10 years, and another template called `intraday` with an interval of 5 minutes, short lived, and having an initial fetch of 30 days. Short-lived and long-lived determine which back-end table the series is stored into: one without retention policy or one with. 
 
 Then we have template `candle` which only uses default values (amongst which a series_type of `candle`, which means having values [`open`, `high`, `low`, `close`, `volume`]). This can be useful to make choices explicit. Alternatively, template `value` supports only one value, which will only populate the `close` field. This is useful for instruments that don't have the full candle like the ECB USD/EUR rate, and the FRED interest rates. 
 
@@ -137,7 +138,7 @@ You can make combined templates as well, for example
 
 ```yaml
 business:
-  series_templates:
+  templates:
     daily_value_24x7:
       interval: 1d
       series_type: value

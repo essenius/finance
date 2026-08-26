@@ -54,7 +54,6 @@ business:
           # not used as way beyond usage, just capturing 
           requests_per_minute: 120
 
-  
   templates:
 
     daily:

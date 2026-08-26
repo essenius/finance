@@ -34,7 +34,7 @@ business:
       timezone: Europe/Berlin
       constraints: {}
     
-  series_templates:
+  templates:
     daily_value:
       interval: 1d
       series_type: value

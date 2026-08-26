@@ -5,11 +5,12 @@
 from typing import Literal, overload
 
 import finance
+from finance.common.types import AppError
 
 from .common.applogger import AppLogger
 from .common.guards import require
 from .common.model import FetchResult, Series, SeriesPoints
-from .common.result import Result
+from .common.types import Result
 from .fetch.controller import FetchController
 from .registry.registry import Registry
 from .state.state import State
@@ -36,8 +37,8 @@ def unwrap[T](result: Result[T], throw: bool = True) -> T | None:
         logger.error(**result_dict)
         if throw:
             if result.error:
-                raise ValueError(f"{result.reason}: {result.error}")
-            raise ValueError(result.reason)
+                raise AppError(f"{result.reason}: {result.error}")
+            raise AppError(result.reason)
         return_value = None
     else:
         return_value = result.payload

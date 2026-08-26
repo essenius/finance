@@ -7,6 +7,8 @@ from __future__ import annotations
 from enum import StrEnum
 from typing import Self
 
+from ..common.types import ParseError
+
 
 class StringEnum(StrEnum):
     @classmethod
@@ -22,7 +24,7 @@ class StringEnum(StrEnum):
         try:
             return cls(value)
         except ValueError:
-            raise ValueError(f"Invalid {cls.__name__}: {value!r}. Allowed: {cls.values()}") from None
+            raise ParseError(f"Invalid {cls.__name__}: {value!r}. Allowed: {cls.values()}") from None
 
 
 class Candle(StringEnum):

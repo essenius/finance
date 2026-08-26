@@ -6,7 +6,7 @@ from datetime import datetime
 
 from ..common.guards import require
 from ..common.model import SeriesPoint, SeriesState
-from ..common.result import Result, Success
+from ..common.types import Result, Success
 from ..state.wal import JsonlWAL
 from ..timeseries.series_backend import SeriesBackend
 

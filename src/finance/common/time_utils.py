@@ -7,6 +7,8 @@ import re
 from datetime import date, datetime, time, timedelta
 from zoneinfo import ZoneInfo
 
+from ..common.types import ParseError
+
 # UTC based on ZoneInfo instead of tzinfo. Then we have a consistent model
 UTC = ZoneInfo("UTC")
 
@@ -25,7 +27,7 @@ WEEKDAY_ABBR_MAP = {abbr.lower(): i for i, abbr in enumerate(calendar.day_abbr)}
 def parse_duration(text: str | None, context: str | None = None) -> timedelta | None:
     """
     Convert interval strings like '10m', '1h', '1d', '30s' into seconds.
-    Raises ValueError on invalid formats.
+    Raises ParseError on invalid formats.
     """
     if text is None:
         return None
@@ -34,7 +36,7 @@ def parse_duration(text: str | None, context: str | None = None) -> timedelta | 
     match = re.fullmatch(r"(\d+)([smhdwy])", text)
     if not match:
         context_string = f" in {context}" if context else ""
-        raise ValueError(f"Invalid duration '{text}'{context_string}")
+        raise ParseError(f"Invalid duration '{text}'{context_string}")
     value, unit = match.groups()
     return timedelta(seconds=int(value) * DURATION_UNITS[unit])
 
@@ -42,18 +44,6 @@ def parse_duration(text: str | None, context: str | None = None) -> timedelta | 
 def validate_duration(text: str | None, context: str | None = None) -> str | None:
     parse_duration(text, context)
     return text
-
-
-'''
-def check_duration_in(content: dict, name: str) -> str | None:
-    """check if the dict content contains a valid duration in the entry with key 'name'.
-    If there is no such key ignore. Raises an error if the duration is not valid."""
-    raw_duration = content.get(name)
-    # validate that the duration is correct
-    if raw_duration is not None:
-        parse_duration(raw_duration, name)
-    return raw_duration
-'''
 
 
 def normalize_db_time(value):
@@ -76,7 +66,7 @@ def parse_weekday(name: str | None) -> int | None:
         return None
     key = name.lower()
     if key not in WEEKDAY_ABBR_MAP:
-        raise ValueError(f"Cannot understand day '{key}'.")
+        raise ParseError(f"Cannot understand day '{key}'.")
     return WEEKDAY_ABBR_MAP[key]
 
 
@@ -94,7 +84,7 @@ def parse_time(value) -> time | None:
         hours = value // 60
         minutes = value % 60
         if hours > 23:
-            raise ValueError(
+            raise ParseError(
                 f"Cannot understand sexagesimal value '{value}' ({hours}:{minutes}). Use hh:mm only or use quotes."
             )
         return time(hour=hours, minute=minutes)
@@ -114,20 +104,13 @@ def parse_time(value) -> time | None:
     try:
         return time.fromisoformat(value)
     except Exception:
-        raise ValueError(f"Cannot understand time '{value}'.") from None
+        raise ParseError(f"Cannot understand time '{value}'.") from None
 
 
 def write_time(t: time | None) -> str | None:
     if t is None:
         return None
     return time.isoformat(t)
-
-
-def parse_timezone(s: str) -> ZoneInfo:
-    try:
-        return ZoneInfo(s)
-    except Exception:
-        raise ValueError(f"Cannot understand timezone '{s}'.") from None
 
 
 def write_timezone(tz: ZoneInfo | None) -> str | None:
@@ -142,7 +125,7 @@ def parse_datetime(s: str) -> datetime | None:
     try:
         return datetime.fromisoformat(s) if s is not None else None
     except Exception:
-        raise ValueError(f"Cannot understand datetime '{s}'.") from None
+        raise ParseError(f"Cannot understand datetime '{s}'.") from None
 
 
 def write_datetime(dt: datetime) -> str:

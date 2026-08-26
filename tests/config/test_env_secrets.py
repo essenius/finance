@@ -24,22 +24,24 @@ def test_load_env_secrets_timescaledb(tmp_path, unwrap):
     env.write_text(f"{backend_upper}_URL=http://x\n{backend_upper}_DB=db\nFRED_API_KEY=abc\n")
 
     fake_env = {
-        "FINANCE_CONFIG": "my_config.yaml",
+        "CONFIG_PATH": "my_config.yaml",
         f"{backend_upper}_USER": "u",
         f"{backend_upper}_PASSWORD": "p",
         "YAHOO_API_KEY": "yahoo123",
         "FRED_API_KEY": "overwritten",  # should be overridden by .env
+        "LOG_LEVEL": "debug",
     }
 
     loader = ConfigLoader(cwd=tmp_path, environ=fake_env)
 
-    timescale, api_keys, config = loader.load_env_variables()
+    config = loader.load_env_variables()
 
-    assert timescale["db"] == "db"
-    assert timescale["user"] == "u"
-    assert timescale["password"] == "p"
+    assert config.timescaledb["db"] == "db"
+    assert config.timescaledb["user"] == "u"
+    assert config.timescaledb["password"] == "p"
 
-    assert api_keys["fred"] == "abc"  # from .env
-    assert api_keys["yahoo"] == "yahoo123"  # from getenv
+    assert config.api_keys["fred"] == "abc"  # from .env
+    assert config.api_keys["yahoo"] == "yahoo123"  # from getenv
 
-    assert config == "my_config.yaml"
+    assert config.paths["config"] == "my_config.yaml"
+    assert config.logging["level"] == "debug"

@@ -2,66 +2,93 @@
 # Licensed under the Apache License, Version 2.0. See the LICENSE file for details.
 # File: src/finance/config/loader.py
 
+from __future__ import annotations
+
 import os
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
-from zoneinfo import ZoneInfo
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import yaml
 from dotenv import dotenv_values
 
-from finance.common.app_config import AppConfig, BusinessConfig
-
-from ..common.configuration import LoggingConfig, ProviderConfig, TimescaleConfig
+from ..common.configuration import LogConfig, ProviderConfig, TimescaleConfig
 from ..common.dict_utils import deep_merge
-from ..common.guards import require_key
+from ..common.json_utils import JsonObject, JsonReader
 from ..common.model import BACKEND, Asset, Series
 from ..common.paths import resolve_config_path
-from ..common.result import Failure, Result, Success
 from ..common.string_enums import Retention, SeriesType, SupportedProviders
 from ..common.time_utils import validate_duration
+from ..common.types import Failure, ParseError, Result, Success
+
+
+@dataclass
+class YamlEnvironmentConfig:
+    timescaledb: JsonObject
+    logging: JsonObject
+    paths: dict[str, Path]
+
+
+@dataclass
+class EnvironmentConfig(YamlEnvironmentConfig):
+    api_keys: JsonObject
+
+    def merge(self, yaml: YamlEnvironmentConfig) -> EnvironmentConfig:
+        timescaledb = self.timescaledb | yaml.timescaledb
+        logging = self.logging | yaml.logging
+        paths = self.paths | yaml.paths
+        return EnvironmentConfig(timescaledb=timescaledb, api_keys=self.api_keys, logging=logging, paths=paths)
+
+
+@dataclass
+class BusinessConfig:
+    providers: dict[str, ProviderConfig]
+    assets: list[Asset]
+    series: list[Series]
+
+
+@dataclass
+class AppConfig(BusinessConfig):
+    paths: dict[str, Path]
+    timescaledb: TimescaleConfig
+    logging: LogConfig
 
 
 class ConfigLoader:
     providers: dict[str, ProviderConfig]
 
-    def __init__(self, *, cwd: Path, config_path: Path | None = None, environ=os.environ):
+    def __init__(self, *, cwd: Path, environ=os.environ):
         self.cwd = cwd
         self.env_path = (cwd / ".env").resolve()
         self.environ = environ
-        self.config_path = config_path
 
     def load(self) -> Result[AppConfig]:
+        config_env = self.load_env_variables()
 
-        timescale_env, api_keys, config_path = self.load_env_variables()
+        cfg_path = Path(config_env.paths.get("config") or "config.yaml")
 
-        cfg_path = self.config_path
-        if not cfg_path and config_path is not None:
-            cfg_path = config_path
-        if not cfg_path:
-            cfg_path = "config.yaml"
-
-        cfg_path = Path(cfg_path)
         yaml_path = cfg_path if cfg_path.is_absolute() else (self.cwd / cfg_path).resolve()
-        raw_cfg = load_yaml_config(yaml_path)
-        if raw_cfg.ok is False:
-            return raw_cfg
-
-        paths, timescale_yaml, logging = load_environment_config(raw_cfg.payload.get("environment", {}), self.cwd)
-        merged_config = timescale_env | timescale_yaml
-        result = TimescaleConfig.validate(merged_config)
+        reader_result = load_yaml_config(yaml_path)
+        if reader_result.ok is False:
+            return reader_result
+        reader = reader_result.payload
+        env_reader = reader.reader_for("environment", allow_missing="yes")
+        yaml_config = load_environment_config(env_reader, self.cwd)
+        config = config_env.merge(yaml_config)
+        # TODO: look at improving this idiom VV
+        result = TimescaleConfig.validate(config.timescaledb)
         if result.ok is False:
             return result
-        timescale_cfg = TimescaleConfig.from_config(timescale_env | timescale_yaml)
-        logging_cfg = LoggingConfig.from_config(logging)
-        biz_result = load_business_config(raw_cfg.payload.get("business", {}), api_keys)
+        timescale_cfg = TimescaleConfig.from_config(config.timescaledb)
+        log_cfg = LogConfig.from_config(config.logging)
+        biz_result = load_business_config(reader.reader_for("business", allow_missing="no"), config.api_keys)
         if biz_result.ok is False:
             return biz_result
         app_config = AppConfig(
             **vars(biz_result.payload),
-            paths=paths,
+            paths=config.paths,
             timescaledb=timescale_cfg,
-            logging=logging_cfg,
+            logging=log_cfg,
         )
         return Success(app_config)
 
@@ -69,25 +96,29 @@ class ConfigLoader:
     # Load secrets from .env
     # -----------------------------
 
-    def load_env_variables(self) -> tuple[dict[str, Any], dict[str, str], str | None]:
+    def load_env_variables(self) -> EnvironmentConfig:
         env_file_values = dotenv_values(self.env_path)
         # .env overrides environ
         merged = {**self.environ, **env_file_values}
 
         api_keys = {}
         timescaledb = {}
-        config = None
+        logging = {}
+        paths = {}
 
         for key, value in merged.items():
-            if key.endswith("_API_KEY"):
-                provider = key[:-8].lower()  # strip "_API_KEY"
+            key = key.lower()
+            if key.endswith("_api_key"):
+                provider = key[:-8]  # strip "_API_KEY"
                 api_keys[provider] = value
-            elif key.startswith(f"{BACKEND.upper()}_"):
-                timescaledb[key[len(BACKEND) + 1 :].lower()] = value
-            elif key == "FINANCE_CONFIG":
-                config = value
+            elif key.startswith(f"{BACKEND}_"):
+                timescaledb[key[len(BACKEND) + 1 :]] = value
+            elif key.startswith("log_"):
+                logging[key[4:]] = value
+            elif key.endswith("_path"):
+                paths[key[:-5]] = value
 
-        return timescaledb, api_keys, config
+        return EnvironmentConfig(timescaledb=timescaledb, api_keys=api_keys, logging=logging, paths=paths)
 
 
 # -----------------------------
@@ -95,14 +126,14 @@ class ConfigLoader:
 # -----------------------------
 
 
-def load_yaml_config(yaml_path: Path) -> Result[dict]:
+def load_yaml_config(yaml_path: Path) -> Result[JsonReader]:
     if not yaml_path.exists():
         return Failure(reason=f"Config file not found: {yaml_path}")
 
     try:
         with yaml_path.open("r", encoding="utf-8") as f:
             result = yaml.safe_load(f) or {}
-            return Success(result)
+            return Success(JsonReader(result))
     except yaml.YAMLError as exc:
         return Failure(reason="Invalid YAML", error=exc)
 
@@ -112,25 +143,23 @@ def load_yaml_config(yaml_path: Path) -> Result[dict]:
 # ---------------------------------
 
 
-def normalize_providers(raw_providers: dict[str, Any], api_keys: dict[str, str]) -> Result[dict[str, ProviderConfig]]:
-
-    def fail(error):
-        return Failure(reason=f"Could not parse provider '{provider}'", error=error)
+def normalize_providers(reader: JsonReader, api_keys: JsonObject) -> Result[dict[str, ProviderConfig]]:
 
     providers: dict[str, ProviderConfig] = {}
     for provider in SupportedProviders.values():
-        content = raw_providers.get(provider, {})
-        content["name"] = provider
-        tz_name = content.get("timezone", "UTC")
         try:
+            content = reader.get_object(provider, allow_missing="yes")
+            content["name"] = provider
+            tz_name = str(content.get("timezone", "UTC"))
+            # force validation
             ZoneInfo(tz_name)
-        except Exception:
-            return fail(f"Invalid timezone '{tz_name}'")
 
-        try:
-            config = ProviderConfig.from_config(content, api_keys)
-        except ValueError as ve:
-            return fail(ve)
+            api_key = api_keys.get(provider)
+            if api_key is not None:
+                content["api_key"] = api_key
+            config = ProviderConfig.from_config(content)
+        except (ParseError, ZoneInfoNotFoundError) as exc:
+            return Failure(reason=f"Could not parse provider '{provider}'", error=exc)
 
         providers[provider] = config
 
@@ -142,30 +171,32 @@ def normalize_providers(raw_providers: dict[str, Any], api_keys: dict[str, str])
 # ---------------------------------
 
 
-def check_template(name: str, input: dict) -> None:
+def check_template(reader: JsonReader) -> None:
     """Check the values early so of there are errors, it's clear where they are
     (i.e. in the template and not in the asset definition)
     """
-    validate_duration(input.get("interval"), "interval")
-    validate_duration(input.get("bootstrap_history"), "bootstrap history")
-    series_type = input.get("series_type")
+    validate_duration(reader.get(str, "interval"), "interval")
+    validate_duration(reader.get(str, "bootstrap_history"), "bootstrap history")
+    series_type = reader.get(str, "series_type")
     if series_type is not None:
         SeriesType.require(series_type)
-    retention = input.get("retention")
+    retention = reader.get(str, "retention")
     if retention is not None:
         Retention.require(retention)
-    validate_duration(input.get("publication_offset"), "publication offset")
+    validate_duration(reader.get(str, "publication_offset"), "publication offset")
 
 
-def check_series_templates(raw_templates: dict | None) -> Result[dict[str, dict]]:
-    if raw_templates is None:
-        return Success({})
-    for name, template in raw_templates.items():
-        try:
-            check_template(name, template)
-        except ValueError as exc:
-            return Failure(reason=f"Could not parse series template '{name}'", error=exc)
-    return Success(raw_templates)
+def check_series_templates(reader: JsonReader) -> Result[JsonObject]:
+    templates = reader.require_object()
+
+    current = ""
+    try:
+        for name, item_reader in reader.items():
+            current = name
+            check_template(item_reader)
+        return Success(templates)
+    except ParseError as exc:
+        return Failure(reason=f"Could not parse series template '{current}'", error=exc)
 
 
 # -----------------------------
@@ -173,61 +204,59 @@ def check_series_templates(raw_templates: dict | None) -> Result[dict[str, dict]
 # -----------------------------
 
 
-def _parse_metadata(
-    meta: dict | list | str | None, metadata_template: dict[str, dict], config: dict[str, dict]
-) -> dict:
-    if meta is None:
-        return config
+def _embed_templates(meta: list[str] | JsonObject, template_reader: JsonReader, config: JsonObject) -> JsonObject:
+
     if isinstance(meta, dict):
         config |= dict(meta)
         return config
 
     template_list = meta if isinstance(meta, list) else [meta]
     for name in template_list:
-        template = metadata_template.get(name)
-        if template is None:
-            raise ValueError(f"Could not find metadata template '{name}'")
+        template = template_reader.get_object(name, allow_missing="no")
         config = deep_merge(config, template)
     return config
 
 
-def normalize_assets_and_series(
-    raw_assets: dict, metadata_template: dict[str, dict]
-) -> Result[tuple[list[Asset], list[Series]]]:
+def normalize_assets_and_series(asset_reader: JsonReader, template_reader: JsonReader) -> Result[BusinessConfig]:
     asset_list = []
     series_list = []
 
-    for asset_name, cfg in raw_assets.items():
+    for asset_name, reader in asset_reader.items():
         try:
-            provider_section = require_key(cfg, "provider", f"asset '{asset_name}'")
-            if not isinstance(provider_section, dict):
-                raise ValueError("malformed provider section.")
+            reader.require(str, ["provider", "name"])
+            reader.require(str, ["provider", "code"])
 
-            context = f"asset '{asset_name}' provider"
-            require_key(provider_section, "name", context)
-            require_key(provider_section, "code", context)
+            metadata = reader.get_array("metadata", expected_type=str, allow_missing="yes")
 
-            meta_def = cfg.get("metadata")
-            cfg = _parse_metadata(meta_def, metadata_template, cfg)
+            # provider_section = require_key(cfg, "provider", f"asset '{asset_name}'")
+            # if not isinstance(provider_section, dict):
+            #    raise ValueError("malformed provider section.")
 
-            tags = {k.lower(): v for k, v in cfg.get("tags", {}).items()}
-            cfg |= tags
-            asset = Asset.from_config(name=asset_name, config=cfg)
+            # require_key(provider_section, "name")
+            # require_key(provider_section, "code")
+
+            # meta_def = cfg.get("metadata")
+            cfg_reader = JsonReader(_embed_templates(metadata, template_reader, reader.get_object()))
+            tags = {k.lower(): v for k, v in cfg_reader.get_object("tags", allow_missing="yes").items()}
+
+            asset = Asset.from_config(name=asset_name, config=cfg_reader.get_object() | tags)
             asset_list.append(asset)
 
-            series_config = require_key(cfg, "series", context)
-            assert isinstance(series_config, dict)
+            series = cfg_reader.reader_for("series", allow_missing="no")
 
-            for code, series_def in series_config.items():
-                config = _parse_metadata(series_def, metadata_template, {})
-                require_key(config, "interval", context)
-                series = Series.create(asset=asset, code=code, config=config)
+            for code, series_def in series.items():
+                template_reader.context = f"series '{code}'"
+                input = series_def.get_any()
+                meta = input if isinstance(input, dict) else series_def.get_array(expected_type=str)
+                config_reader = JsonReader(_embed_templates(meta, template_reader, {}))
+                config_reader.require(str, "interval")
+                series = Series.create(asset=asset, code=code, config=config_reader.get_object())
                 series_list.append(series)
 
-        except Exception as exc:  # also by require()
-            return Failure(reason=f"Could not parse asset '{asset_name}'", error=exc)
+        except ParseError as exc:
+            return Failure(reason=f"Could not parse asset '{asset_name}'", error=exc.args[0])
 
-    return Success((asset_list, series_list))
+    return Success(BusinessConfig(providers={}, assets=asset_list, series=series_list))
 
 
 # --------------------------------
@@ -275,33 +304,34 @@ def normalize_composites(raw_composites: dict) -> Result[dict]:
 '''
 
 
-def load_environment_config(env_cfg: dict, project_root: Path) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
-    paths_cfg = env_cfg.get("paths", {})
-    paths = {key: resolve_config_path(value, key, project_root) for key, value in paths_cfg.items()}
-    timescaledb_cfg = env_cfg.get(BACKEND, {})
-    logging_cfg = env_cfg.get("logging", {})
-    return paths, timescaledb_cfg, logging_cfg
+def load_environment_config(reader: JsonReader, project_root: Path) -> YamlEnvironmentConfig:
+    paths_cfg = reader.get_object("paths", allow_missing="yes")
+    paths = {key: resolve_config_path(str(value), key, project_root) for key, value in paths_cfg.items()}
+    timescaledb_cfg = reader.get_object(BACKEND, allow_missing="yes")
+
+    logging_cfg = reader.get_object("logging", allow_missing="yes")
+    return YamlEnvironmentConfig(timescaledb=timescaledb_cfg, paths=paths, logging=logging_cfg)
 
 
-def load_business_config(biz_cfg: dict[str, Any], api_keys: dict[str, str]) -> Result[BusinessConfig]:
+def load_business_config(reader: JsonReader, api_keys: JsonObject) -> Result[BusinessConfig]:
 
-    raw_providers = biz_cfg.get("providers", {})
-    providers_result = normalize_providers(raw_providers, api_keys)
+    provider_reader = reader.reader_for("providers", allow_missing="yes")
+    providers_result = normalize_providers(provider_reader, api_keys)
     if providers_result.ok is False:
         return providers_result
 
-    raw_series_templates = biz_cfg.get("series_templates")
-    template_result = check_series_templates(raw_series_templates)
+    template_reader = reader.reader_for("templates", allow_missing="yes")
+    template_result = check_series_templates(template_reader)
     if template_result.ok is False:
         return template_result
-    series_templates = template_result.payload
+    template_reader = JsonReader(template_result.payload, "template")
 
-    raw_assets = biz_cfg.get("assets", {})
-    result = normalize_assets_and_series(raw_assets, series_templates)
+    asset_reader = reader.reader_for("assets", allow_missing="yes")
+    result = normalize_assets_and_series(asset_reader, template_reader)
     if result.ok is False:
         return result
-    assets, series = result.payload
-
+    business_config = result.payload
+    business_config.providers = providers_result.payload
     # validate composites
     """
     raw_composites = biz_cfg.get("composites", {})
@@ -311,4 +341,4 @@ def load_business_config(biz_cfg: dict[str, Any], api_keys: dict[str, str]) -> R
         return composites
     """
 
-    return Success(BusinessConfig(providers_result.payload, assets, series))
+    return Success(business_config)

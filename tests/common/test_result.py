@@ -2,7 +2,7 @@
 # Licensed under the Apache License, Version 2.0. See the LICENSE file for details.
 # File: tests/common/test_result.py
 
-from finance.common.result import Failure, Result, Success
+from finance.common.types import Failure, ParseError, Result, Success
 
 
 def test_result_success_payload():
@@ -50,12 +50,12 @@ def test_result_error_reason_only():
 
 
 def test_result_error_with_exception_and_meta():
-    exc = ValueError("boom")
+    exc = ParseError("boom")
     result: Result = Failure(reason="bad data", error=exc, meta={"other": 1})
 
     assert result.ok is False
     assert result.reason == "bad data"
     assert result.warnings == []
-    assert isinstance(result.error, ValueError)
+    assert isinstance(result.error, ParseError)
     assert "boom" in str(result.error)
     assert result.meta == {"other": 1}

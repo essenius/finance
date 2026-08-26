@@ -4,12 +4,11 @@
 
 from datetime import datetime
 
-from finance.common.guards import require
-
 from ..common.candle_identity import CandleIdentity
+from ..common.json_utils import JsonReader
 from ..common.model import Asset, FetchData, FetchResult, Series, SeriesPoint
-from ..common.result import Failure, Success
 from ..common.time_utils import UTC
+from ..common.types import Failure, ParseError, Success
 from .provider import MarketDataProvider
 
 BASE_URL = "https://api.stlouisfed.org/fred/series/observations"
@@ -23,7 +22,7 @@ class FredProvider(MarketDataProvider):
     def fetch(
         self, series: Series, asset: Asset, start: CandleIdentity, end: CandleIdentity, is_incremental: bool
     ) -> FetchResult:
-        if not self.api_key:
+        if not self.provider_config.api_key:
             return Failure(reason="FRED requires an API key")
 
         start_date = start.date().strftime("%Y-%m-%d")
@@ -31,7 +30,7 @@ class FredProvider(MarketDataProvider):
 
         params = {
             "series_id": asset.provider_code,
-            "api_key": self.api_key,
+            "api_key": self.provider_config.api_key,
             "file_type": "json",
             "sort_order": "asc",
             "observation_start": start_date,
@@ -45,33 +44,36 @@ class FredProvider(MarketDataProvider):
         response = self.session.get(BASE_URL, params=params, timeout=self.provider_config.timeout_delta().seconds)
         response.raise_for_status()
 
-        data = response.json()
-        observations = data.get("observations")
-        if observations is None:
-            return Failure(reason="no 'observations' in response")
+        reader = JsonReader(response.json())
 
-        points: list[SeriesPoint] = []
+        try:
+            observations = reader.get_array("observations", allow_missing="no")
 
-        for observation in observations:
-            value_str = observation.get("value")
-            date_str = observation.get("date")
+            points: list[SeriesPoint] = []
 
-            # Skip missing/invalid values
-            if value_str in (None, ".", ""):
-                continue
+            for observation in observations:
+                observation = reader.ensure_type(observation, dict, "observation is no object")
+                value_str = observation.get("value")
+                date_str = observation.get("date")
 
-            # FRED date is YYYY-MM-DD. While it isn't in UTC,
-            # we interpret it as such anyway, since for daily data,
-            # dates are labels, not timestamps.
-            try:
-                time = datetime.fromisoformat(date_str).replace(tzinfo=UTC)
-            except Exception:
-                continue
+                # Skip missing/invalid values
+                if value_str in (None, ".", ""):
+                    continue
 
-            value = float(value_str)
-            series_id = require(series.id)
-            points.append(SeriesPoint(series_id=series_id, time=time, close=value))
+                # FRED date is YYYY-MM-DD. While it isn't in UTC,
+                # we interpret it as such anyway, since for daily data,
+                # dates are labels, not timestamps.
+                try:
+                    time = datetime.fromisoformat(str(date_str)).replace(tzinfo=UTC)
+                except Exception:
+                    continue
 
-            result = FetchData(series_id=series_id, points=points, metadata=None)
+                value = float(value_str)
+                series_id = series.require_id()
+                points.append(SeriesPoint(series_id=series_id, time=time, close=value))
 
-        return Success(result)
+                result = FetchData(series_id=series_id, points=points, metadata=None)
+
+            return Success(result)
+        except ParseError as ve:
+            return Failure(str(ve))

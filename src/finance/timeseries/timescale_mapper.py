@@ -2,9 +2,11 @@
 # Licensed under the Apache License, Version 2.0. See the LICENSE file for details.
 # File: src/finance/timeseries/timescale_mapper.py
 
+from zoneinfo import ZoneInfo
+
 from ..common.model import Asset, AssetMetadata, Series, SeriesState
 from ..common.string_enums import Retention, SeriesType
-from ..common.time_utils import parse_time, parse_timezone
+from ..common.time_utils import parse_time
 
 
 def asset_from_row(row: tuple, columns: dict[str, int]) -> Asset:
@@ -17,7 +19,7 @@ def asset_from_row(row: tuple, columns: dict[str, int]) -> Asset:
         currency=row[columns["currency"]],
         unit=row[columns["unit"]],
         first_trade_date=row[columns["first_trade_date"]],
-        timezone=parse_timezone(row[columns["timezone"]]),
+        timezone=ZoneInfo(row[columns["timezone"]]),
         week_start=row[columns["week_start"]],
         week_end=row[columns["week_end"]],
         market_open=parse_time(row[columns["market_open"]]),

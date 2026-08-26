@@ -8,6 +8,7 @@ import pytest
 
 from finance.common.model import Asset
 from finance.common.string_enums import Retention
+from finance.common.types import AppError
 from finance.registry.registry import Registry
 
 # ------------------------------------------------------------
@@ -71,7 +72,9 @@ def test_reconcile_assets_match_provider(make_asset, make_metadata):
     assert updated_asset.id == 2
     assert updated_asset.name == "RRR"
     assert updated_asset.symbol == "RRR"
+    assert updated_asset.config_metadata is not None
     assert updated_asset.config_metadata.currency == "USD"
+    assert updated_asset.effective_metadata is not None
     assert updated_asset.effective_metadata.currency == "USD"
 
 
@@ -180,15 +183,16 @@ def test_register_provider_metadata(make_asset, make_metadata):
     meta = make_metadata(first_trade_date=date(2020, 1, 1))
     to_persist = registry.register_provider_metadata(asset_id, meta)
     assert to_persist is not None
+    assert to_persist.effective_metadata is not None
     assert to_persist.effective_metadata.first_trade_date == date(2020, 1, 1)
 
     should_be_none = registry.register_provider_metadata(asset_id, meta)
     assert should_be_none is None, "Second registration should not trigger a save"
 
 
-def test_register_provider_metadata_requires_asset(make_asset, make_metadata):
+def test_register_provider_metadata_requires_asset(make_metadata):
     registry = Registry()
-    with pytest.raises(ValueError) as exc:
+    with pytest.raises(AppError) as exc:
         registry.register_provider_metadata(1, make_metadata())
     assert str(exc.value) == "Cannot register provider metadata for unknown asset id 1"
 
@@ -197,7 +201,7 @@ def test_register_stored_asset_requires_id(make_asset):
     registry = Registry()
     asset = make_asset(name="SPX", id=None)
 
-    with pytest.raises(ValueError) as exc:
+    with pytest.raises(AppError) as exc:
         registry.register_stored_asset(asset)
     assert str(exc.value) == "Cannot register asset without an id"
 
@@ -208,6 +212,7 @@ def test_register_stored_asset_success(make_asset, make_metadata):
 
     registry.register_stored_asset(asset)
     current = registry._assets_by_id[1]
+    assert current.effective_metadata is not None
     assert current.effective_metadata.first_trade_date is None
 
     assert registry._assets_by_id[1] is asset
@@ -225,7 +230,7 @@ def test_register_stored_series_requires_id(make_asset, make_series):
     asset = make_asset(name="SPX", id=1)
     series = make_series(asset=asset, id=None)
 
-    with pytest.raises(ValueError) as exc:
+    with pytest.raises(AppError) as exc:
         registry.register_stored_series(series)
     assert str(exc.value) == "Cannot register series without an id"
 

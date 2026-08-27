@@ -8,12 +8,13 @@ import pytest
 
 from finance.common.time_utils import UTC
 from finance.fetch.fred import FredProvider
+from tests.support.fakes import fake_session
 
 
 def test_fred_fetch_normal_with_skipped(fred_provider, assert_ok, make_asset, make_series, fixed_now):
 
     provider: FredProvider = fred_provider()
-    provider.session.queue(
+    fake_session(provider).queue(
         status=200,
         json_data={
             "observations": [
@@ -30,7 +31,7 @@ def test_fred_fetch_normal_with_skipped(fred_provider, assert_ok, make_asset, ma
     result = provider.fetch(make_series(asset), asset, now, now, True)
     # no change in date as the date is a label, not a timestamp
     assert_ok(result, datetime(2024, 5, 9, 0, 0, 0, tzinfo=UTC), 2.34)
-
+    assert result.ok is True
     assert len(result.payload.points) == 1, "Ignored invalid values"
 
 
@@ -70,8 +71,8 @@ def test_fred_malformed_cases(
 
 
 def test_fred_fetch_network_error(assert_error, fred_provider, make_asset, make_series, fixed_now):
-    provider:FredProvider = fred_provider()
-    provider.session.queue_error(Exception("Boom!"))
+    provider: FredProvider = fred_provider()
+    fake_session(provider).queue_error(Exception("Boom!"))
 
     asset = make_asset(provider_code="T10YIE")
     now = fixed_now()

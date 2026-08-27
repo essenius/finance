@@ -149,7 +149,7 @@ class Registry:
             if db_series is None:
                 to_persist.append(yaml_series)
             elif yaml_series.differs_from(db_series):
-                to_persist.append(yaml_series.with_id(db_series.id))
+                to_persist.append(yaml_series.with_id(db_series.require_id()))
             else:
                 final.append(db_series)
 
@@ -188,7 +188,7 @@ class Registry:
         The asset must have a valid id (assigned by the backend).
         """
 
-        def store(asset_dict: dict[int, Asset], key: int | str, asset: Asset):
+        def store[T](asset_dict: dict[T, Asset], key: T, asset: Asset):
             if asset_dict.get(key) is None:
                 asset_dict[key] = asset
             else:

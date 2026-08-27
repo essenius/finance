@@ -51,7 +51,7 @@ def run(
     provider_factory: Callable[[dict[str, ProviderConfig]], dict[str, MarketDataProvider]] = create_providers,
     state_factory: Callable[..., State] = State,
     fetch_controller_factory: Callable[
-        [Iterable[Series], Callable[[int], Asset | None], Callable[[str], MarketDataProvider]], FetchController
+        [Iterable[Series], Callable[[int], Asset | None], Callable[[str], MarketDataProvider | None]], FetchController
     ] = FetchController,
     # composite_engine_builder: Callable[[dict[str, Any], State], Result[CompositeEngine]] = CompositeEngine.build,
     wal_factory: Callable[[Path], JsonlWAL] = JsonlWAL,

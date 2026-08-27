@@ -18,12 +18,11 @@ def make_identity(label: datetime) -> CandleIdentity:
     return CandleIdentity(label, is_daily=True, interval=timedelta(days=1))
 
 
-
 def test_ecb_fetch_real_fixture(ecb_provider, assert_ok, make_asset, make_series):
     with open("tests/data/ecb_eurusd.json") as f:
         fake_json = json.load(f)
 
-    provider:EcbProvider = ecb_provider()
+    provider: EcbProvider = ecb_provider()
     fake_session(provider).queue(200, fake_json)
 
     asset = make_asset(provider_code="USD_EUR")

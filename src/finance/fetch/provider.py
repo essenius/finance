@@ -8,6 +8,8 @@ from typing import Any, Protocol
 
 import requests
 
+from finance.common.json_utils import JsonLike
+
 from ..common.candle_identity import CandleIdentity
 from ..common.configuration import ProviderConfig
 from ..common.model import Asset, FetchResult, Series
@@ -19,7 +21,7 @@ class ResponseProtocol(Protocol):
     status_code: int
     text: str
 
-    def json(self) -> object: ...
+    def json(self) -> JsonLike: ...
     def raise_for_status(self) -> None: ...
 
 

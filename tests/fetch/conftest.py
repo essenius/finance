@@ -3,18 +3,17 @@
 # File: tests/fetch/conftest.py
 
 from datetime import datetime
-from typing import Any
 
 import pytest
-import requests
 
 from finance.common.configuration import ProviderConfig
 from finance.common.model import FetchResult
 from finance.common.string_enums import SupportedProviders
 from finance.fetch.ecb import EcbProvider
 from finance.fetch.fred import FredProvider
-from finance.fetch.provider import MarketDataProvider, ResponseProtocol
+from finance.fetch.provider import MarketDataProvider
 from finance.fetch.yahoo import YahooProvider
+from tests.support.fakes import FakeSession
 from tests.support.types import ConfigurableFactory, Factory
 
 
@@ -27,50 +26,6 @@ def assert_ok():
         assert point.close == close
 
     return _assert_ok
-
-
-class FakeResponse:
-    status_code: int
-    text: str
-    def __init__(self, status: int, json_data: object, text: str=""):
-        self.status_code = status
-        self._json = json_data
-        self.text = text
-
-    def json(self) -> object:
-        return self._json
-
-    def raise_for_status(self) -> None:
-        if self.status_code != 200:
-            raise requests.exceptions.HTTPError(self.text or "boom")
-
-
-class FakeSession:
-    url: str
-    params: dict[str, Any] | None
-    timeout: float | None
-
-    def __init__(self):
-        self.responses: list[ResponseProtocol|Exception] = []
-        self.calls = 0
-
-    def queue(self, status: int, json_data: object, text:str=""):
-        self.responses.append(FakeResponse(status, json_data, text))
-        return self
-
-    def queue_error(self, exc: Exception):
-        self.responses.append(exc)
-        return self
-
-    def get(self, url: str, params: dict[str, Any] | None = None, timeout: float | None = None, **kwargs: Any) -> ResponseProtocol:
-        self.url = url
-        self.params = params
-        self.timeout = timeout
-        response = self.responses[self.calls]
-        self.calls += 1
-        if isinstance(response, Exception):
-            raise response
-        return response
 
 
 @pytest.fixture

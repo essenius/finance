@@ -5,7 +5,8 @@
 from collections.abc import Callable, Iterable
 from dataclasses import replace
 from datetime import date, datetime, time, timedelta
-from unittest.mock import Mock
+from typing import cast
+from unittest.mock import MagicMock, Mock
 from zoneinfo import ZoneInfo
 
 from finance.common.candle_identity import CandleIdentity
@@ -57,7 +58,10 @@ def make_fake_provider(fetch_result=None):
 
 
 def make_fetch_controller(
-    series: Iterable[Series], get_asset: Callable[[int], Asset], now_provider: Callable[[], datetime], fetch_result=None
+    series: Iterable[Series],
+    get_asset: Callable[[int], Asset | None],
+    now_provider: Callable[[], datetime],
+    fetch_result=None,
 ):
     fake_provider = make_fake_provider(fetch_result)
 
@@ -69,6 +73,11 @@ def make_fetch_controller(
 
     return FetchController(series, get_asset, get_provider, now_provider=now_provider)
 
+
+def mock_fetch(fc: FetchController):
+    yahoo = fc.get_provider("yahoo")
+    assert yahoo is not None
+    return cast(MagicMock, yahoo.fetch)
 
 # ----------------------------------------------------------------------
 # Tests
@@ -114,7 +123,7 @@ def test_controller_skips_fresh(state, make_asset, make_series):
 
     results = list(fc.fetch_incrementally(state))
     assert results == []
-    fc.get_provider("yahoo").fetch.assert_not_called()
+    mock_fetch(fc).assert_not_called()
 
 
 def test_controller_fetch_when_oldest_too_new(state, make_asset, make_series):
@@ -142,7 +151,7 @@ def test_controller_fetch_when_oldest_too_new(state, make_asset, make_series):
     state.series[1] = SeriesState(last_point=last, first_point=first)
 
     result = fetch_with_single_result(fc, state)
-    assert result.ok
+    assert result.ok is True
 
 
 def test_controller_fetches_when_stale(state, fixed_now, make_asset, make_series):
@@ -159,9 +168,8 @@ def test_controller_fetches_when_stale(state, fixed_now, make_asset, make_series
     state.series[1] = SeriesState(first_point=now - timedelta(weeks=1), last_point=now - timedelta(days=2))
 
     result = fetch_with_single_result(fc, state)
-    assert result.ok
-
-    fc.get_provider("yahoo").fetch.assert_called_once()
+    assert result.ok is True
+    mock_fetch(fc).assert_called_once()
 
 
 def test_controller_skips_fetch_with_offset(state, make_asset, make_metadata, make_series):
@@ -186,7 +194,7 @@ def test_controller_skips_fetch_with_offset(state, make_asset, make_metadata, ma
     state.series[1] = SeriesState(first_point=last_week, last_point=yesterday)
     results = list(fc.fetch_incrementally(state))
     assert len(results) == 0, "no result as publication time not passed"
-    fc.get_provider("yahoo").fetch.assert_not_called()
+    mock_fetch(fc).assert_not_called()
 
     # should retrieve as publication time passed passed
     fake_hour = 15
@@ -276,9 +284,9 @@ def test_compute_fetch_range_intraday(make_series, make_asset):
     fake_provider = make_fake_provider(fetch_result=Failure(reason="bad data"))
 
     asset = make_asset()
-    calendar = SeriesCalendar.from_asset_metadata(asset.effective_metadata)
-    assets = make_assets([asset])
     series_list = [make_series(asset)]  # 10m interval
+    calendar = SeriesCalendar.create(series_list[0], asset.effective_metadata)
+    assets = make_assets([asset])
     providers = {"yahoo": fake_provider}
 
     def mock_now():
@@ -348,13 +356,14 @@ def test_compute_fetch_range_daily(make_series, make_asset, make_metadata):
 
     meta = make_metadata(first_trade_date=date(2021, 10, 1))
     asset = make_asset(effective_metadata=meta)
-    calendar = SeriesCalendar.from_asset_metadata(asset.effective_metadata)
-    assets = make_assets([asset])
-
-    # Daily series. Set first trade date less than 5 years ago to test it is respected.
     series_list = [
         make_series(asset, interval="1d", bootstrap_history="5y", retention=Retention.LONG_LIVED, retention_period=None)
     ]
+    calendar = SeriesCalendar.create(series_list[0], asset.effective_metadata)
+    assets = make_assets([asset])
+
+    # Daily series. Set first trade date less than 5 years ago to test it is respected.
+
     providers = {"yahoo": fake_provider}
 
     def mock_now():
@@ -418,15 +427,15 @@ def test_compute_fetch_range_first_after_last(make_asset, make_series):
     fake_provider = make_fake_provider(fetch_result=Failure(reason="bad data"))
 
     asset = make_asset()
-    calendar = SeriesCalendar.from_asset_metadata(asset.effective_metadata)
-    assets = make_assets([asset])
-
     # Daily series
     series_list = [
         make_series(
             asset, interval="15m", bootstrap_history="2d", retention=Retention.LONG_LIVED, publication_offset="14m"
         )
     ]
+    calendar = SeriesCalendar.create(series_list[0], asset.effective_metadata)
+    assets = make_assets([asset])
+
     providers = {"yahoo": fake_provider}
 
     # Sunday evening, so with 2 day history we can't move back from the weekend. Next for range start is Monday after, previous for range end is Friday before

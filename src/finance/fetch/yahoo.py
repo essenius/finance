@@ -60,9 +60,11 @@ class YahooProvider(MarketDataProvider):
     # Fetch data
     # -----------
 
-    def _build_url(self, provider_code, interval_str, start_timestamp, end_timestamp) -> tuple[str, dict]:
+    def _build_url(
+        self, provider_code: str, interval_str: str, start_timestamp: float, end_timestamp: float
+    ) -> tuple[str, dict]:
         encoded = quote(provider_code, safe="")
-        params = {
+        params: dict[str, int | str] = {
             "interval": interval_str,
             "period1": int(start_timestamp),
             "period2": int(end_timestamp),
@@ -71,7 +73,7 @@ class YahooProvider(MarketDataProvider):
         }
         return f"{self.BASE_URL.format(symbol=encoded)}", params
 
-    def _fetch_impl(self, url, params) -> Result[JsonObject]:
+    def _fetch_impl(self, url: str, params: dict[str, int | str]) -> Result[JsonObject]:
         """fetch the response from the provider. Is called from a _safe_call wrapper so can throw"""
         headers = {"User-Agent": "Mozilla/5.0"}
         response = self.session.get(

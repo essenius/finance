@@ -22,6 +22,7 @@ class Success[T]:
     payload: T
     warnings: list[str] = field(default_factory=list)
     meta: Mapping[str, object] | None = None
+    # discriminated (tagged) union so class can be determined after checking ok with is
     ok: Literal[True] = True
 
     def to_log_dict(self) -> dict[str, object]:

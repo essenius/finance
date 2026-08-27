@@ -13,6 +13,7 @@ from finance.common.model import AssetMetadata, SeriesPoint
 from finance.common.string_enums import Retention, SeriesType
 from finance.common.time_utils import UTC
 from finance.fetch.yahoo import YahooProvider
+from tests.support.fakes import fake_session
 
 # ----------------------------------------------------------------------
 # _fetch_impl()
@@ -200,7 +201,7 @@ def test_fetch_real_fixture_5m_eliminates_last_and_fills_metadata(yahoo_provider
     # This is the time that data stored in the test file was fetched. Note that yahoo chart is 10-15 mins delayed.
     # The timestamp of the last candle is 11:47:55 UTC
     provider: YahooProvider = yahoo_provider(now_provider=lambda: datetime(2026, 8, 11, 12, tzinfo=UTC))
-    provider.session.queue(200, fake_json)
+    fake_session(provider).queue(200, fake_json)
 
     asset = make_asset(provider_code="gold")
     series = make_series(asset, interval="5m")

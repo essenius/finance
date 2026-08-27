@@ -3,6 +3,7 @@
 # File: tests/config/test_env_secrets.py
 
 import os
+from pathlib import Path
 
 import pytest
 
@@ -43,5 +44,5 @@ def test_load_env_secrets_timescaledb(tmp_path, unwrap):
     assert config.api_keys["fred"] == "abc"  # from .env
     assert config.api_keys["yahoo"] == "yahoo123"  # from getenv
 
-    assert config.paths["config"] == "my_config.yaml"
+    assert config.paths["config"] == Path("my_config.yaml")
     assert config.logging["level"] == "debug"

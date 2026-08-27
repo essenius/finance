@@ -11,13 +11,10 @@ import pytest
 from finance.common.configuration import TimescaleConfig
 from finance.timeseries.series_backend import SeriesBackend
 from finance.timeseries.timescale_sql import TimescaleSqlClient
-from tests.support.fakes import FakeClock
+from tests.support.fakes import FakeClock, SqlWithMockCursor
 from tests.support.types import ConfigurableFactory, ContextManagerFactory, Factory
 
 
-
-class SqlWithMockCursor(Protocol):
-    mock_cursor: MagicMock
 @pytest.fixture
 def make_timescale_config() -> ConfigurableFactory[TimescaleConfig]:
     def _make(**overrides) -> TimescaleConfig:
@@ -80,8 +77,10 @@ def sql_with_fake_psycopg(make_backend_config: Factory[TimescaleConfig]) -> Cont
         with patch("psycopg.connect", return_value=fake_connection) as mock_connect:
             sql = TimescaleSqlClient(make_backend_config())
 
-            sql.mock_connect = mock_connect
-            sql.mock_cursor = fake_cursor
+            sql_with_cursor = cast(SqlWithMockCursor, sql)
+
+            sql_with_cursor.mock_connect = mock_connect
+            sql_with_cursor.mock_cursor = fake_cursor
 
             yield sql
 

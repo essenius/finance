@@ -8,12 +8,13 @@ import requests
 
 from finance.common.candle_identity import CandleIdentity
 from finance.common.time_utils import UTC
-from finance.common.types import Success
+from finance.common.types import Result, Success
 from finance.fetch.provider import MarketDataProvider
+from tests.support.types import Factory
 
 
-def test_init_defaults(dummy_provider):
-    p: MarketDataProvider = dummy_provider()
+def test_init_defaults(dummy_provider: Factory[MarketDataProvider]):
+    p = dummy_provider()
 
     assert isinstance(p.session, requests.Session)
 
@@ -22,21 +23,22 @@ def test_init_defaults(dummy_provider):
     assert now.tzinfo == UTC
 
 
-def test_safe_call_success(dummy_provider):
-    p: MarketDataProvider = dummy_provider()
+def test_safe_call_success(dummy_provider: Factory[MarketDataProvider]):
+    p = dummy_provider()
 
-    def good():
+    def good() -> Result[list[int]]:
         return Success([1, 2, 3])
 
     result = p._safe_call(good, "context")
+    # is True is required here to narrow the Result union
     assert result.ok is True
     assert result.payload == [1, 2, 3]
 
 
-def test_safe_call_exception(dummy_provider):
-    p: MarketDataProvider = dummy_provider()
+def test_safe_call_exception(dummy_provider: Factory[MarketDataProvider]):
+    p = dummy_provider()
 
-    def bad():
+    def bad() -> Result[int]:
         raise ValueError("kaboom")
 
     result = p._safe_call(bad, "context")
@@ -44,35 +46,6 @@ def test_safe_call_exception(dummy_provider):
     assert "Exception during context" in result.reason
     assert "kaboom" in str(result.error)
 
-
-# -------------------------
-# _safe_get tests
-# -------------------------
-
-""" TODO delete
-def test_safe_get_ok(dummy_provider):
-    p:MarketDataProvider = dummy_provider()
-    data = {"a": [{"b": 123}]}
-
-    result = p._safe_get(data, ["a", 0, "b"])
-    assert result.ok is True
-    assert result.payload == 123
-
-
-@pytest.mark.parametrize(
-    "data, path, expected",
-    [
-        ({"a": {}}, ["a", "b"], "missing key 'b' at ['a']"),
-        ({"a": []}, ["a", 0], "missing index '0' at ['a']"),
-        ({"a": 42}, ["a", 0], "cannot index int at ['a']"),
-    ],
-)
-def test_safe_get_errors(dummy_provider, data: Any, path, expected):
-    p:MarketDataProvider = dummy_provider()
-    result = p._safe_get(data, path)
-    assert result.ok is False, "error occurred"
-    assert result.reason == expected
-"""
 
 # -----------
 # Fetch test

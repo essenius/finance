@@ -80,7 +80,7 @@ def assert_error() -> Callable[[Result, str, str | None], None]:
 @pytest.fixture
 def assert_warning() -> Callable[[Result, str | None], object]:
     def _assert_warning(result: Result, warning: str | None) -> None:
-        assert result.ok
+        assert result.ok is True
         if warning is None:
             assert result.warnings is None
         else:
@@ -95,7 +95,7 @@ def assert_warning() -> Callable[[Result, str | None], object]:
 
 
 @pytest.fixture
-def make_metadata() -> Factory[AssetMetadata]:
+def make_metadata() -> ConfigurableFactory[AssetMetadata]:
     # CO: "long_name": f"d_{name}",
 
     def _make(**overrides) -> AssetMetadata:
@@ -120,7 +120,7 @@ def make_metadata() -> Factory[AssetMetadata]:
 
 
 @pytest.fixture
-def make_asset(make_metadata) -> Factory[Asset]:
+def make_asset(make_metadata) -> ConfigurableFactory[Asset]:
     def _make(name: str = "eur_usd", **overrides) -> Asset:
         defaults = {
             "id": 1,

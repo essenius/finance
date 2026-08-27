@@ -1,12 +1,14 @@
 # Copyright 2026 Rik Essenius
 # Licensed under the Apache License, Version 2.0. See the LICENSE file for details.
-# File: tests/support/types.py
+# File: tests/support/fakes.py
 
 from datetime import datetime, timedelta
-from typing import Any, cast
+from typing import Any, Protocol, cast
+from unittest.mock import MagicMock
 
 import requests
 
+from finance.common.json_utils import JsonLike
 from finance.common.time_utils import UTC
 from finance.fetch.provider import MarketDataProvider, ResponseProtocol
 
@@ -25,12 +27,13 @@ class FakeClock:
 class FakeResponse:
     status_code: int
     text: str
-    def __init__(self, status: int, json_data: object, text: str=""):
+
+    def __init__(self, status: int, json_data: JsonLike, text: str = ""):
         self.status_code = status
         self._json = json_data
         self.text = text
 
-    def json(self) -> object:
+    def json(self) -> JsonLike:
         return self._json
 
     def raise_for_status(self) -> None:
@@ -44,10 +47,10 @@ class FakeSession:
     timeout: float | None
 
     def __init__(self):
-        self.responses: list[ResponseProtocol|Exception] = []
+        self.responses: list[ResponseProtocol | Exception] = []
         self.calls = 0
 
-    def queue(self, status: int, json_data: object, text:str=""):
+    def queue(self, status: int, json_data: JsonLike, text: str = ""):
         self.responses.append(FakeResponse(status, json_data, text))
         return self
 
@@ -55,7 +58,9 @@ class FakeSession:
         self.responses.append(exc)
         return self
 
-    def get(self, url: str, params: dict[str, Any] | None = None, timeout: float | None = None, **kwargs: Any) -> ResponseProtocol:
+    def get(
+        self, url: str, params: dict[str, Any] | None = None, timeout: float | None = None, **kwargs: Any
+    ) -> ResponseProtocol:
         self.url = url
         self.params = params
         self.timeout = timeout
@@ -66,7 +71,11 @@ class FakeSession:
         return response
 
 
-
-
 def fake_session(provider: MarketDataProvider) -> FakeSession:
     return cast(FakeSession, provider.session)
+
+
+class SqlWithMockCursor(Protocol):
+    mock_cursor: MagicMock
+    mock_connect: MagicMock
+    _connection: MagicMock

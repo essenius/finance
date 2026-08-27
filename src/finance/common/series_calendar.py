@@ -31,14 +31,14 @@ class SeriesCalendar:
     market_close: time
     week_start: int
     week_end: int
-    interval: timedelta | None = None
+    interval: timedelta
     publication_offset: timedelta | None = None
     first_trade_date: date | None = None
 
-    _offset: timedelta | None = None
+    # _offset: timedelta | None = None
 
     @classmethod
-    def from_asset_metadata(cls, meta: AssetMetadata) -> SeriesCalendar:
+    def create(cls, series: Series, meta: AssetMetadata) -> SeriesCalendar:
         return cls(
             # the defaults are primarily useful for the first fetch, when we might not have all metadata yet.
             # it may result in a slightly inaccurate window, which is corrected the next run.
@@ -47,14 +47,9 @@ class SeriesCalendar:
             market_close=default_if_none(meta.market_close, time.max),
             week_start=default_if_none(parse_weekday(meta.week_start), MONDAY),
             week_end=default_if_none(parse_weekday(meta.week_end), FRIDAY),
-            first_trade_date=meta.first_trade_date,
-        )
-
-    def for_series(self, series: Series) -> SeriesCalendar:
-        return replace(
-            self,
-            publication_offset=parse_duration(series.publication_offset, f"interval for {series.name}"),
             interval=series.interval_delta(),
+            publication_offset=parse_duration(series.publication_offset, f"publication offset for {series.name}"),
+            first_trade_date=meta.first_trade_date,
         )
 
     def is_overnight(self) -> bool:

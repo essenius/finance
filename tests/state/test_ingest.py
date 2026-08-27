@@ -17,7 +17,7 @@ def test_ingest_enqueues_and_does_not_update_state(state_env, make_entry):
     result = state.ingest(args["point"])
 
     wal.enqueue.assert_called_once_with(args["point"])
-    assert result.ok
+    assert result.ok is True
     # nothing dequeued as backend reported nothing written
     wal.dequeue_multiple.assert_called_with(0)
 
@@ -34,7 +34,7 @@ def test_ingest_enqueues_and_removes_wal_entry(state_env, make_entry):
     result = state.ingest(args["point"])
 
     wal.enqueue.assert_called_once_with(args["point"])
-    assert result.ok
+    assert result.ok is True
     # nothing dequeued as backend reported nothing written
     wal.dequeue_multiple.assert_called_with(1)
     # this should not write timestamps

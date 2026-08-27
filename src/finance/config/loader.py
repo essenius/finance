@@ -57,15 +57,16 @@ class AppConfig(BusinessConfig):
 class ConfigLoader:
     providers: dict[str, ProviderConfig]
 
-    def __init__(self, *, cwd: Path, environ=os.environ):
+    def __init__(self, *, cwd: Path, config_path: Path | None = None, environ=os.environ):
         self.cwd = cwd
         self.env_path = (cwd / ".env").resolve()
         self.environ = environ
+        self.config_path = config_path
 
     def load(self) -> Result[AppConfig]:
         config_env = self.load_env_variables()
 
-        cfg_path = Path(config_env.paths.get("config") or "config.yaml")
+        cfg_path = self.config_path or config_env.paths.get("config") or Path("config.yaml")
 
         yaml_path = cfg_path if cfg_path.is_absolute() else (self.cwd / cfg_path).resolve()
         reader_result = load_yaml_config(yaml_path)
@@ -116,7 +117,7 @@ class ConfigLoader:
             elif key.startswith("log_"):
                 logging[key[4:]] = value
             elif key.endswith("_path"):
-                paths[key[:-5]] = value
+                paths[key[:-5]] = Path(value)
 
         return EnvironmentConfig(timescaledb=timescaledb, api_keys=api_keys, logging=logging, paths=paths)
 

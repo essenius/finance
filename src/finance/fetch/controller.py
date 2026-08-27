@@ -71,7 +71,7 @@ class FetchController:
                 yield Failure(reason=f"no provider '{asset.provider}'", error=f"Skipped series '{series.name}'")
                 continue
             metadata = require(asset.effective_metadata)
-            calendar = SeriesCalendar.from_asset_metadata(metadata)
+            calendar = SeriesCalendar.create(series, metadata)
             range = self.get_fetch_range(series=series, provider=provider, state=state_entry, calendar=calendar)
             if range is None:
                 continue
@@ -87,14 +87,6 @@ class FetchController:
         if state.next_sweep is not None and state.next_sweep > last.store_label():
             return None
         return state.sweep_start
-
-    """
-    def update_sweep_state(self, state: SeriesState, sweep: SweepConfig, last: CandleIdentity):
-        store_label = last.store_label()
-        state.next_sweep = store_label + sweep.cadence
-        state.sweep_start = store_label - sweep.window
-        state.needs_save = True
-    """
 
     @staticmethod
     def get_required_range(
@@ -145,9 +137,8 @@ class FetchController:
         Unified fetch decision: if fetch needed → return (start, end, is_incremental), else None
         """
 
-        series_calendar = calendar.for_series(series)
         now = self.now()
-        first_req, last_req = self.get_required_range(series, series_calendar, now)
+        first_req, last_req = self.get_required_range(series, calendar, now)
 
         # edge case. e.g. when retention horizon lands in a weekend
         if first_req > last_req:
@@ -158,7 +149,7 @@ class FetchController:
         # if we have missing history, grab that first
         # This can mean we skip a daily publication (but that will be picked up next run)
         # we won't do the sweep now either
-        prepend_range = self.get_prepend_range(series_calendar, state, first_req)
+        prepend_range = self.get_prepend_range(calendar, state, first_req)
         if prepend_range is not None:
             start, end = prepend_range
             if end is None:
@@ -172,12 +163,12 @@ class FetchController:
             retention = series.retention_delta()
             if retention is not None:
                 sweep_start = max(sweep_start, now - retention)
-            first_identity = series_calendar.snap_forward_identity(sweep_start)
+            first_identity = calendar.snap_forward_identity(sweep_start)
             state.update_sweep_state(sweep_config, last_req)
             return (first_identity, last_req, False)
 
         last_point = require(state.last_point, "state.last_point")
         if last_req.store_label() > last_point:
-            first_identity = series_calendar.snap_forward_identity(last_point + series.interval_delta())
+            first_identity = calendar.snap_forward_identity(last_point + series.interval_delta())
             return (first_identity, last_req, True)
         return None

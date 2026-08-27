@@ -7,7 +7,7 @@ def test_execute_read_returns_rows(sql_with_fake_connection):
     sql, cursor = sql_with_fake_connection(fetchall=[(1, "AAPL"), (2, "MSFT")])
     rows_result = sql.execute_read("SELECT * FROM asset WHERE id > %s", (10,))
 
-    assert rows_result.ok
+    assert rows_result.ok is True
     assert rows_result.payload == {"rows": [(1, "AAPL"), (2, "MSFT")], "columns": {}}
 
     sql._connection.cursor.assert_called_once(), "the context manager was called"
@@ -24,7 +24,7 @@ def test_execute_write_success(sql_with_fake_connection):
 
     result = sql.execute_write("INSERT INTO asset(symbol) VALUES (%s) RETURNING id;", ("AAPL",))
 
-    assert result.ok
+    assert result.ok is True
     assert result.payload == 42
 
     cursor.execute.assert_called_once_with("INSERT INTO asset(symbol) VALUES (%s) RETURNING id;", ("AAPL",))
@@ -57,5 +57,5 @@ def test_connect_failed(sql_with_fake_psycopg, assert_error):
 def test_connect_succeeded(sql_with_fake_psycopg, unwrap):
     with sql_with_fake_psycopg() as sql:
         result = sql.execute_many("", [], "many")
-        assert result.ok
+        assert result.ok is True
         assert result.payload is None

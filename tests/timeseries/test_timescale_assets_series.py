@@ -4,13 +4,15 @@
 
 from datetime import datetime, time
 from types import SimpleNamespace
+from typing import cast
 from unittest.mock import MagicMock
 
 from finance.common.model import Asset
 from finance.common.string_enums import Retention, SeriesType
 from finance.common.types import Failure, Success
 from finance.timeseries.series_backend import SeriesBackend
-from tests.support.types import Factory
+from tests.support.fakes import SqlWithMockCursor
+from tests.support.types import ConfigurableFactory
 
 # ------------------------------------------------------------
 # Helpers
@@ -51,7 +53,7 @@ def test_refresh_short_lived_series_ids_loads_ids(make_backend):
 
     result = backend.refresh_short_lived_series_ids()
 
-    assert result.ok
+    assert result.ok is True
 
     assert backend._short_lived_series_ids == {10, 20, 30}
     backend._sql_client.execute_read.assert_called_once()
@@ -86,7 +88,7 @@ def test_refresh_short_lived_series_ids_handles_disconnected(make_backend):
 # ------------------------------------------------------------
 
 
-def test_store_asset_insert(make_backend, make_asset: Factory[Asset]):
+def test_store_asset_insert(make_backend, make_asset: ConfigurableFactory[Asset]):
     backend = make_backend()
 
     asset: Asset = make_asset(id=None)
@@ -94,7 +96,7 @@ def test_store_asset_insert(make_backend, make_asset: Factory[Asset]):
 
     result = backend.store_asset(asset)
 
-    assert result.ok
+    assert result.ok is True
     stored = result.payload
     assert stored.id == 42
 
@@ -112,7 +114,7 @@ def test_store_asset_update(make_backend, make_asset):
     backend._sql_client.execute_write = MagicMock(return_value=Success(99))
     result = backend.store_asset(asset)
 
-    assert result.ok
+    assert result.ok is True
     assert result.payload is asset  # unchanged object
 
     backend._sql_client.execute_write.assert_called_once()
@@ -146,7 +148,7 @@ def test_store_series_insert(make_backend, make_asset, make_series):
 
     result = backend.store_series(series)
 
-    assert result.ok
+    assert result.ok is True
     stored = result.payload
     assert stored.id == 123
 
@@ -167,7 +169,7 @@ def test_store_series_update(make_backend, make_asset, make_series):
 
     result = backend.store_series(series)
 
-    assert result.ok
+    assert result.ok is True
     assert result.payload is series
 
     backend._sql_client.execute_write.assert_called_once()
@@ -275,14 +277,17 @@ def test_get_assets_returns_asset_list(make_backend):
 
     result = backend.get_assets()
 
-    assert result.ok
+    assert result.ok is True
     assets: list[Asset] = result.payload
     assert len(assets) == 2
     assert assets[0].symbol == "AAPL"
     assert assets[1].symbol == "MSFT"
     meta0 = assets[0].effective_metadata
+    assert meta0 is not None
+    assert meta0.timezone is not None
     assert meta0.timezone.key == "America/New_York"
     meta1 = assets[1].effective_metadata
+    assert meta1 is not None
     assert meta1.week_start == "sun"
     assert meta0.market_close == time(hour=16)
 
@@ -349,11 +354,13 @@ def test_get_series_returns_series_list(make_backend):
         SimpleNamespace(name="bootstrap_history"),
         SimpleNamespace(name="publication_offset"),
     ]
-    backend._sql_client._connection.cursor.return_value = cursor_cm
+    sql_client = cast(SqlWithMockCursor, backend._sql_client)
+
+    sql_client._connection.cursor.return_value = cursor_cm
 
     result = backend.get_series()
 
-    assert result.ok
+    assert result.ok is True
     series = result.payload
     assert len(series) == 2
     assert series[0].retention == Retention.SHORT_LIVED
@@ -373,22 +380,8 @@ def test_save_sweep(make_backend):
     next_sweep = datetime.max
     sweep_start = datetime.min
     result = backend.save_sweep(series_id=42, next_sweep=next_sweep, sweep_start=sweep_start)
-    assert result.ok
+    assert result.ok is True
     assert result.payload == 42
     backend._sql_client.mock_cursor.execute.assert_called_once()
     assert backend._sql_client.mock_cursor.execute.call_args_list[0].args[1] == (42, datetime.max, datetime.min)
     return
-
-    """
-    with unwrapped_backend(default_config) as backend:
-        backend.mock_cursor.fetchone.return_value = [42]
-
-        next_sweep = datetime.max
-        sweep_start = datetime.min
-        result = backend.save_sweep(series_id=42, next_sweep=next_sweep, sweep_start=sweep_start)
-
-    assert result.ok
-    assert result.payload == 42
-    assert backend.mock_cursor.execute.call_count == 3
-    assert backend.mock_cursor.execute.call_args_list[2].args[1] == (42, datetime.max, datetime.min)
-    """

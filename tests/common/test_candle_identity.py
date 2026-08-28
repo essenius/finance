@@ -10,6 +10,7 @@ import pytest
 
 from finance.common.candle_identity import CandleIdentity
 from finance.common.time_utils import UTC
+from tests.support.types import Factory
 
 
 def test_candle_identity_intraday():
@@ -19,7 +20,7 @@ def test_candle_identity_intraday():
     id1 = CandleIdentity(value=now, is_daily=False, interval=timedelta(minutes=10))
 
     with pytest.raises(TypeError):
-        _ = id1 < 0
+        _ = id1 < 0  # pyright: ignore[reportOperatorIssue]
 
     assert id1 != "x"
     assert id1 == id1
@@ -50,9 +51,9 @@ def test_candle_identity_daily():
     )  # one microsecond before the next label (to catch labels e.g. at start of day)
 
 
-def test_normalize_store_label(fixed_now):
+def test_normalize_store_label(fixed_now: Factory[datetime]):
     now = fixed_now()
-    timestamp = now.timestamp()
+    timestamp = int(now.timestamp())
     tokyo = ZoneInfo("Asia/Tokyo")
     id1 = CandleIdentity.from_timestamp(timestamp, timezone=tokyo, interval=timedelta(days=1))
     # for daily or more, we have daily labels.

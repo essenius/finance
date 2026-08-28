@@ -35,6 +35,14 @@ class SessionProtocol(Protocol):
     ) -> ResponseProtocol: ...
 
 
+class ProviderProtocol(Protocol):
+    provider_config: ProviderConfig
+
+    def fetch(
+        self, series: Series, asset: Asset, start: CandleIdentity, end: CandleIdentity, is_incremental: bool
+    ) -> FetchResult: ...
+
+
 class MarketDataProvider:
     """Base interface for all market data providers."""
 

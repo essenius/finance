@@ -23,6 +23,7 @@ from finance.common.time_utils import (
     write_timezone,
 )
 from finance.common.types import ParseError
+from tests.support.types import Factory
 
 # ---------------
 # Parse duration
@@ -61,7 +62,7 @@ def test_validate_duration():
     assert str(exc_info.value) == "Invalid duration 'qx' in test"
 
 
-def test_normalize_db_time_datetime(fixed_now):
+def test_normalize_db_time_datetime(fixed_now: Factory[datetime]):
     now = fixed_now()
     assert normalize_db_time(now) == now
 
@@ -69,7 +70,7 @@ def test_normalize_db_time_datetime(fixed_now):
     assert normalize_db_time(naive_now) == datetime(2026, 7, 14, tzinfo=UTC)
 
 
-def test_normalize_db_time_date(fixed_now):
+def test_normalize_db_time_date(fixed_now: Factory[datetime]):
     now = fixed_now()
     today = now.date()
     result = normalize_db_time(today)

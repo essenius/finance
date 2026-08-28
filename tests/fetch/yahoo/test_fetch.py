@@ -4,72 +4,60 @@
 
 import json
 from datetime import date, datetime, time, timedelta
-from unittest.mock import Mock, patch
 
 import pytest
 
 from finance.common.candle_identity import CandleIdentity
-from finance.common.model import AssetMetadata, SeriesPoint
+from finance.common.json_utils import JsonObject
+from finance.common.model import Asset, AssetMetadata, FetchData, Series, SeriesPoint
 from finance.common.string_enums import Retention, SeriesType
 from finance.common.time_utils import UTC
-from finance.fetch.yahoo import YahooProvider
-from tests.support.fakes import fake_session
+from finance.common.types import Unwrap
+from tests.fetch.yahoo.test_candles import YahooFakeSession
+from tests.support.types import AssertError, Creator, Factory
 
 # ----------------------------------------------------------------------
 # _fetch_impl()
 # ----------------------------------------------------------------------
 
 
-def test_fetch_impl_success(yahoo_provider, unwrap):
-    provider: YahooProvider = yahoo_provider()
-    response = Mock()
-    response.json.return_value = {"chart": {"result": [{"foo": "bar"}], "error": None}}
-    response.raise_for_status.return_value = None
-
-    with patch.object(provider.session, "get", return_value=response):
-        result = provider._fetch_impl(url="http://x", params={})
-
+def test_fetch_impl_success(yahoo_provider: Factory[YahooFakeSession], unwrap: Unwrap[JsonObject]):
+    fake = yahoo_provider()
+    fake.session.queue(200, {"chart": {"result": [{"foo": "bar"}], "error": None}})
+    result = fake.provider._fetch_impl(url="http://x", params={})
     payload = unwrap(result)
     assert payload == {"foo": "bar"}
 
 
-def test_fetch_impl_missing_chart(yahoo_provider, assert_error):
-    provider: YahooProvider = yahoo_provider()
+def test_fetch_impl_missing_chart(yahoo_provider: Factory[YahooFakeSession], assert_error: AssertError):
+    fake = yahoo_provider()
+    fake.session.queue(200, {})
 
-    response = Mock()
-    response.json.return_value = {}
-    response.raise_for_status.return_value = None
-
-    with patch.object(provider.session, "get", return_value=response):
-        result = provider._fetch_impl(url="http://x", params={})
+    result = fake.provider._fetch_impl(url="http://x", params={})
 
     assert_error(result, "Could not interpret fetch response", "no 'chart' in response")
 
 
-def test_fetch_impl_empty_result(yahoo_provider, assert_error):
-    provider: YahooProvider = yahoo_provider()
-    response = Mock()
-    response.json.return_value = {"chart": {"result": []}}
-    response.raise_for_status.return_value = None
-
-    with patch.object(provider.session, "get", return_value=response):
-        result = provider._fetch_impl(url="http://x", params={})
-        assert_error(result, "Could not interpret fetch response", "['result', 0]: index `0` out of range (level: 1)")
+def test_fetch_impl_empty_result(yahoo_provider: Factory[YahooFakeSession], assert_error: AssertError):
+    fake = yahoo_provider()
+    fake.session.queue(200, {"chart": {"result": []}})
+    result = fake.provider._fetch_impl(url="http://x", params={})
+    assert_error(result, "Could not interpret fetch response", "['result', 0]: index `0` out of range (level: 1)")
 
 
-def test_fetch_impl_yahoo_error_object(yahoo_provider, assert_error):
-    provider: YahooProvider = yahoo_provider()
-    response = Mock()
-    response.json.return_value = {
-        "chart": {
-            "result": [{"foo": "bar"}],
-            "error": {"code": "BadSymbol", "description": "Symbol not found"},
-        }
-    }
-    response.raise_for_status.return_value = None
+def test_fetch_impl_yahoo_error_object(yahoo_provider: Factory[YahooFakeSession], assert_error: AssertError):
+    fake = yahoo_provider()
+    fake.session.queue(
+        200,
+        {
+            "chart": {
+                "result": [{"foo": "bar"}],
+                "error": {"code": "BadSymbol", "description": "Symbol not found"},
+            }
+        },
+    )
 
-    with patch.object(provider.session, "get", return_value=response):
-        result = provider._fetch_impl(url="http://x", params={})
+    result = fake.provider._fetch_impl(url="http://x", params={})
 
     assert_error(
         result, "Could not interpret fetch response", "{'code': 'BadSymbol', 'description': 'Symbol not found'}"
@@ -85,31 +73,38 @@ def make_identity(label: datetime):
     return CandleIdentity(label, False, timedelta(0))
 
 
-def test_fetch_success(yahoo_provider, unwrap, make_asset, make_series):
+def test_fetch_success(
+    yahoo_provider: Creator[YahooFakeSession],
+    unwrap: Unwrap[FetchData],
+    make_asset: Creator[Asset],
+    make_series: Creator[Series],
+):
 
     def fake_now():
         return datetime(2026, 7, 23, 15, 00, tzinfo=UTC)
 
-    response = Mock()
+    fake = yahoo_provider(now_provider=fake_now)
+
     now = make_identity(fake_now())
-    response.json.return_value = {
-        "chart": {
-            "result": [
-                {
-                    "meta": {"exchangeTimezoneName": "UTC"},
-                    "timestamp": [int(now.start_timestamp())],
-                    "indicators": {"quote": [{"close": [10.0]}]},
-                }
-            ],
-            "error": None,
-        }
-    }
-    response.raise_for_status.return_value = None
+    fake.session.queue(
+        200,
+        {
+            "chart": {
+                "result": [
+                    {
+                        "meta": {"exchangeTimezoneName": "UTC"},
+                        "timestamp": [int(now.start_timestamp())],
+                        "indicators": {"quote": [{"close": [10.0]}]},
+                    }
+                ],
+                "error": None,
+            }
+        },
+    )
     asset = make_asset(provider_code="AAPL")
     series = make_series(asset, interval="1h", retention=Retention.SHORT_LIVED, series_type=SeriesType.VALUE)
-    provider: YahooProvider = yahoo_provider(now_provider=fake_now)
-    with patch.object(provider.session, "get", return_value=response):
-        result = provider.fetch(series, asset, now, now, False)
+
+    result = fake.provider.fetch(series, asset, now, now, False)
 
     payload = unwrap(result)
     points = payload.points
@@ -118,15 +113,20 @@ def test_fetch_success(yahoo_provider, unwrap, make_asset, make_series):
     assert points[0].close == 10.0, "Close is 10"
 
 
-def test_impl_http_error(yahoo_provider, assert_error, make_asset, make_series, fixed_now):
+def test_impl_http_error(
+    yahoo_provider: Factory[YahooFakeSession],
+    assert_error: AssertError,
+    make_asset: Creator[Asset],
+    make_series: Creator[Series],
+    fixed_now,
+):
     now = make_identity(fixed_now())
-    response = Mock()
-    response.raise_for_status.side_effect = Exception("boom")
     asset = make_asset()
     series = make_series(asset)
-    provider: YahooProvider = yahoo_provider()
-    with patch.object(provider.session, "get", return_value=response):
-        result = provider.fetch(series, asset, now, now, False)
+    fake = yahoo_provider()
+    fake.session.queue_error(Exception("boom"))
+
+    result = fake.provider.fetch(series, asset, now, now, False)
 
     assert_error(result, "Exception during Yahoo fetch", "boom")
 
@@ -139,53 +139,65 @@ def test_impl_http_error(yahoo_provider, assert_error, make_asset, make_series, 
     ],
 )
 def test_fetch_missing_exchange_timezone(
-    yahoo_provider, assert_error, make_asset, make_series, fixed_now, meta, reason
+    yahoo_provider: Factory[YahooFakeSession],
+    assert_error: AssertError,
+    make_asset: Creator[Asset],
+    make_series: Creator[Series],
+    fixed_now,
+    meta,
+    reason,
 ):
+    fake = yahoo_provider()
     now = make_identity(fixed_now())
-    response = Mock()
-    response.json.return_value = {
-        "chart": {
-            "result": [
-                {
-                    "meta": meta,
-                    "timestamp": [int(now.start_timestamp())],
-                    "indicators": {"quote": [{"close": [10.0]}]},
-                }
-            ],
-            "error": None,
-        }
-    }
-    response.raise_for_status.return_value = None
+    fake.session.queue(
+        200,
+        {
+            "chart": {
+                "result": [
+                    {
+                        "meta": meta,
+                        "timestamp": [int(now.start_timestamp())],
+                        "indicators": {"quote": [{"close": [10.0]}]},
+                    }
+                ],
+                "error": None,
+            }
+        },
+    )
     asset = make_asset(name="AAPL")
     series = make_series(asset, interval="1h", retention=Retention.SHORT_LIVED, series_type=SeriesType.VALUE)
-    provider: YahooProvider = yahoo_provider()
-    with patch.object(provider.session, "get", return_value=response):
-        result = provider.fetch(series, asset, now, now, False)
+    result = fake.provider.fetch(series, asset, now, now, False)
 
     assert_error(result, "Could not parse series 'AAPL:dummy' in Yahoo fetch result", reason)
 
 
-def test_fetch_missing_quote(yahoo_provider, assert_error, make_asset, make_series, fixed_now):
+def test_fetch_missing_quote(
+    yahoo_provider: Factory[YahooFakeSession],
+    assert_error: AssertError,
+    make_asset: Creator[Asset],
+    make_series: Creator[Series],
+    fixed_now,
+):
     now = make_identity(fixed_now())
-    response = Mock()
-    response.json.return_value = {
-        "chart": {
-            "result": [
-                {
-                    "meta": {"exchangeTimezoneName": "UTC"},
-                    "timestamp": [int(now.start_timestamp())],
-                    "indicators": {},
-                }
-            ],
-            "error": None,
-        }
-    }
-    response.raise_for_status.return_value = None
+    fake = yahoo_provider()
+    fake.session.queue(
+        200,
+        {
+            "chart": {
+                "result": [
+                    {
+                        "meta": {"exchangeTimezoneName": "UTC"},
+                        "timestamp": [int(now.start_timestamp())],
+                        "indicators": {},
+                    }
+                ],
+                "error": None,
+            }
+        },
+    )
     asset = make_asset(name="AAPL")
     series = make_series(asset, interval="1h", retention=Retention.SHORT_LIVED, series_type=SeriesType.VALUE)
-    provider: YahooProvider = yahoo_provider()
-    with patch.object(provider.session, "get", return_value=response):
-        result = provider.fetch(series, asset, now, now, False)
+    result = fake.provider.fetch(series, asset, now, now, False)
 
     assert_error(
         result,
@@ -194,20 +206,22 @@ def test_fetch_missing_quote(yahoo_provider, assert_error, make_asset, make_seri
     )
 
 
-def test_fetch_real_fixture_5m_eliminates_last_and_fills_metadata(yahoo_provider, unwrap, make_asset, make_series):
+def test_fetch_real_fixture_5m_eliminates_last_and_fills_metadata(
+    yahoo_provider: Creator[YahooFakeSession], unwrap, make_asset: Creator[Asset], make_series: Creator[Series]
+):
     with open("tests/data/yahoo_gold_intraday.json") as f:
         fake_json = json.load(f)
 
     # This is the time that data stored in the test file was fetched. Note that yahoo chart is 10-15 mins delayed.
     # The timestamp of the last candle is 11:47:55 UTC
-    provider: YahooProvider = yahoo_provider(now_provider=lambda: datetime(2026, 8, 11, 12, tzinfo=UTC))
-    fake_session(provider).queue(200, fake_json)
+    fake = yahoo_provider(now_provider=lambda: datetime(2026, 8, 11, 12, tzinfo=UTC))
+    fake.session.queue(200, fake_json)
 
     asset = make_asset(provider_code="gold")
     series = make_series(asset, interval="5m")
     start = make_identity(datetime(2026, 8, 11, 10, 30, tzinfo=UTC))
     end = make_identity(datetime(2026, 8, 11, 12, tzinfo=UTC))
-    result = provider.fetch(series, asset, start=start, end=end, is_incremental=False)
+    result = fake.provider.fetch(series, asset, start=start, end=end, is_incremental=False)
     fetch_result = unwrap(result)
     points = fetch_result.points
     assert len(points) == 16, "last point eliminated (not aligned)"

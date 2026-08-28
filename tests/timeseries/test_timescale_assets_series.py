@@ -4,15 +4,15 @@
 
 from datetime import datetime, time
 from types import SimpleNamespace
-from typing import cast
 from unittest.mock import MagicMock
 
-from finance.common.model import Asset
+import psycopg
+
+from finance.common.model import Asset, Series
 from finance.common.string_enums import Retention, SeriesType
 from finance.common.types import Failure, Success
-from finance.timeseries.series_backend import SeriesBackend
-from tests.support.fakes import SqlWithMockCursor
-from tests.support.types import ConfigurableFactory
+from tests.support.fakes import FakeBackend
+from tests.support.types import AssertError, Creator
 
 # ------------------------------------------------------------
 # Helpers
@@ -47,37 +47,35 @@ def make_cursor(fetchone=None, fetchall=None):
 # ------------------------------------------------------------
 
 
-def test_refresh_short_lived_series_ids_loads_ids(make_backend):
-    backend = make_backend()
-    backend._sql_client.execute_read = MagicMock(return_value=Success({"rows": [(10,), (20,), (30,)]}))
+def test_refresh_short_lived_series_ids_loads_ids(make_backend: Creator[FakeBackend]):
+    backend, sql = make_backend().with_sql()
+    sql.execute_read = MagicMock(return_value=Success({"rows": [(10,), (20,), (30,)]}))
 
     result = backend.refresh_short_lived_series_ids()
 
     assert result.ok is True
-
     assert backend._short_lived_series_ids == {10, 20, 30}
-    backend._sql_client.execute_read.assert_called_once()
-    assert "short_lived" in backend._sql_client.execute_read.call_args[0][0]
+    sql.execute_read.assert_called_once()
+    assert "short_lived" in sql.execute_read.call_args[0][0]
 
 
-def test_refresh_short_lived_series_ids_handles_empty(make_backend):
-    backend = make_backend()
-
-    backend._sql_client.execute_read = MagicMock(return_value=Success({"rows": []}))
+def test_refresh_short_lived_series_ids_handles_empty(make_backend: Creator[FakeBackend]):
+    backend, sql = make_backend().with_sql()
+    sql.execute_read = MagicMock(return_value=Success({"rows": []}))
 
     backend.refresh_short_lived_series_ids()
 
     assert backend._short_lived_series_ids == set()
 
 
-def test_refresh_short_lived_series_ids_handles_disconnected(make_backend):
+def test_refresh_short_lived_series_ids_handles_disconnected(make_backend: Creator[FakeBackend]):
     # initially connected
-    backend = make_backend()
-
+    backend, sql = make_backend().with_sql()
     # but execute read fails
-    backend._sql_client.execute_read = MagicMock(return_value=Failure(reason="boom"))
+    sql.execute_read = MagicMock(return_value=Failure(reason="boom"))
 
     result = backend.refresh_short_lived_series_ids()
+
     assert result.ok is False
     assert result.reason == "boom"
     assert backend._short_lived_series_ids == set()
@@ -88,11 +86,11 @@ def test_refresh_short_lived_series_ids_handles_disconnected(make_backend):
 # ------------------------------------------------------------
 
 
-def test_store_asset_insert(make_backend, make_asset: ConfigurableFactory[Asset]):
-    backend = make_backend()
+def test_store_asset_insert(make_backend: Creator[FakeBackend], make_asset: Creator[Asset]):
+    backend, sql = make_backend().with_sql()
 
     asset: Asset = make_asset(id=None)
-    backend._sql_client.execute_write = MagicMock(return_value=Success(42))
+    sql.execute_write = MagicMock(return_value=Success(42))
 
     result = backend.store_asset(asset)
 
@@ -100,35 +98,36 @@ def test_store_asset_insert(make_backend, make_asset: ConfigurableFactory[Asset]
     stored = result.payload
     assert stored.id == 42
 
-    backend._sql_client.execute_write.assert_called_once()
-    sql, params = backend._sql_client.execute_write.call_args[0]
-    assert "INSERT INTO asset" in sql
+    sql.execute_write.assert_called_once()
+    query, params = sql.execute_write.call_args[0]
+    assert "INSERT INTO asset" in query
     assert params[0] == "eur_usd"
     assert params[2] == "yahoo"
 
 
-def test_store_asset_update(make_backend, make_asset):
-    backend = make_backend()
+def test_store_asset_update(make_backend: Creator[FakeBackend], make_asset: Creator[Asset]):
+    backend, sql = make_backend().with_sql()
 
     asset = make_asset(id=99)
-    backend._sql_client.execute_write = MagicMock(return_value=Success(99))
+    sql.execute_write = MagicMock(return_value=Success(99))
     result = backend.store_asset(asset)
 
     assert result.ok is True
     assert result.payload is asset  # unchanged object
 
-    backend._sql_client.execute_write.assert_called_once()
-    sql, params = backend._sql_client.execute_write.call_args[0]
+    sql.execute_write.assert_called_once()
+    sql, params = sql.execute_write.call_args[0]
     assert "UPDATE asset" in sql
     assert params[-1] == 99
 
 
-def test_store_asset_error_propagates(make_backend, make_asset, assert_error):
-    backend = make_backend()
-
+def test_store_asset_error_propagates(
+    make_backend: Creator[FakeBackend], make_asset: Creator[Asset], assert_error: AssertError
+):
+    backend, sql = make_backend().with_sql()
     asset = make_asset(id=None)
 
-    backend._sql_client.execute_write = MagicMock(return_value=Failure(reason="boom"))
+    sql.execute_write = MagicMock(return_value=Failure(reason="boom"))
 
     result = backend.store_asset(asset)
     assert_error(result, "boom", None)
@@ -139,12 +138,14 @@ def test_store_asset_error_propagates(make_backend, make_asset, assert_error):
 # ------------------------------------------------------------
 
 
-def test_store_series_insert(make_backend, make_asset, make_series):
-    backend = make_backend()
+def test_store_series_insert(
+    make_backend: Creator[FakeBackend], make_asset: Creator[Asset], make_series: Creator[Series]
+):
+    backend, sql = make_backend().with_sql()
 
     asset = make_asset(id=5)
     series = make_series(asset=asset, id=None)
-    backend._sql_client.execute_write = MagicMock(return_value=Success(123))
+    sql.execute_write = MagicMock(return_value=Success(123))
 
     result = backend.store_series(series)
 
@@ -152,47 +153,60 @@ def test_store_series_insert(make_backend, make_asset, make_series):
     stored = result.payload
     assert stored.id == 123
 
-    backend._sql_client.execute_write.assert_called_once()
-    sql, params, context = backend._sql_client.execute_write.call_args[0]
+    write_mock = sql.execute_write
+    write_mock.assert_called_once()
+    sql, params = write_mock.call_args[0]
     assert "INSERT INTO series" in sql
     assert params[0] == "dummy"
     assert params[1] == 5
-    assert context == "store series"
+    kwargs = write_mock.call_args.kwargs
+    assert kwargs.get("context") == "store series"
 
 
-def test_store_series_update(make_backend, make_asset, make_series):
-    backend = make_backend()
+def test_store_series_update(
+    make_backend: Creator[FakeBackend], make_asset: Creator[Asset], make_series: Creator[Series]
+):
+    backend, sql = make_backend().with_sql()
     asset = make_asset(id=5)
     series = make_series(asset=asset, id=77)
 
-    backend._sql_client.execute_write = MagicMock(return_value=Success(77))
+    sql.execute_write = MagicMock(return_value=Success(77))
 
     result = backend.store_series(series)
 
     assert result.ok is True
     assert result.payload is series
 
-    backend._sql_client.execute_write.assert_called_once()
-    sql, params, context = backend._sql_client.execute_write.call_args[0]
+    write_mock = sql.execute_write
+
+    write_mock.assert_called_once()
+    sql, params = write_mock.call_args[0]
     assert "UPDATE series" in sql
     assert params[-1] == 77
-    assert context == "store series"
+    kwargs = write_mock.call_args.kwargs
+    assert kwargs.get("context") == "store series"
 
 
-def test_store_series_error_execute(assert_error, make_backend, make_asset, make_series):
-    backend = make_backend()
-
+def test_store_series_error_execute(
+    assert_error: AssertError,
+    make_backend: Creator[FakeBackend],
+    make_asset: Creator[Asset],
+    make_series: Creator[Series],
+):
+    backend, sql = make_backend().with_sql()
     asset = make_asset(id=5)
     series = make_series(asset=asset, id=None)
 
-    backend._sql_client.execute_write = MagicMock(return_value=Failure(reason="fail"))
+    sql.execute_write = MagicMock(return_value=Failure(reason="fail"))
 
     result = backend.store_series(series)
     assert_error(result, "fail", None)
 
 
-def test_store_series_error_no_asset_id(assert_error, make_backend, make_asset, make_series):
-    backend = make_backend()
+def test_store_series_error_no_asset_id(
+    assert_error: AssertError, make_backend, make_asset: Creator[Asset], make_series: Creator[Series]
+):
+    backend = make_backend().only()
     asset = make_asset(id=None)
     series = make_series(asset=asset, id=None)
 
@@ -205,8 +219,8 @@ def test_store_series_error_no_asset_id(assert_error, make_backend, make_asset, 
 # ------------------------------------------------------------
 
 
-def test_get_assets_returns_asset_list(make_backend):
-    backend = make_backend()
+def test_get_assets_returns_asset_list(make_backend: Creator[FakeBackend]):
+    backend, cursor = make_backend().with_cursor()
     rows = [
         (
             1,
@@ -250,10 +264,7 @@ def test_get_assets_returns_asset_list(make_backend):
         ),
     ]
 
-    cursor_cm = make_cursor(fetchall=rows)
-
-    inner_cursor = cursor_cm.__enter__.return_value
-    inner_cursor.description = [
+    cursor.description = [
         SimpleNamespace(name="id"),
         SimpleNamespace(name="name"),
         SimpleNamespace(name="symbol"),
@@ -273,7 +284,7 @@ def test_get_assets_returns_asset_list(make_backend):
         SimpleNamespace(name="market_open"),
         SimpleNamespace(name="market_close"),
     ]
-    backend._sql_client._connection.cursor.return_value = cursor_cm
+    cursor.fetchall.return_value = rows
 
     result = backend.get_assets()
 
@@ -292,12 +303,12 @@ def test_get_assets_returns_asset_list(make_backend):
     assert meta0.market_close == time(hour=16)
 
 
-def test_get_assets_error(assert_error, make_backend):
-    backend = make_backend()
-
-    backend._sql_client._connection.cursor.side_effect = Exception("db error")
+def test_get_assets_error(assert_error: AssertError, make_backend: Creator[FakeBackend]):
+    backend, connection = make_backend().with_connection()
+    connection.cursor.side_effect = psycopg.Error("db error")
 
     result = backend.get_assets()
+
     assert_error(result, "get_assets operation failed", "db error")
 
 
@@ -306,8 +317,8 @@ def test_get_assets_error(assert_error, make_backend):
 # ------------------------------------------------------------
 
 
-def test_get_series_returns_series_list(make_backend):
-    backend: SeriesBackend = make_backend()
+def test_get_series_returns_series_list(make_backend: Creator[FakeBackend]):
+    backend, connection = make_backend().with_connection()
 
     rows = [
         (
@@ -354,9 +365,7 @@ def test_get_series_returns_series_list(make_backend):
         SimpleNamespace(name="bootstrap_history"),
         SimpleNamespace(name="publication_offset"),
     ]
-    sql_client = cast(SqlWithMockCursor, backend._sql_client)
-
-    sql_client._connection.cursor.return_value = cursor_cm
+    connection.cursor.return_value = cursor_cm
 
     result = backend.get_series()
 
@@ -368,20 +377,21 @@ def test_get_series_returns_series_list(make_backend):
     assert series[1].publication_offset == "1d"
 
 
-def test_get_series_error(assert_error, make_backend):
-    backend = make_backend()
-    backend._sql_client._connection.cursor.side_effect = Exception("boom")
+def test_get_series_error(assert_error: AssertError, make_backend: Creator[FakeBackend]):
+    backend, connection = make_backend().with_connection()
+    connection.cursor.side_effect = psycopg.Error("boom")
     result = backend.get_series()
     assert_error(result, "get_series operation failed", "boom")
 
 
-def test_save_sweep(make_backend):
-    backend = make_backend(fetchone=[42])
+def test_save_sweep(make_backend: Creator[FakeBackend]):
+    fake_backend = make_backend(fetchone=[42])
+    backend = fake_backend.backend
     next_sweep = datetime.max
     sweep_start = datetime.min
     result = backend.save_sweep(series_id=42, next_sweep=next_sweep, sweep_start=sweep_start)
     assert result.ok is True
     assert result.payload == 42
-    backend._sql_client.mock_cursor.execute.assert_called_once()
-    assert backend._sql_client.mock_cursor.execute.call_args_list[0].args[1] == (42, datetime.max, datetime.min)
-    return
+    cursor = fake_backend.fake_sql.cursor
+    cursor.execute.assert_called_once()
+    assert cursor.execute.call_args_list[0].args[1] == (42, datetime.max, datetime.min)

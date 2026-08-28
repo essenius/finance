@@ -5,14 +5,19 @@
 from __future__ import annotations
 
 import contextlib
+from collections.abc import Callable
+from typing import LiteralString
 
+# using direct import to facilitate patching
 import psycopg
+from psycopg.abc import QueryNoTemplate
+from psycopg.sql import SQL, Identifier
 
 from finance.timeseries.backend_protocol import SqlReadPayload
 
 from ..common.configuration import TimescaleConfig
 from ..common.guards import require
-from ..common.types import Failure, Result, Success
+from ..common.types import Failure, ParseError, Result, Success
 
 
 class TimescaleSqlClient:
@@ -28,22 +33,35 @@ class TimescaleSqlClient:
                 self._connection.close()
         self._connection = None
 
-    def execute_read(self, query: str, params: tuple | None = None, context: str = "Read") -> Result[SqlReadPayload]:
-        def operation(cursor):
-            cursor.execute(query, params or ())
+    def execute_read(
+        self, query: LiteralString, params: tuple | None = None, *, table: str | None = None, context: str = "Read"
+    ) -> Result[SqlReadPayload]:
+        def operation(cursor: psycopg.Cursor) -> SqlReadPayload:
+            cursor.execute(self._resolve_query(query, table), params or ())
             rows = cursor.fetchall()
+            if cursor.description is None:
+                raise ParseError("Query result does not contain column names")
             columns = {desc.name: i for i, desc in enumerate(cursor.description)}
             return {"rows": rows, "columns": columns}
 
         return self._database_operation(operation, context)
 
-    def execute_write(self, query: str, params: tuple, context: str = "Write") -> Result[int]:
-        return self._database_operation(
-            lambda cursor: (cursor.execute(query, params), cursor.fetchone()[0])[1], context
-        )
+    def execute_write(
+        self, query: LiteralString, params: tuple, *, table: str | None = None, context: str = "Write"
+    ) -> Result[int]:
+        def operation(cursor: psycopg.Cursor) -> int:
+            cursor.execute(self._resolve_query(query, table), params)
+            row = cursor.fetchone()
+            if row is None:
+                raise ParseError("Query did not return a result")
+            return row[0]
 
-    def execute_many(self, query: str, params: list[tuple], context: str) -> Result[None]:
-        return self._database_operation(lambda cur: cur.executemany(query, params), context)
+        return self._database_operation(operation, context)
+
+    def execute_many(
+        self, query: LiteralString, params: list[tuple], *, table: str | None = None, context: str
+    ) -> Result[None]:
+        return self._database_operation(lambda cur: cur.executemany(self._resolve_query(query, table), params), context)
 
     def is_connected(self) -> bool:
         conn = self._connection
@@ -54,7 +72,7 @@ class TimescaleSqlClient:
     def _connect(self):
         return psycopg.connect(**(self._config.connect_config()))
 
-    def _database_operation(self, fn, context: str = "Database") -> Result:
+    def _database_operation[T](self, fn: Callable[[psycopg.Cursor], T], context: str = "Database") -> Result[T]:
         ensure = self._ensure_connected()
         if ensure.ok is False:
             return ensure
@@ -68,11 +86,13 @@ class TimescaleSqlClient:
             connection.commit()
             return Success(result)
 
-        except Exception as exc:
+        except psycopg.Error as exc:
             # Roll back aborted transaction state
             with contextlib.suppress(Exception):
                 connection.rollback()
+            return Failure(reason=f"{context} operation failed", error=exc)
 
+        except ParseError as exc:
             return Failure(reason=f"{context} operation failed", error=exc)
 
     def _ensure_connected(self) -> Result[None]:
@@ -93,3 +113,8 @@ class TimescaleSqlClient:
 
         self._connection = conn
         return Success(None)
+
+    def _resolve_query(self, query: LiteralString, table: str | None) -> QueryNoTemplate:
+        if table is None:
+            return SQL(query)
+        return SQL(query).format(table=Identifier(table))

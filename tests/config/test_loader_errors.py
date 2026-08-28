@@ -6,11 +6,12 @@
 from unittest.mock import patch
 
 from finance.config.loader import ConfigLoader, load_yaml_config
+from tests.support.types import AssertError
 
 COMPLETE_TIMESCALE_CONFIG = "TIMESCALEDB_HOST=x\nTIMESCALEDB_DB=y\nTIMESCALEDB_USER=u\nTIMESCALEDB_PASSWORD=p\n"
 
 
-def test_load_config_incomplete_timescaledb(tmp_path, assert_error):
+def test_load_config_incomplete_timescaledb(tmp_path, assert_error: AssertError):
     yaml_file = tmp_path / "config.yaml"
     yaml_file.write_text("")
 
@@ -30,7 +31,7 @@ def test_load_config_incomplete_timescaledb(tmp_path, assert_error):
 # ---------------------------------------------------------------------------
 
 
-def test_load_yaml_config_invalid_yaml(tmp_path, assert_error):
+def test_load_yaml_config_invalid_yaml(tmp_path, assert_error: AssertError):
     bad_yaml = tmp_path / "bad.yaml"
     bad_yaml.write_text("this: [unclosed")
 
@@ -42,7 +43,7 @@ def test_load_yaml_config_invalid_yaml(tmp_path, assert_error):
 # ---------------------------------------------------------------------------
 
 
-def test_normalize_assets_missing_required(tmp_path, assert_error):
+def test_normalize_assets_missing_required(tmp_path, assert_error: AssertError):
     yaml_file = tmp_path / "config.yaml"
     yaml_file.write_text("""
 business:
@@ -67,7 +68,7 @@ business:
 # ---------------------------------------------------------------------------
 
 
-def test_load_config_provider_timezone_failure(tmp_path, assert_error):
+def test_load_config_provider_timezone_failure(tmp_path, assert_error: AssertError):
     yaml_file = tmp_path / "config.yaml"
     yaml_file.write_text("""
 business:
@@ -85,7 +86,7 @@ business:
     assert_error(result, "Could not parse provider 'ecb'", "No time zone found with key bogus")
 
 
-def test_load_config_provider_duration_failure(tmp_path, assert_error):
+def test_load_config_provider_duration_failure(tmp_path, assert_error: AssertError):
     yaml_file = tmp_path / "config.yaml"
     yaml_file.write_text("""
 business:

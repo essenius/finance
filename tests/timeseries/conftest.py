@@ -2,8 +2,8 @@
 # Licensed under the Apache License, Version 2.0. See the LICENSE file for details.
 # File: tests/timeseries/conftest.py
 
+from collections.abc import Generator
 from contextlib import contextmanager
-from typing import Protocol, cast
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -11,12 +11,12 @@ import pytest
 from finance.common.configuration import TimescaleConfig
 from finance.timeseries.series_backend import SeriesBackend
 from finance.timeseries.timescale_sql import TimescaleSqlClient
-from tests.support.fakes import FakeClock, SqlWithMockCursor
-from tests.support.types import ConfigurableFactory, ContextManagerFactory, Factory
+from tests.support.fakes import FakeBackend, FakeClock, FakeSql
+from tests.support.types import ContextManagerFactory, Creator, Factory
 
 
 @pytest.fixture
-def make_timescale_config() -> ConfigurableFactory[TimescaleConfig]:
+def make_timescale_config() -> Creator[TimescaleConfig]:
     def _make(**overrides) -> TimescaleConfig:
         defaults = {
             "host": "host123",
@@ -33,62 +33,56 @@ def make_timescale_config() -> ConfigurableFactory[TimescaleConfig]:
 
 
 @pytest.fixture
-def sql_with_fake_connection(
-    make_backend_config: Factory[TimescaleConfig],
-) -> ConfigurableFactory[tuple[TimescaleSqlClient, MagicMock]]:
-    def _make(connected: bool = True, **kwargs) -> tuple[TimescaleSqlClient, MagicMock]:
+def sql_with_fake_connection(make_backend_config: Factory[TimescaleConfig]) -> Creator[FakeSql]:
+    def _make(connected: bool = True, **kwargs) -> FakeSql:
 
         config = make_backend_config()
         sql = TimescaleSqlClient(config)
-        sql._connection = MagicMock()
-        sql._connection.closed = not connected
 
-        sql_with_cursor = cast(SqlWithMockCursor, sql)
+        connection = MagicMock()
+        connection.closed = not connected
+        sql._connection = connection
 
-        mock_cursor = MagicMock()
-        mock_cursor.fetchone.return_value = kwargs.get("fetchone")
-        mock_cursor.fetchall.return_value = kwargs.get("fetchall")
-        mock_cursor.execute.return_value = kwargs.get("execute")
+        cursor = MagicMock()
+        cursor.fetchone.return_value = kwargs.get("fetchone")
+        cursor.fetchall.return_value = kwargs.get("fetchall")
+        cursor.execute.return_value = kwargs.get("execute")
 
-        sql_with_cursor.mock_cursor = mock_cursor
-        sql._connection.cursor.return_value.__enter__.return_value = mock_cursor
+        cursor_cm = connection.cursor.return_value
+        cursor_cm.__enter__.return_value = cursor
+        cursor_cm.__exit__.return_value = False
 
-        return sql, mock_cursor
+        return FakeSql(client=sql, connection=connection, cursor=cursor)
 
     return _make
 
 
 @pytest.fixture
-def sql_with_fake_psycopg(make_backend_config: Factory[TimescaleConfig]) -> ContextManagerFactory[TimescaleSqlClient]:
+def sql_with_fake_psycopg(make_backend_config: Factory[TimescaleConfig]) -> ContextManagerFactory[FakeSql]:
     @contextmanager
-    def _make(execute_error=False):
-        fake_cursor = MagicMock()
-        fake_cursor.execute.return_value = None
-        fake_cursor.executemany.return_value = None
+    def _make(execute_error=False) -> Generator[FakeSql, None, None]:
+        cursor = MagicMock()
+        cursor.execute.return_value = None
+        cursor.executemany.return_value = None
 
-        fake_connection = MagicMock()
-        fake_connection.closed = False
-        fake_connection.cursor.return_value.__enter__.return_value = fake_cursor
-        fake_connection.cursor.return_value.__exit__.return_value = False
+        connection = MagicMock()
+        connection.closed = False
+        connection.cursor.return_value.__enter__.return_value = cursor
+        connection.cursor.return_value.__exit__.return_value = False
 
         if execute_error:
-            fake_cursor.execute.side_effect = Exception("Execute boom!")
+            cursor.execute.side_effect = Exception("Execute boom!")
 
-        with patch("psycopg.connect", return_value=fake_connection) as mock_connect:
+        with patch("psycopg.connect", return_value=connection) as connect:
             sql = TimescaleSqlClient(make_backend_config())
 
-            sql_with_cursor = cast(SqlWithMockCursor, sql)
-
-            sql_with_cursor.mock_connect = mock_connect
-            sql_with_cursor.mock_cursor = fake_cursor
-
-            yield sql
+            yield FakeSql(client=sql, connection=connection, cursor=cursor, connect=connect)
 
     return _make
 
 
 @pytest.fixture
-def make_backend_config() -> ConfigurableFactory[TimescaleConfig]:
+def make_backend_config() -> Creator[TimescaleConfig]:
     def _make(max_batch_size: int = 2, max_batch_age_seconds: float = 2) -> TimescaleConfig:
         config = {
             "host": "x",
@@ -105,35 +99,24 @@ def make_backend_config() -> ConfigurableFactory[TimescaleConfig]:
 
 @pytest.fixture
 def make_backend(
-    make_backend_config: ConfigurableFactory[TimescaleConfig],
-    sql_with_fake_connection: ConfigurableFactory[tuple[TimescaleSqlClient, MagicMock]],
-) -> ConfigurableFactory[SeriesBackend]:
+    make_backend_config: Creator[TimescaleConfig], sql_with_fake_connection: Creator[FakeSql]
+) -> Creator[FakeBackend]:
+    def _make(max_batch_size: int = 2, max_batch_age_seconds: int = 2, connected: bool = True, **kwargs) -> FakeBackend:
+        config = make_backend_config(max_batch_size=max_batch_size, max_batch_age_seconds=max_batch_age_seconds)
+        fake_sql = sql_with_fake_connection(connected=connected, **kwargs)
+        clock = FakeClock()
+
+        return FakeBackend(SeriesBackend(config=config, sql_client=fake_sql.client, now=clock), fake_sql, clock)
+
+    return _make
+
+
+@pytest.fixture
+def make_backend_old(make_backend: Creator[FakeBackend]) -> Creator[SeriesBackend]:
     def _make(
         max_batch_size: int = 2, max_batch_age_seconds: int = 2, connected: bool = True, **kwargs
     ) -> SeriesBackend:
-        config = make_backend_config(max_batch_size=max_batch_size, max_batch_age_seconds=max_batch_age_seconds)
-
-        sql_client, _ = sql_with_fake_connection(connected=connected, **kwargs)
-        return SeriesBackend(config=config, sql_client=sql_client, now=FakeClock())
+        fake_backend = make_backend(max_batch_size, max_batch_age_seconds, connected, **kwargs)
+        return fake_backend.backend
 
     return _make
-
-
-"""
-@pytest.fixture
-def make_entry() -> ConfigurableFactory[SeriesPoint]:
-    def _make(
-        id: int = 1, fields: dict | None = None, retention: Retention = Retention.DAILY, timestamp: int = 0
-    ) -> SeriesPoint:
-        return SeriesPoint(series_id=id, time=timestamp, retention=retention, fields=fields or {})
-
-    return _make
-
-
-@pytest.fixture
-def make_entries(make_entry: ConfigurableFactory[SeriesPoint]) -> Factory[list[SeriesPoint]]:
-    def _make(n) -> list[SeriesPoint]:
-        return [make_entry(fields={"v": i}, timestamp=i) for i in range(n)]
-
-    return _make
-"""

@@ -20,24 +20,11 @@ def apply_overrides[T](base: T, overrides: T) -> T:
     return cast(T, replace(cast(Any, base), **values))
 
 
-# CO: @dataclass
-# CO: class ReconciledAssets:
-# CO:     final: list[Asset]
-# CO:     to_persist: list[Asset]
-# CO:     orphans: list[Asset]
-
-
 @dataclass
 class ReconciledSeries:
     final: list[Series]
     to_persist: list[Series]
     # CO: orphans: list[Series]
-
-
-# CO: @dataclass
-# CO: class ReconciliationResult:
-# CO: assets: ReconciledAssets
-# CO: series: ReconciledSeries
 
 
 class Registry:

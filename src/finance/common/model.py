@@ -306,11 +306,11 @@ class SeriesState:
     needs_save: bool = False
 
     @staticmethod
-    def is_none_or_smaller(left, right):
+    def is_none_or_smaller(left: datetime | None, right: datetime):
         return left is None or left < right
 
     @staticmethod
-    def is_none_or_greater(left, right):
+    def is_none_or_greater(left: datetime | None, right: datetime):
         return left is None or left > right
 
     def update_point_range(self, first: datetime, last: datetime):

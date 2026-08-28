@@ -5,6 +5,7 @@
 from datetime import timedelta
 
 from finance.common.configuration import LogConfig, ProviderConfig, SweepConfig, TimescaleConfig
+from tests.support.types import AssertError
 
 
 def test_provider_config_defaults():
@@ -64,7 +65,7 @@ def test_provider_config_empty_history_limits_and_overlaps():
     assert config.get_sweep(timedelta(weeks=1)) == SweepConfig(window=timedelta(0), cadence=timedelta(0))
 
 
-def test_timescaledb_config_failure(assert_error):
+def test_timescaledb_config_failure(assert_error: AssertError):
 
     result = TimescaleConfig.validate({})
     assert_error(

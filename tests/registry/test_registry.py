@@ -6,23 +6,24 @@ from datetime import date
 
 import pytest
 
-from finance.common.model import Asset
+from finance.common.model import Asset, Series
 from finance.common.string_enums import Retention
 from finance.common.types import AppError
 from finance.registry.registry import Registry
+from tests.support.types import Creator
 
 # ------------------------------------------------------------
 # Progressive loading
 # ------------------------------------------------------------
 
 
-def test_load_yaml_assets(make_asset):
+def test_load_yaml_assets(make_asset: Creator[Asset]):
     asset = make_asset(name="SPX", id=1)
     registry = Registry(assets=[asset])
     assert registry._yaml_assets[0] is asset
 
 
-def test_load_yaml_series(make_asset, make_series):
+def test_load_yaml_series(make_asset: Creator[Asset], make_series: Creator[Series]):
     asset = make_asset(name="SPX")
     series = make_series(asset=asset, retention=Retention.LONG_LIVED)
     registry = Registry(series=[series])
@@ -34,7 +35,7 @@ def test_load_yaml_series(make_asset, make_series):
 # ------------------------------------------------------------
 
 
-def test_merge_and_find_new_assets_empty(make_asset):
+def test_merge_and_find_new_assets_empty(make_asset: Creator[Asset]):
 
     asset_yaml = make_asset(name="SPX")
     registry = Registry(assets=[asset_yaml])
@@ -42,7 +43,7 @@ def test_merge_and_find_new_assets_empty(make_asset):
     assert result == [asset_yaml]
 
 
-def test_merge_and_find_new_assets_update(make_asset, make_metadata):
+def test_merge_and_find_new_assets_update(make_asset: Creator[Asset], make_metadata):
     meta_x = make_metadata(instrument="x")
     meta_y = make_metadata(instrument="y")
     asset_yaml: Asset = make_asset(name="SPX", config_metadata=meta_x)
@@ -57,7 +58,7 @@ def test_merge_and_find_new_assets_update(make_asset, make_metadata):
     assert updated_asset.effective_metadata == asset_yaml.config_metadata, "effective metadata overridden by config"
 
 
-def test_reconcile_assets_match_provider(make_asset, make_metadata):
+def test_reconcile_assets_match_provider(make_asset: Creator[Asset], make_metadata):
 
     # provider and provider code identical, name different (i.e. likely renamed in yaml)
     asset_yaml = make_asset(name="RRR", id=None)
@@ -83,7 +84,7 @@ def test_reconcile_assets_match_provider(make_asset, make_metadata):
 # ------------------------------------------------------------
 
 
-def test_reconcile_series_create_only(make_asset, make_series):
+def test_reconcile_series_create_only(make_asset: Creator[Asset], make_series: Creator[Series]):
 
     # authoritative asset
     asset = make_asset(name="SPX", id=1)
@@ -97,7 +98,7 @@ def test_reconcile_series_create_only(make_asset, make_series):
     assert result.final == []
 
 
-def test_reconcile_series_update(make_asset, make_series):
+def test_reconcile_series_update(make_asset: Creator[Asset], make_series: Creator[Series]):
 
     asset = make_asset(name="SPX", id=1)
 
@@ -113,7 +114,7 @@ def test_reconcile_series_update(make_asset, make_series):
     assert result.final == []
 
 
-def test_reconcile_series_orphans_ignored(make_asset, make_series):
+def test_reconcile_series_orphans_ignored(make_asset: Creator[Asset], make_series: Creator[Series]):
     registry = Registry(series=[])
 
     asset = make_asset(name="SPX", id=1)
@@ -127,7 +128,7 @@ def test_reconcile_series_orphans_ignored(make_asset, make_series):
     assert result.final == []
 
 
-def test_reconcile_series_match_asset_resolution(make_asset, make_series):
+def test_reconcile_series_match_asset_resolution(make_asset: Creator[Asset], make_series: Creator[Series]):
     asset = make_asset(name="SPX", id=None)
 
     # we make a series with a different name than in the DB (i.e. renamed in yaml)
@@ -152,7 +153,7 @@ def test_reconcile_series_match_asset_resolution(make_asset, make_series):
 # ------------------------------------------------------------
 
 
-def test_reconcile_same(make_asset, make_series):
+def test_reconcile_same(make_asset: Creator[Asset], make_series: Creator[Series]):
     asset = make_asset(name="SPX", id=None)
     series = make_series(asset, retention=Retention.LONG_LIVED, id=None)
     registry = Registry(assets=[asset], series=[series])
@@ -174,7 +175,7 @@ def test_reconcile_same(make_asset, make_series):
 # ------------------------------------------------------------
 
 
-def test_register_provider_metadata(make_asset, make_metadata):
+def test_register_provider_metadata(make_asset: Creator[Asset], make_metadata):
     asset_id = 1
     asset: Asset = make_asset()
     registry = Registry(assets=[asset])
@@ -197,7 +198,7 @@ def test_register_provider_metadata_requires_asset(make_metadata):
     assert str(exc.value) == "Cannot register provider metadata for unknown asset id 1"
 
 
-def test_register_stored_asset_requires_id(make_asset):
+def test_register_stored_asset_requires_id(make_asset: Creator[Asset]):
     registry = Registry()
     asset = make_asset(name="SPX", id=None)
 
@@ -206,7 +207,7 @@ def test_register_stored_asset_requires_id(make_asset):
     assert str(exc.value) == "Cannot register asset without an id"
 
 
-def test_register_stored_asset_success(make_asset, make_metadata):
+def test_register_stored_asset_success(make_asset: Creator[Asset], make_metadata):
     registry = Registry()
     asset: Asset = make_asset(name="SPX", id=1)
 
@@ -225,7 +226,7 @@ def test_register_stored_asset_success(make_asset, make_metadata):
     assert current.effective_metadata.first_trade_date == date(2020, 1, 1)
 
 
-def test_register_stored_series_requires_id(make_asset, make_series):
+def test_register_stored_series_requires_id(make_asset: Creator[Asset], make_series: Creator[Series]):
     registry = Registry()
     asset = make_asset(name="SPX", id=1)
     series = make_series(asset=asset, id=None)
@@ -235,7 +236,7 @@ def test_register_stored_series_requires_id(make_asset, make_series):
     assert str(exc.value) == "Cannot register series without an id"
 
 
-def test_register_stored_series_success(make_asset, make_series):
+def test_register_stored_series_success(make_asset: Creator[Asset], make_series: Creator[Series]):
     registry = Registry()
     asset = make_asset(name="SPX", id=1)
     series = make_series(asset, id=10)
@@ -251,7 +252,7 @@ def test_register_stored_series_success(make_asset, make_series):
 # ------------------------------------------------------------
 
 
-def test_lookup_assets_and_series(make_asset, make_series):
+def test_lookup_assets_and_series(make_asset: Creator[Asset], make_series: Creator[Series]):
     registry = Registry()
 
     asset = make_asset(name="SPX", id=1)

@@ -6,10 +6,12 @@ from datetime import timedelta
 
 from finance.common.configuration import ProviderConfig
 from finance.common.json_utils import JsonObject, JsonReader
+from finance.common.types import Unwrap
 from finance.config.loader import normalize_providers
+from tests.support.types import AssertError
 
 
-def test_normalize_providers_basic(unwrap):
+def test_normalize_providers_basic(unwrap: Unwrap[dict[str, ProviderConfig]]):
     ecb = {
         "timeout": "20s",
         "nonsense": "ignored",
@@ -34,7 +36,7 @@ def test_normalize_providers_basic(unwrap):
     ), "ECB"
 
 
-def test_normalize_providers_wrong_timeout(assert_error):
+def test_normalize_providers_wrong_timeout(assert_error: AssertError):
     fred: JsonObject = {"timeout": "bogus"}
     providers = normalize_providers(JsonReader({"fred": fred}), {})
     assert_error(providers, "Could not parse provider 'fred'", "Invalid duration 'bogus' in timeout")

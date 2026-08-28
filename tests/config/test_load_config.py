@@ -6,9 +6,10 @@ from datetime import timedelta
 from unittest.mock import patch
 
 from finance.common.configuration import ProviderConfig
-from finance.common.json_utils import JsonReader
+from finance.common.json_utils import JsonObject, JsonReader
 from finance.common.model import Asset, Series
 from finance.common.string_enums import Retention, SeriesType
+from finance.common.types import Unwrap
 from finance.config.loader import (
     AppConfig,
     ConfigLoader,
@@ -16,16 +17,17 @@ from finance.config.loader import (
     load_business_config,
     load_yaml_config,
 )
+from tests.support.types import AssertError
 
 
-def test_load_yaml_config(tmp_path, unwrap):
+def test_load_yaml_config(tmp_path, unwrap: Unwrap[JsonReader]):
     yaml_file = tmp_path / "config.yaml"
     yaml_file.write_text("providers:\n  yahoo:\n    default_interval: 10m\n")
     reader: JsonReader = unwrap(load_yaml_config(yaml_file))
     assert reader.get(str, ["providers", "yahoo", "default_interval"]) == "10m"
 
 
-def test_load_config_end_to_end(tmp_path, unwrap):
+def test_load_config_end_to_end(tmp_path, unwrap: Unwrap[AppConfig]):
     yaml_file = tmp_path / "config.yaml"
     env_file = tmp_path / ".env"
 
@@ -126,7 +128,7 @@ business:
     assert wal_path.name == "mywal.jsonl"
 
 
-def test_load_config_missing_file(tmp_path, assert_error):
+def test_load_config_missing_file(tmp_path, assert_error: AssertError):
 
     loader = ConfigLoader(cwd=tmp_path)
     result = loader.load()
@@ -134,7 +136,7 @@ def test_load_config_missing_file(tmp_path, assert_error):
     assert_error(result, "Config file not found", None)
 
 
-def test_load_config_dev_mode(monkeypatch, tmp_path, unwrap):
+def test_load_config_dev_mode(monkeypatch, tmp_path, unwrap: Unwrap[AppConfig]):
     monkeypatch.chdir(tmp_path)
     (tmp_path / "config.yaml").write_text("business:\n  providers: {}\n  assets: {}\n  composites: {}\n")
     (tmp_path / ".env").write_text(
@@ -158,7 +160,7 @@ def test_load_config_dev_mode(monkeypatch, tmp_path, unwrap):
     }
 
 
-def test_load_config_resolves_paths(tmp_path, unwrap):
+def test_load_config_resolves_paths(tmp_path, unwrap: Unwrap[AppConfig]):
 
     yaml_file = tmp_path / "my_config.yaml"
     env_file = tmp_path / ".env"
@@ -183,14 +185,14 @@ environment:
     assert cfg.paths["wal"] == tmp_path / "data" / "mywal.jsonl"
 
 
-def test_load_check_series_templates_minimal(unwrap):
+def test_load_check_series_templates_minimal(unwrap: Unwrap[JsonObject]):
     reader = JsonReader({"t1": {"interval": "1d"}})
     result = check_series_templates(reader)
     output = unwrap(result)
     assert reader.value == output
 
 
-def test_load_check_series_templates_maximal(unwrap):
+def test_load_check_series_templates_maximal(unwrap: Unwrap[JsonObject]):
     reader = JsonReader(
         {
             "t1": {
@@ -207,7 +209,7 @@ def test_load_check_series_templates_maximal(unwrap):
     assert reader.value == output
 
 
-def test_load_business_config_template_error(assert_error):
+def test_load_business_config_template_error(assert_error: AssertError):
     reader = JsonReader({"providers": None, "assets": None, "templates": {"t1": {"interval": "qx"}}})
     result = load_business_config(reader, {})
     assert_error(result, "Could not parse series template 't1'", "Invalid duration 'qx' in interval")

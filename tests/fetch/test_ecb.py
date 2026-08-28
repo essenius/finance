@@ -9,30 +9,37 @@ from zoneinfo import ZoneInfo
 import pytest
 
 from finance.common.candle_identity import CandleIdentity
+from finance.common.model import Asset, FetchData, Series
 from finance.common.time_utils import UTC
+from finance.common.types import Unwrap
 from finance.fetch.ecb import EcbProvider
-from tests.support.fakes import fake_session
+from tests.support.fakes import FakeProvider
+from tests.support.types import AssertError, Creator, Factory
 
 
 def make_identity(label: datetime) -> CandleIdentity:
     return CandleIdentity(label, is_daily=True, interval=timedelta(days=1))
 
 
-def test_ecb_fetch_real_fixture(ecb_provider, assert_ok, make_asset, make_series):
+type EcbFakeSession = FakeProvider[EcbProvider]
+
+
+def test_ecb_fetch_real_fixture(
+    ecb_provider: Factory[EcbFakeSession], assert_ok, make_asset: Creator[Asset], make_series: Creator[Series]
+):
     with open("tests/data/ecb_eurusd.json") as f:
         fake_json = json.load(f)
 
-    provider: EcbProvider = ecb_provider()
-    fake_session(provider).queue(200, fake_json)
+    fake = ecb_provider()
+    fake.session.queue(200, fake_json)
 
     asset = make_asset(provider_code="USD_EUR")
     series = make_series(asset)
     start = make_identity(datetime(2026, 5, 8, tzinfo=ZoneInfo("Europe/Berlin")))
     end = make_identity(datetime(2026, 5, 8, 23, 59, 59, tzinfo=ZoneInfo("Europe/Berlin")))
-    result = provider.fetch(series, asset, start=start, end=end, is_incremental=False)
-    session = fake_session(provider)
-    assert session.url == "https://data-api.ecb.europa.eu/service/data/EXR/D.USD.EUR.SP00.A"
-    assert session.params == {
+    result = fake.provider.fetch(series, asset, start=start, end=end, is_incremental=False)
+    assert fake.session.url == "https://data-api.ecb.europa.eu/service/data/EXR/D.USD.EUR.SP00.A"
+    assert fake.session.params == {
         "format": "jsondata",
         "startPeriod": "2026-05-08",
         "endPeriod": "2026-05-08",
@@ -42,23 +49,25 @@ def test_ecb_fetch_real_fixture(ecb_provider, assert_ok, make_asset, make_series
     assert_ok(result, time=datetime(2026, 5, 8, 0, 0, 0, tzinfo=UTC), close=1.1761)
 
 
-def test_ecb_fetch_ok(ecb_provider, assert_ok, make_asset, make_series):
+def test_ecb_fetch_ok(
+    ecb_provider: Factory[EcbFakeSession], assert_ok, make_asset: Creator[Asset], make_series: Creator[Series]
+):
     fake_json = {
         "dataSets": [{"series": {"0:0:0:0:0": {"observations": {"0": [1.1761]}}}}],
         "structure": {"dimensions": {"observation": [{"values": [{"id": "2026-05-08"}]}]}},
     }
 
-    provider = ecb_provider()
-    provider.session.queue(200, fake_json)
+    fake = ecb_provider()
+    fake.session.queue(200, fake_json)
     asset = make_asset(provider_code="USD_EUR")
     series = make_series(asset)
 
     start = make_identity(datetime(2026, 5, 8, tzinfo=ZoneInfo("Europe/Berlin")))
     end = make_identity(datetime(2026, 5, 8, 23, 59, 59, tzinfo=ZoneInfo("Europe/Berlin")))
-    result = provider.fetch(series, asset, start=start, end=end, is_incremental=True)
+    result = fake.provider.fetch(series, asset, start=start, end=end, is_incremental=True)
     assert_ok(result, time=datetime(2026, 5, 8, 0, 0, 0, tzinfo=UTC), close=1.1761)
-    assert provider.session.url == "https://data-api.ecb.europa.eu/service/data/EXR/D.USD.EUR.SP00.A"
-    assert provider.session.params == {"format": "jsondata", "updatedAfter": "2026-05-08", "detail": "dataonly"}
+    assert fake.session.url == "https://data-api.ecb.europa.eu/service/data/EXR/D.USD.EUR.SP00.A"
+    assert fake.session.params == {"format": "jsondata", "updatedAfter": "2026-05-08", "detail": "dataonly"}
 
 
 @pytest.mark.parametrize(
@@ -69,28 +78,39 @@ def test_ecb_fetch_ok(ecb_provider, assert_ok, make_asset, make_series):
         "_",
     ],
 )
-def test_ecb_fetch_wrong_provider_code(ecb_provider, make_series, make_asset, provider_code, assert_error):
-    provider: EcbProvider = ecb_provider()
-    fake_session(provider).queue(200, {})
+def test_ecb_fetch_wrong_provider_code(
+    assert_error: AssertError,
+    ecb_provider: Factory[EcbFakeSession],
+    make_series: Creator[Series],
+    make_asset: Creator[Asset],
+    provider_code,
+):
+    fake = ecb_provider()
+    fake.session.queue(200, {})
 
     asset = make_asset(provider_code=provider_code)
     series = make_series(asset)
 
     start = make_identity(datetime(2026, 5, 8, tzinfo=ZoneInfo("Europe/Berlin")))
     end = make_identity(datetime(2026, 5, 8, 23, 59, 59, tzinfo=ZoneInfo("Europe/Berlin")))
-    result = provider.fetch(series, asset, start=start, end=end, is_incremental=True)
-    assert result.ok is False
-    assert f"Could not split provider code '{provider_code}' into base_quote" in result.reason
+    result = fake.provider.fetch(series, asset, start=start, end=end, is_incremental=True)
+    assert_error(result, reason=f"Could not split provider code '{provider_code}' into base_quote")
 
 
-def test_ecb_fetch_non_200(ecb_provider, assert_error, make_asset, make_series, fixed_now):
+def test_ecb_fetch_non_200(
+    ecb_provider: Factory[EcbFakeSession],
+    assert_error: AssertError,
+    make_asset: Creator[Asset],
+    make_series: Creator[Series],
+    fixed_now,
+):
     now = make_identity(fixed_now())
-    provider: EcbProvider = ecb_provider()
-    fake_session(provider).queue(500, "", "Internal Server Error")
+    fake = ecb_provider()
+    fake.session.queue(500, "", "Internal Server Error")
 
     asset = make_asset(provider_code="EUR_USD")
     series = make_series(asset)
-    result = provider.fetch(series, asset, now, now, False)
+    result = fake.provider.fetch(series, asset, now, now, False)
     assert_error(result, reason="Exception during ECB fetch of eur_usd:dummy", error="Internal Server Error")
 
 
@@ -116,19 +136,32 @@ MALFORMED_CASES = [
 
 @pytest.mark.parametrize("json_data, expected, context", MALFORMED_CASES)
 def test_ecb_malformed_json(
-    ecb_provider, make_asset, make_series, json_data, expected, context, assert_error, fixed_now
+    ecb_provider: Factory[EcbFakeSession],
+    make_asset: Creator[Asset],
+    make_series: Creator[Series],
+    json_data,
+    expected,
+    context,
+    assert_error: AssertError,
+    fixed_now,
 ):
     now = make_identity(fixed_now())
-    provider: EcbProvider = ecb_provider()
-    fake_session(provider).queue(200, json_data)
+    fake = ecb_provider()
+    fake.session.queue(200, json_data)
 
     asset = make_asset(provider_code="EUR_USD")
     series = make_series(asset)
-    result = provider.fetch(series, asset, now, now, False)
+    result = fake.provider.fetch(series, asset, now, now, False)
     assert_error(result, reason=f"Could not find ECB {context}", error=expected)
 
 
-def test_ecb_fetch_multiple_points_skip_invalid(unwrap, ecb_provider, make_series, make_asset, fixed_now):
+def test_ecb_fetch_multiple_points_skip_invalid(
+    unwrap: Unwrap[FetchData],
+    ecb_provider: Factory[EcbFakeSession],
+    make_series: Creator[Series],
+    make_asset: Creator[Asset],
+    fixed_now,
+):
     fake_json = {
         "dataSets": [
             {
@@ -165,11 +198,11 @@ def test_ecb_fetch_multiple_points_skip_invalid(unwrap, ecb_provider, make_serie
     }
 
     now = make_identity(fixed_now())
-    provider: EcbProvider = ecb_provider()
-    fake_session(provider).queue(200, fake_json, make_series)
+    fake = ecb_provider()
+    fake.session.queue(200, fake_json)
     asset = make_asset(provider_code="EUR_USD")
     series = make_series(asset)
-    result = provider.fetch(series, asset, now, now, True)
+    result = fake.provider.fetch(series, asset, now, now, True)
     fetch_result = unwrap(result)
     points = fetch_result.points
     assert len(points) == 2

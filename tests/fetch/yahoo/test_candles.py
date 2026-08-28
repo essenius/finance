@@ -6,10 +6,15 @@
 from datetime import datetime
 
 from finance.common.json_utils import JsonReader
-from finance.common.model import SeriesPoint
+from finance.common.model import Asset, Series, SeriesPoint, SeriesPoints
 from finance.common.string_enums import Retention, SeriesType
 from finance.common.time_utils import UTC
+from finance.common.types import Unwrap
 from finance.fetch.yahoo import YahooProvider
+from tests.support.fakes import FakeProvider
+from tests.support.types import AssertWarning, Creator, Factory
+
+type YahooFakeSession = FakeProvider[YahooProvider]
 
 # ----------------------------------------------------------------------
 # _extract_candles() tests (new provider)
@@ -20,7 +25,12 @@ def normalize(input: int) -> datetime:
     return datetime.fromtimestamp(input, tz=UTC)
 
 
-def test_extract_candles_valid_output_structure(yahoo_provider, unwrap, make_asset, make_series):
+def test_extract_candles_valid_output_structure(
+    yahoo_provider: Creator[YahooFakeSession],
+    unwrap: Unwrap[SeriesPoints],
+    make_asset: Creator[Asset],
+    make_series: Creator[Series],
+):
     """Full candle set → all fields extracted correctly."""
 
     def fake_now():
@@ -45,8 +55,8 @@ def test_extract_candles_valid_output_structure(yahoo_provider, unwrap, make_ass
             },
         }
     )
-    provider: YahooProvider = yahoo_provider(now_provider=fake_now)
-    candles = unwrap(provider._extract_candles(series, reader))
+    fake = yahoo_provider(now_provider=fake_now)
+    candles = unwrap(fake.provider._extract_candles(series, reader))
 
     assert len(candles) == 1
     point = candles[0]
@@ -59,7 +69,12 @@ def test_extract_candles_valid_output_structure(yahoo_provider, unwrap, make_ass
     assert point.volume == 100
 
 
-def test_extract_candles_skips_invalid(yahoo_provider, assert_warning, make_asset, make_series):
+def test_extract_candles_skips_invalid(
+    yahoo_provider: Factory[YahooFakeSession],
+    assert_warning: AssertWarning,
+    make_asset: Creator[Asset],
+    make_series: Creator[Series],
+):
     """Invalid candle (None value) → skipped with warning."""
 
     timestamp = int(datetime(2026, 7, 23, tzinfo=UTC).timestamp())
@@ -83,14 +98,19 @@ def test_extract_candles_skips_invalid(yahoo_provider, assert_warning, make_asse
     asset = make_asset()
     series = make_series(asset, series_type=SeriesType.CANDLE)
 
-    provider: YahooProvider = yahoo_provider()
-    candles = provider._extract_candles(series, reader)
+    fake = yahoo_provider()
+    candles = fake.provider._extract_candles(series, reader)
     assert_warning(candles, "Skipped 1 candles without close value")
     assert candles.ok is True
     assert candles.payload == []
 
 
-def test_extract_candles_signals_incomplete(yahoo_provider, assert_warning, make_asset, make_series):
+def test_extract_candles_signals_incomplete(
+    yahoo_provider: Factory[YahooFakeSession],
+    assert_warning: AssertWarning,
+    make_asset: Creator[Asset],
+    make_series: Creator[Series],
+):
     """Invalid candle (None value) → skipped with warning."""
 
     timestamp = int(datetime(2026, 7, 23, tzinfo=UTC).timestamp())
@@ -114,8 +134,8 @@ def test_extract_candles_signals_incomplete(yahoo_provider, assert_warning, make
 
     asset = make_asset()
     series = make_series(asset, series_type=SeriesType.CANDLE)
-    provider: YahooProvider = yahoo_provider()
-    candles = provider._extract_candles(series, reader)
+    fake = yahoo_provider()
+    candles = fake.provider._extract_candles(series, reader)
     assert_warning(candles, "1 incomplete candles")
     assert candles.ok is True
     assert len(candles.payload) == 1
@@ -124,26 +144,33 @@ def test_extract_candles_signals_incomplete(yahoo_provider, assert_warning, make
     assert point.open is None
 
 
-def test_extract_candles_handles_missing_timestamp(yahoo_provider, make_asset, make_series):
+def test_extract_candles_handles_missing_timestamp(
+    yahoo_provider: Factory[YahooFakeSession], make_asset: Creator[Asset], make_series: Creator[Series]
+):
     """Missing timestamp array → fail."""
 
     reader = JsonReader({"timestamp": [], "indicators": {"quote": []}})
 
     asset = make_asset()
     series = make_series(asset, series_type=SeriesType.VALUE)
-    provider: YahooProvider = yahoo_provider()
-    candles = provider._extract_candles(series, reader)
+    fake = yahoo_provider()
+    candles = fake.provider._extract_candles(series, reader)
     assert candles.ok is True
     assert candles.payload == []
     assert candles.warnings[0] == "no timestamp in result"
 
 
-def test_extract_candles_empty_result(yahoo_provider, unwrap, make_asset, make_series):
+def test_extract_candles_empty_result(
+    yahoo_provider: Factory[YahooFakeSession],
+    unwrap: Unwrap[SeriesPoints],
+    make_asset: Creator[Asset],
+    make_series: Creator[Series],
+):
     """Quote exists but contains no arrays → empty candle list."""
 
     reader = JsonReader({"timestamp": [1], "indicators": {"quote": [{}]}})
     asset = make_asset()
-    provider: YahooProvider = yahoo_provider()
+    fake = yahoo_provider()
     series = make_series(asset, series_type=SeriesType.VALUE)
-    candles = unwrap(provider._extract_candles(series, reader))
+    candles = unwrap(fake.provider._extract_candles(series, reader))
     assert candles == []

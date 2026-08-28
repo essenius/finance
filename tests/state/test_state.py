@@ -7,6 +7,7 @@ from datetime import datetime, timedelta
 from finance.common.model import SeriesState
 from finance.common.time_utils import UTC
 from finance.common.types import Failure, Success
+from tests.support.types import AssertError
 
 # ---------------------------------------------------------------------------
 # get() tests
@@ -130,7 +131,7 @@ def test_update_state_does_not_shrink(state):
     assert series_state.first_point, series_state.last_point == (first, current)
 
 
-def test_load_backend_error(state_env, assert_error):
+def test_load_backend_error(state_env, assert_error: AssertError):
 
     state, backend, wal = state_env
     backend.get_series_states.return_value = Failure(reason="Boom!", error="Server down")

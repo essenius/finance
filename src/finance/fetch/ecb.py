@@ -32,7 +32,7 @@ class EcbProvider(MarketDataProvider):
             fn=lambda: self._fetch(series, asset.provider_code, params), context=f"ECB fetch of {series.name}"
         )
 
-    def _make_url(self, provider_code) -> str | None:
+    def _make_url(self, provider_code: str) -> str | None:
         parts = provider_code.split("_")
         if len(parts) != 2:
             return None

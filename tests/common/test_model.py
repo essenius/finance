@@ -9,9 +9,10 @@ import pytest
 from finance.common.model import Asset, AssetMetadata, Series, SeriesPoint, SeriesState
 from finance.common.string_enums import Retention, SeriesType
 from finance.common.types import ParseError
+from tests.support.types import Creator, Factory
 
 
-def test_seriespoint_from_to_dict(fixed_now):
+def test_seriespoint_from_to_dict(fixed_now: Factory[datetime]):
     now = fixed_now()
     # omitted volume on purpose
     point = SeriesPoint(1, now, open=10, high=14, low=8, close=12)
@@ -76,7 +77,7 @@ def test_asset_create_with_wrong_timezone():
     assert "Cannot understand timezone 'bogus'" in str(ve.value)
 
 
-def test_series_create_with_id_differs(make_asset):
+def test_series_create_with_id_differs(make_asset: Creator[Asset]):
     asset = make_asset(name="spx", id=3)
     config = {
         "symbol": "SPX",
@@ -117,7 +118,7 @@ def test_series_create_with_id_differs(make_asset):
     assert series3.publication_offset == "16h"
 
 
-def test_series_create_with_defaults_daily(make_asset):
+def test_series_create_with_defaults_daily(make_asset: Creator[Asset]):
     asset = make_asset(name="spx", id=3)
     config = {
         "symbol": "SPX",

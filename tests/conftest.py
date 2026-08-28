@@ -14,11 +14,11 @@ from finance.common.applogger import JsonFormatter, LogConfig, LogConfigurator
 from finance.common.model import Asset, AssetMetadata, Series
 from finance.common.string_enums import Retention, SeriesType
 from finance.common.time_utils import UTC
-from finance.common.types import Failure, Result
+from finance.common.types import Failure, Result, Unwrap
 from finance.state.state import State
 from finance.state.wal import JsonlWAL
 from finance.timeseries.series_backend import SeriesBackend
-from tests.support.types import ConfigurableFactory, Factory
+from tests.support.types import AssertError, Creator, Factory
 
 # ---------------------------------------------------------------------------
 # Test doubles
@@ -52,9 +52,9 @@ def fixed_now() -> Factory[datetime]:
 
 
 @pytest.fixture
-def unwrap() -> Callable[[Result], object]:
+def unwrap[T]() -> Unwrap[T]:
 
-    def _unwrap(result: Result) -> object:
+    def _unwrap(result: Result[T]) -> T:
         assert result.ok is True, "result is Success"
         assert result.payload is not None, "Payload set"
         return result.payload
@@ -62,9 +62,15 @@ def unwrap() -> Callable[[Result], object]:
     return _unwrap
 
 
+# in case we need two different unwraps in one tests
 @pytest.fixture
-def assert_error() -> Callable[[Result, str, str | None], None]:
-    def _assert_error(result: Result, reason: str, error: str | None) -> None:
+def unwrap2(unwrap: Unwrap) -> Unwrap:
+    return unwrap
+
+
+@pytest.fixture
+def assert_error() -> AssertError:
+    def _assert_error(result: Result, reason: str, error: str | None = None) -> None:
         assert result.ok is False, "ok is false"
         assert isinstance(result, Failure), "result is a Failure"
         assert reason in result.reason, f"Reason '{result.reason}' != expected '{reason}"
@@ -95,7 +101,7 @@ def assert_warning() -> Callable[[Result, str | None], object]:
 
 
 @pytest.fixture
-def make_metadata() -> ConfigurableFactory[AssetMetadata]:
+def make_metadata() -> Creator[AssetMetadata]:
     # CO: "long_name": f"d_{name}",
 
     def _make(**overrides) -> AssetMetadata:
@@ -120,7 +126,7 @@ def make_metadata() -> ConfigurableFactory[AssetMetadata]:
 
 
 @pytest.fixture
-def make_asset(make_metadata) -> ConfigurableFactory[Asset]:
+def make_asset(make_metadata) -> Creator[Asset]:
     def _make(name: str = "eur_usd", **overrides) -> Asset:
         defaults = {
             "id": 1,
@@ -141,7 +147,7 @@ def make_asset(make_metadata) -> ConfigurableFactory[Asset]:
 
 
 @pytest.fixture
-def make_series(make_asset) -> ConfigurableFactory[Series]:
+def make_series(make_asset: Creator[Asset]) -> Creator[Series]:
     def _make(asset: Asset | None, **overrides) -> Series:
         if asset is None:
             asset = make_asset()
@@ -201,7 +207,7 @@ def state(state_env) -> State:
 
 
 @pytest.fixture()
-def ts() -> ConfigurableFactory[datetime]:
+def ts() -> Creator[datetime]:
     def _make(ts1: int) -> datetime:
         return datetime.fromtimestamp(ts1, tz=UTC)
 

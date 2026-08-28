@@ -239,7 +239,7 @@ class SeriesBackend:
             """
             params = (*base_fields, series.id)
 
-        result = self._sql_client.execute_write(sql_query, params, "store series")
+        result = self._sql_client.execute_write(sql_query, params, context="store series")
         if result.ok is False:
             return result
         return Success(series if series.id is not None else series.with_id(result.payload))
@@ -273,7 +273,7 @@ class SeriesBackend:
 
     def _insert_batches(self, entries: list[SeriesPoint], context: str) -> Result[int]:
         sql_template = """
-        INSERT INTO {table} (series_id, time, open, high, low, close, volume)
+        INSERT INTO {} (series_id, time, open, high, low, close, volume)
         VALUES (%s, %s, %s, %s, %s, %s, %s)
         ON CONFLICT (series_id, time)
         DO UPDATE SET
@@ -293,10 +293,9 @@ class SeriesBackend:
             if not point_list:
                 continue
             table = f"series_data_{label}"
-            sql_stmt = sql_template.format(table=table)
             values = [(e.series_id, e.time, e.open, e.high, e.low, e.close, e.volume) for e in point_list]
 
-            result = self._sql_client.execute_many(sql_stmt, values, context=f"{context}_{label}")
+            result = self._sql_client.execute_many(sql_template, values, table=table, context=f"{context}_{label}")
             if result.ok is False:
                 return result
 

@@ -6,15 +6,25 @@ from datetime import datetime
 
 import pytest
 
+from finance.common.model import Asset, Series
 from finance.common.time_utils import UTC
 from finance.fetch.fred import FredProvider
-from tests.support.fakes import fake_session
+from tests.support.fakes import FakeProvider
+from tests.support.types import AssertError, Creator, Factory
+
+type FredFakeSession = FakeProvider[FredProvider]
 
 
-def test_fred_fetch_normal_with_skipped(fred_provider, assert_ok, make_asset, make_series, fixed_now):
+def test_fred_fetch_normal_with_skipped(
+    fred_provider: Factory[FredFakeSession],
+    assert_ok,
+    make_asset: Creator[Asset],
+    make_series: Creator[Series],
+    fixed_now,
+):
 
-    provider: FredProvider = fred_provider()
-    fake_session(provider).queue(
+    fake = fred_provider()
+    fake.session.queue(
         status=200,
         json_data={
             "observations": [
@@ -28,7 +38,7 @@ def test_fred_fetch_normal_with_skipped(fred_provider, assert_ok, make_asset, ma
     )
     asset = make_asset(provider_code="T10YIE")
     now = fixed_now()  # ignored but we need a value
-    result = provider.fetch(make_series(asset), asset, now, now, True)
+    result = fake.provider.fetch(make_series(asset), asset, now, now, True)
     # no change in date as the date is a label, not a timestamp
     assert_ok(result, datetime(2024, 5, 9, 0, 0, 0, tzinfo=UTC), 2.34)
     assert result.ok is True
@@ -57,34 +67,53 @@ MALFORMED_CASES = [
 
 @pytest.mark.parametrize("api_key, json_data, expected_error", MALFORMED_CASES)
 def test_fred_malformed_cases(
-    assert_error, fred_provider, make_asset, make_series, api_key, json_data, expected_error, fixed_now
+    assert_error: AssertError,
+    fred_provider: Creator[FredFakeSession],
+    make_asset: Creator[Asset],
+    make_series: Creator[Series],
+    api_key,
+    json_data,
+    expected_error,
+    fixed_now,
 ):
-    provider = fred_provider(api_key)
+    fake = fred_provider(api_key)
     # Missing API key → no HTTP call
     if api_key is not None:
-        provider.session.queue(200, json_data)
+        fake.session.queue(200, json_data)
 
     now = fixed_now()  # again, ignored
     asset = make_asset(provider_code="T10YIE")
-    result = provider.fetch(make_series(asset), asset, now, now, True)
+    result = fake.provider.fetch(make_series(asset), asset, now, now, True)
     assert_error(result, expected_error, None)
 
 
-def test_fred_fetch_network_error(assert_error, fred_provider, make_asset, make_series, fixed_now):
-    provider: FredProvider = fred_provider()
-    fake_session(provider).queue_error(Exception("Boom!"))
+def test_fred_fetch_network_error(
+    assert_error: AssertError,
+    fred_provider: Factory[FredFakeSession],
+    make_asset: Creator[Asset],
+    make_series: Creator[Series],
+    fixed_now,
+):
+    fake = fred_provider()
+    fake.session.queue_error(Exception("Boom!"))
 
     asset = make_asset(provider_code="T10YIE")
     now = fixed_now()
-    result = provider.fetch(make_series(asset), asset, now, now, True)
+    result = fake.provider.fetch(make_series(asset), asset, now, now, True)
 
     assert_error(result, "Exception during FRED fetch", "Boom!")
 
 
-def test_fred_status_code_not_200(assert_error, fred_provider, make_asset, make_series, fixed_now):
-    provider = fred_provider()
-    provider.session.queue(500, {}, "status 500")
+def test_fred_status_code_not_200(
+    assert_error: AssertError,
+    fred_provider: Factory[FredFakeSession],
+    make_asset: Creator[Asset],
+    make_series: Creator[Series],
+    fixed_now,
+):
+    fake = fred_provider()
+    fake.session.queue(500, {}, "status 500")
     asset = make_asset(provider_code="T10YIE")
     now = fixed_now()
-    result = provider.fetch(make_series(asset), asset, now, now, True)
+    result = fake.provider.fetch(make_series(asset), asset, now, now, True)
     assert_error(result, "Exception during FRED fetch", "status 500")

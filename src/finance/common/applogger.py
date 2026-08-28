@@ -152,19 +152,19 @@ class AppLogger:
         # Emit JSON log (formatter handles serialization)
         self.logger.log(py_level, msg, extra=clean_context, stacklevel=stacklevel)
 
-    def error(self, msg=None, **context):
+    def error(self, msg=None, **context: Any):
         self.log("error", msg, **context)
 
-    def warning(self, msg=None, **context):
+    def warning(self, msg=None, **context: Any):
         self.log("warning", msg, **context)
 
-    def info(self, msg=None, **context):
+    def info(self, msg=None, **context: Any):
         self.log("info", msg, **context)
 
-    def debug(self, msg=None, **context):
+    def debug(self, msg=None, **context: Any):
         self.log("debug", msg, **context)
 
-    def exception(self, msg=None, **context):
+    def exception(self, msg=None, **context: Any):
         # Add structured fields
         exc_type, exc_value, exc_tb = sys.exc_info()
         assert exc_type is not None

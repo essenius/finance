@@ -19,7 +19,6 @@ business:
   providers:
     yahoo:
       timeout: 10s
-      # CO: timezone: UTC
       sweep: 
         default: 
           window: 2h
@@ -36,7 +35,6 @@ business:
     
     ecb:
       timeout: 20s
-      # CO: timezone: Europe/Berlin
       overlap:
         default:
           window: 0
@@ -44,7 +42,6 @@ business:
 
     fred:
       timeout: 10s
-      # CO: timezone: America/Chicago
       sweep: 
         default: 
           window: 30d

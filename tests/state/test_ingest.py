@@ -5,7 +5,8 @@
 from dataclasses import replace
 
 from finance.common.model import SeriesState
-from finance.common.types import Failure, Success
+from finance.common.types import Failure, Success, Unwrap
+from tests.support.types import AssertError
 
 
 def test_ingest_enqueues_and_does_not_update_state(state_env, make_entry):
@@ -41,7 +42,7 @@ def test_ingest_enqueues_and_removes_wal_entry(state_env, make_entry):
     assert state.series.get(1) is None
 
 
-def test_load_flushes_fifo_until_empty(state_env, two_wal_entries, unwrap):
+def test_load_flushes_fifo_until_empty(state_env, two_wal_entries, unwrap: Unwrap[int]):
     state, backend, wal = state_env
 
     wal.read_all.side_effect = [
@@ -59,7 +60,7 @@ def test_load_flushes_fifo_until_empty(state_env, two_wal_entries, unwrap):
     assert wal.dequeue_multiple.call_count == 3, "dequeue called 3 times (1, 0, 1)"
 
 
-def test_load_stops_on_first_failure(state_env, two_wal_entries, assert_error):
+def test_load_stops_on_first_failure(state_env, two_wal_entries, assert_error: AssertError):
     state, backend, wal = state_env
 
     wal.read_all.return_value = two_wal_entries()
@@ -73,7 +74,7 @@ def test_load_stops_on_first_failure(state_env, two_wal_entries, assert_error):
     wal.dequeue_multiple.assert_not_called()
 
 
-def test_ingest_first_point(state_env, make_entry, unwrap):
+def test_ingest_first_point(state_env, make_entry, unwrap: Unwrap[int]):
     state, backend, wal = state_env
     backend.add_point.return_value = Success(0)
 
@@ -164,7 +165,7 @@ def test_ingest_before_range(state_env, make_entry, make_series_state):
     wal.enqueue.assert_called_once()
 
 
-def test_sync_backend_different_counts(state_env, make_entry, unwrap):
+def test_sync_backend_different_counts(state_env, make_entry, unwrap: Unwrap[int]):
     state, backend, wal = state_env
     backend.add_point.return_value = Success(1)
     wal.dequeue_multiple.side_effect = None

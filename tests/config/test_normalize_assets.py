@@ -7,10 +7,12 @@ from datetime import timedelta
 from finance.common.json_utils import JsonReader
 from finance.common.model import Asset, Series
 from finance.common.string_enums import Retention, SeriesType
+from finance.common.types import Unwrap
 from finance.config.loader import BusinessConfig, normalize_assets_and_series
+from tests.support.types import AssertError
 
 
-def test_normalize_assets_basic(unwrap):
+def test_normalize_assets_basic(unwrap: Unwrap[BusinessConfig]):
     reader = JsonReader(
         {
             "eurusd": {
@@ -34,7 +36,7 @@ def test_normalize_assets_basic(unwrap):
         }
     )
 
-    business: BusinessConfig = unwrap(normalize_assets_and_series(reader, JsonReader({})))
+    business = unwrap(normalize_assets_and_series(reader, JsonReader({})))
 
     asset: Asset = business.assets[0]
     assert asset.provider == "yahoo"
@@ -55,7 +57,7 @@ def test_normalize_assets_basic(unwrap):
     assert series.retention == Retention.LONG_LIVED
 
 
-def test_normalize_assets_missing_required_field(assert_error):
+def test_normalize_assets_missing_required_field(assert_error: AssertError):
     reader = JsonReader(
         {
             "eurusd": {
@@ -69,7 +71,7 @@ def test_normalize_assets_missing_required_field(assert_error):
     assert_error(result, "Could not parse asset 'eurusd'", "['provider', 'name']: Missing required key `provider`")
 
 
-def test_normalize_assets_malformed_provider(assert_error):
+def test_normalize_assets_malformed_provider(assert_error: AssertError):
     reader = JsonReader(
         {
             "eurusd": {
@@ -85,7 +87,7 @@ def test_normalize_assets_malformed_provider(assert_error):
     )
 
 
-def test_normalize_assets_missing_interval(assert_error):
+def test_normalize_assets_missing_interval(assert_error: AssertError):
     reader = JsonReader(
         {
             "spx": {
@@ -102,7 +104,7 @@ def test_normalize_assets_missing_interval(assert_error):
     assert_error(result, "Could not parse asset 'spx'", "['interval']: Missing required key `interval`")
 
 
-def test_normalize_assets_invalid_retention(assert_error):
+def test_normalize_assets_invalid_retention(assert_error: AssertError):
     reader = JsonReader(
         {
             "spx": {
@@ -121,7 +123,7 @@ def test_normalize_assets_invalid_retention(assert_error):
     )
 
 
-def test_normalize_asset_with_template(unwrap):
+def test_normalize_asset_with_template(unwrap: Unwrap[BusinessConfig]):
     reader = JsonReader(
         {
             "spx": {
@@ -146,7 +148,7 @@ def test_normalize_asset_with_template(unwrap):
     assert series.bootstrap_history == "10y", "default history for >= 1d"
 
 
-def test_normalize_asset_missing_template(assert_error):
+def test_normalize_asset_missing_template(assert_error: AssertError):
     reader = JsonReader(
         {
             "spx": {

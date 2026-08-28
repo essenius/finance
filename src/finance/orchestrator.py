@@ -86,10 +86,10 @@ class Orchestrator:
         self.backend.refresh_short_lived_series_ids()
 
     def ingest_points(self, points: SeriesPoints, series: Series):
-        # this assumes the payload is ordered on increasing time
+        # this assumes the payload is ordered low-high or high-low
         batch_first = points[0].time
         batch_last = points[-1].time
-        # correct if it was the other way around
+        # correct first and last if it was high-low
         if batch_first > batch_last:
             batch_first, batch_last = batch_last, batch_first
 
@@ -115,7 +115,7 @@ class Orchestrator:
             )
         return all_ok
 
-    def handle_fetch_response(self, result: FetchResult):
+    def handle_fetch_response(self, result: FetchResult) -> bool:
         payload = unwrap(result, throw=False)
 
         if result.ok is False:

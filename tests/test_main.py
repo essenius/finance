@@ -4,6 +4,8 @@
 
 from unittest.mock import Mock
 
+from pytest import MonkeyPatch
+
 import finance.main as main_mod
 
 # ----------
@@ -11,7 +13,7 @@ import finance.main as main_mod
 # ----------
 
 
-def test_main_calls_run_with_correct_defaults(monkeypatch):
+def test_main_calls_run_with_correct_defaults(monkeypatch: MonkeyPatch):
     fake_run = Mock()
     monkeypatch.setattr(main_mod, "run", fake_run)
 

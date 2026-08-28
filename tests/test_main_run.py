@@ -2,9 +2,11 @@
 # Licensed under the Apache License, Version 2.0. See the LICENSE file for details.
 # File: tests/test_main_run.py
 
-from collections.abc import Iterable
+from collections.abc import Iterable, Iterator
 from pathlib import Path
 from unittest.mock import MagicMock, Mock
+
+from pytest import LogCaptureFixture
 
 from finance.common.configuration import LogConfig, ProviderConfig, TimescaleConfig
 from finance.common.model import FetchData, FetchResult, SeriesPoint
@@ -151,7 +153,7 @@ def test_run_returns_one_when_backend_initialization_fails():
     orchestrator_factory.assert_not_called()
 
 
-def test_run_returns_two_when_unexpected_exception_occurs(clean_logging, caplog):
+def test_run_returns_two_when_unexpected_exception_occurs(clean_logging: Iterator[None], caplog: LogCaptureFixture):
     def load_config():
         raise RuntimeError("Boom!")
 

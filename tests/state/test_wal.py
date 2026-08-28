@@ -4,24 +4,26 @@
 
 import json
 from datetime import datetime
+from io import TextIOWrapper
+from pathlib import Path
 
 import pytest
-from pytest import File
 
 from finance.common.model import SeriesPoint
 from finance.common.time_utils import UTC
 from finance.state.wal import JsonlWAL, WALCorruptionError
+from tests.support.types import Factory
 
 
-def make(series_id=1, value=None, time=datetime(2026, 1, 1, 0, 0, 0, tzinfo=UTC)):
+def make(value: float, *, series_id: int = 1, time: datetime = datetime(2026, 1, 1, tzinfo=UTC)) -> SeriesPoint:
     return SeriesPoint(series_id=series_id, time=time, close=value)
 
 
-def write_series(f: File, series: SeriesPoint):
+def write_series(f: TextIOWrapper, series: SeriesPoint):
     f.write(json.dumps(series.to_dict()) + "\n")
 
 
-def test_wal_enqueue_and_read_all(tmp_path):
+def test_wal_enqueue_and_read_all(tmp_path: Path):
     wal_path = tmp_path / "wal.jsonl"
     wal = JsonlWAL(wal_path)
 
@@ -35,7 +37,7 @@ def test_wal_enqueue_and_read_all(tmp_path):
     ]
 
 
-def test_wal_peek_returns_first_entry(tmp_path):
+def test_wal_peek_returns_first_entry(tmp_path: Path):
     wal_path = tmp_path / "wal.jsonl"
     wal = JsonlWAL(wal_path)
 
@@ -49,7 +51,7 @@ def test_wal_peek_returns_first_entry(tmp_path):
     ]
 
 
-def test_wal_dequeue_removes_first_entry(tmp_path):
+def test_wal_dequeue_removes_first_entry(tmp_path: Path):
     wal_path = tmp_path / "wal.jsonl"
     wal = JsonlWAL(wal_path)
 
@@ -64,7 +66,7 @@ def test_wal_dequeue_removes_first_entry(tmp_path):
     assert not wal.is_empty()
 
 
-def test_wal_empty_behaviour(tmp_path):
+def test_wal_empty_behaviour(tmp_path: Path):
     wal_path = tmp_path / "wal.jsonl"
 
     # add empty line to see if it's ignored
@@ -79,7 +81,7 @@ def test_wal_empty_behaviour(tmp_path):
     assert wal.dequeue_multiple(0) == 0
 
 
-def test_wal_dequeue_corrupt_lines(tmp_path):
+def test_wal_dequeue_corrupt_lines(tmp_path: Path):
     wal_path = tmp_path / "wal.jsonl"
 
     good = make(value=1)
@@ -95,7 +97,7 @@ def test_wal_dequeue_corrupt_lines(tmp_path):
     assert 'Invalid WAL entry: {"bad":' in str(wce.value)
 
 
-def test_iter_entries_skips_empty_lines(tmp_path):
+def test_iter_entries_skips_empty_lines(tmp_path: Path):
     wal_path = tmp_path / "wal.jsonl"
 
     entry = make(value=1)
@@ -111,7 +113,7 @@ def test_iter_entries_skips_empty_lines(tmp_path):
     assert result == [entry]
 
 
-def test_wal_append_is_atomic(tmp_path):
+def test_wal_append_is_atomic(tmp_path: Path):
     wal_path = tmp_path / "wal.jsonl"
     wal = JsonlWAL(wal_path)
 
@@ -120,7 +122,7 @@ def test_wal_append_is_atomic(tmp_path):
     assert list(wal.read_all()) == [make(value=1)]
 
 
-def test_wal_creates_file_if_missing(tmp_path):
+def test_wal_creates_file_if_missing(tmp_path: Path):
     wal_path = tmp_path / "wal.jsonl"
     wal = JsonlWAL(wal_path)
 
@@ -135,7 +137,7 @@ def test_wal_creates_file_if_missing(tmp_path):
 # ---------------
 
 
-def test_wal_roundtrip_preserves_all_fields(tmp_path, fixed_now):
+def test_wal_roundtrip_preserves_all_fields(tmp_path: Path, fixed_now: Factory[datetime]):
     wal_path = tmp_path / "wal.jsonl"
     wal = JsonlWAL(wal_path)
 

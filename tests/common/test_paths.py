@@ -5,6 +5,7 @@
 from pathlib import Path
 
 import pytest
+from pytest import MonkeyPatch
 
 import finance.common.paths as paths
 
@@ -13,7 +14,7 @@ import finance.common.paths as paths
 # -------------------------------
 
 
-def test_get_project_root_valid(monkeypatch, tmp_path):
+def test_get_project_root_valid(monkeypatch: MonkeyPatch, tmp_path: Path):
     """
     If cwd contains config.yaml, get_project_root() must return cwd.
     """
@@ -26,7 +27,7 @@ def test_get_project_root_valid(monkeypatch, tmp_path):
     assert root == tmp_path
 
 
-def test_get_project_root_invalid(monkeypatch, tmp_path):
+def test_get_project_root_invalid(monkeypatch: MonkeyPatch, tmp_path: Path):
     """
     If cwd does NOT contain config.yaml, get_project_root() must raise RuntimeError.
     """
@@ -37,7 +38,7 @@ def test_get_project_root_invalid(monkeypatch, tmp_path):
         paths.get_project_root()
 
 
-def test_get_project_root_does_not_fallback(monkeypatch, tmp_path):
+def test_get_project_root_does_not_fallback(monkeypatch: MonkeyPatch, tmp_path: Path):
     """
     Ensure get_project_root() does NOT silently fall back to repo root.
     """
@@ -53,7 +54,7 @@ def test_get_project_root_does_not_fallback(monkeypatch, tmp_path):
 # -------------------------------
 
 
-def test_none_uses_project_root_default(tmp_path):
+def test_none_uses_project_root_default(tmp_path: Path):
     """If value=None, return project_root/default_filename."""
 
     result = paths.resolve_config_path(None, "wal.jsonl", tmp_path)
@@ -62,7 +63,7 @@ def test_none_uses_project_root_default(tmp_path):
     assert result.is_absolute()
 
 
-def test_empty_string_uses_project_root_default(tmp_path):
+def test_empty_string_uses_project_root_default(tmp_path: Path):
     """If value='', treat it like None."""
 
     result = paths.resolve_config_path("", "state.json", tmp_path)
@@ -71,7 +72,7 @@ def test_empty_string_uses_project_root_default(tmp_path):
     assert result.is_absolute()
 
 
-def test_absolute_path_is_returned_as_is(tmp_path):
+def test_absolute_path_is_returned_as_is(tmp_path: Path):
     """Absolute paths must be returned unchanged."""
 
     abs_path = Path("/var/lib/finance/wal.jsonl")
@@ -81,7 +82,7 @@ def test_absolute_path_is_returned_as_is(tmp_path):
     assert result.is_absolute()
 
 
-def test_relative_path_is_resolved_against_project_root(tmp_path):
+def test_relative_path_is_resolved_against_project_root(tmp_path: Path):
     """Relative paths must be resolved under project root."""
 
     result = paths.resolve_config_path("data/wal.jsonl", "ignored.json", tmp_path)
@@ -90,7 +91,7 @@ def test_relative_path_is_resolved_against_project_root(tmp_path):
     assert result.is_absolute()
 
 
-def test_relative_directory_path_appends_default(tmp_path):
+def test_relative_directory_path_appends_default(tmp_path: Path):
 
     logs_dir = tmp_path / "logs"
     logs_dir.mkdir()  # directory must exist
@@ -100,7 +101,7 @@ def test_relative_directory_path_appends_default(tmp_path):
     assert result == logs_dir / "wal.jsonl"
 
 
-def test_relative_nonexistent_path_is_treated_as_file(tmp_path):
+def test_relative_nonexistent_path_is_treated_as_file(tmp_path: Path):
 
     result = paths.resolve_config_path("wal", "wal.jsonl", tmp_path)
 

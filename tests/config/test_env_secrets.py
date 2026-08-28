@@ -19,7 +19,7 @@ def clean_env(monkeypatch):
             monkeypatch.delenv(var, raising=False)
 
 
-def test_load_env_secrets_timescaledb(tmp_path):
+def test_load_env_secrets_timescaledb(tmp_path: Path):
     env = tmp_path / ".env"
     backend_upper = BACKEND.upper()
     env.write_text(f"{backend_upper}_URL=http://x\n{backend_upper}_DB=db\nFRED_API_KEY=abc\n")

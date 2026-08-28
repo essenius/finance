@@ -8,7 +8,7 @@ from datetime import datetime
 import pytest
 
 from finance.common.configuration import ProviderConfig
-from finance.common.model import Asset, FetchResult
+from finance.common.model import FetchResult
 from finance.common.string_enums import SupportedProviders
 from finance.fetch.ecb import EcbProvider
 from finance.fetch.fred import FredProvider
@@ -86,14 +86,5 @@ def yahoo_provider(
             ),
             session=session,
         )
-
-    return _make
-
-
-@pytest.fixture
-def make_asset_dict(make_asset: Creator[Asset]):
-    def _make(id=1, name="eur_usd", provider="yahoo", provider_code="EURUSD=X"):
-        asset = make_asset(id=id, name=name, provider=provider, provider_code=provider_code)
-        return {name: asset}
 
     return _make

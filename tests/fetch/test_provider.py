@@ -8,7 +8,7 @@ import requests
 
 from finance.common.candle_identity import CandleIdentity
 from finance.common.configuration import ProviderConfig
-from finance.common.model import Series
+from finance.common.model import Asset, Series
 from finance.common.time_utils import UTC
 from finance.common.types import Result, Success
 from finance.fetch.provider import MarketDataProvider
@@ -58,9 +58,10 @@ def test_safe_call_exception():
 # -----------
 
 
-def test_fetch_not_implemented(make_series: Creator[Series], make_asset_dict, fixed_now):
-    assets = make_asset_dict()
-    now = CandleIdentity(fixed_now(), False, timedelta(0))
-    result = provider().fetch(make_series(assets["eur_usd"]), assets, start=now, end=now, is_incremental=False)
+def test_fetch_not_implemented(make_series: Creator[Series], make_asset: Creator[Asset]):
+    name = "eur_usd"
+    asset = make_asset(id=1, name=name, provider="yahoo", provider_code="EURUSD=X")
+    now = CandleIdentity(datetime(1, 1, 1), False, timedelta(0))
+    result = provider().fetch(make_series(asset), asset, start=now, end=now, is_incremental=False)
     assert result.ok is False
     assert result.reason == "fetch not implemented"

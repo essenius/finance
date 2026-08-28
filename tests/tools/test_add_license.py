@@ -4,6 +4,8 @@
 
 from pathlib import Path
 
+from pytest import MonkeyPatch
+
 # We import inside tests so monkeypatching works cleanly
 # and so the module is reloaded with patched globals.
 
@@ -22,7 +24,7 @@ def write(path: Path, text: str):
 # ------------------------------------------------------------
 
 
-def test_skip_empty_init(tmp_path, monkeypatch):
+def test_skip_empty_init(tmp_path: Path, monkeypatch: MonkeyPatch):
     monkeypatch.setattr("tools.add_license.PROJECT_ROOT", tmp_path)
     write(tmp_path / "pkg" / "__init__.py", "")
 
@@ -34,7 +36,7 @@ def test_skip_empty_init(tmp_path, monkeypatch):
     assert path.read_text() == ""
 
 
-def test_skip_comment_only_init(tmp_path, monkeypatch):
+def test_skip_comment_only_init(tmp_path: Path, monkeypatch: MonkeyPatch):
     monkeypatch.setattr("tools.add_license.PROJECT_ROOT", tmp_path)
     write(tmp_path / "pkg" / "__init__.py", "# comment\n\n# another\n")
 
@@ -46,7 +48,7 @@ def test_skip_comment_only_init(tmp_path, monkeypatch):
     assert path.read_text() == ""
 
 
-def test_nonempty_init_gets_header(tmp_path, monkeypatch):
+def test_nonempty_init_gets_header(tmp_path: Path, monkeypatch: MonkeyPatch):
     monkeypatch.setattr("tools.add_license.PROJECT_ROOT", tmp_path)
     monkeypatch.setattr("tools.add_license.CURRENT_YEAR", 2026)
 
@@ -67,7 +69,7 @@ def test_nonempty_init_gets_header(tmp_path, monkeypatch):
 # ------------------------------------------------------------
 
 
-def test_new_file_gets_header(tmp_path, monkeypatch):
+def test_new_file_gets_header(tmp_path: Path, monkeypatch: MonkeyPatch):
     monkeypatch.setattr("tools.add_license.PROJECT_ROOT", tmp_path)
     monkeypatch.setattr("tools.add_license.CURRENT_YEAR", 2026)
 
@@ -85,7 +87,7 @@ def test_new_file_gets_header(tmp_path, monkeypatch):
     assert lines[4].startswith("print")
 
 
-def test_new_file_strips_leading_blank_lines(tmp_path, monkeypatch):
+def test_new_file_strips_leading_blank_lines(tmp_path: Path, monkeypatch: MonkeyPatch):
     monkeypatch.setattr("tools.add_license.PROJECT_ROOT", tmp_path)
     monkeypatch.setattr("tools.add_license.CURRENT_YEAR", 2026)
 
@@ -106,7 +108,7 @@ def test_new_file_strips_leading_blank_lines(tmp_path, monkeypatch):
 # ------------------------------------------------------------
 
 
-def test_shebang_preserved(tmp_path, monkeypatch):
+def test_shebang_preserved(tmp_path: Path, monkeypatch: MonkeyPatch):
     monkeypatch.setattr("tools.add_license.PROJECT_ROOT", tmp_path)
     monkeypatch.setattr("tools.add_license.CURRENT_YEAR", 2026)
 
@@ -127,7 +129,7 @@ def test_shebang_preserved(tmp_path, monkeypatch):
 # ------------------------------------------------------------
 
 
-def test_update_year_range_from_single(tmp_path, monkeypatch):
+def test_update_year_range_from_single(tmp_path: Path, monkeypatch: MonkeyPatch):
     monkeypatch.setattr("tools.add_license.PROJECT_ROOT", tmp_path)
     monkeypatch.setattr("tools.add_license.CURRENT_YEAR", 2027)
 
@@ -148,7 +150,7 @@ def test_update_year_range_from_single(tmp_path, monkeypatch):
     assert "2026-2027" in text
 
 
-def test_no_update_year_range(tmp_path, monkeypatch):
+def test_no_update_year_range(tmp_path: Path, monkeypatch: MonkeyPatch):
     monkeypatch.setattr("tools.add_license.PROJECT_ROOT", tmp_path)
     monkeypatch.setattr("tools.add_license.CURRENT_YEAR", 2026)
 
@@ -169,7 +171,7 @@ def test_no_update_year_range(tmp_path, monkeypatch):
     assert "2024-2026" in text
 
 
-def test_filename_updated_when_file_moved(tmp_path, monkeypatch):
+def test_filename_updated_when_file_moved(tmp_path: Path, monkeypatch: MonkeyPatch):
     monkeypatch.setattr("tools.add_license.PROJECT_ROOT", tmp_path)
     monkeypatch.setattr("tools.add_license.CURRENT_YEAR", 2026)
 
@@ -194,7 +196,7 @@ def test_filename_updated_when_file_moved(tmp_path, monkeypatch):
     assert "File: finance/metrics/freshness.py" in text
 
 
-def test_filename_updated_without_year_change(tmp_path, monkeypatch):
+def test_filename_updated_without_year_change(tmp_path: Path, monkeypatch: MonkeyPatch):
     monkeypatch.setattr("tools.add_license.PROJECT_ROOT", tmp_path)
     monkeypatch.setattr("tools.add_license.CURRENT_YEAR", 2026)
 
@@ -215,7 +217,7 @@ def test_filename_updated_without_year_change(tmp_path, monkeypatch):
     assert "File: finance/common/freshness.py" in text
 
 
-def test_existing_header_spacing_normalized(tmp_path, monkeypatch):
+def test_existing_header_spacing_normalized(tmp_path: Path, monkeypatch: MonkeyPatch):
     monkeypatch.setattr("tools.add_license.PROJECT_ROOT", tmp_path)
     monkeypatch.setattr("tools.add_license.CURRENT_YEAR", 2026)
 
@@ -239,7 +241,7 @@ def test_existing_header_spacing_normalized(tmp_path, monkeypatch):
     assert lines[4].startswith("print")
 
 
-def test_existing_header_spacing_left_intact(tmp_path, monkeypatch):
+def test_existing_header_spacing_left_intact(tmp_path: Path, monkeypatch: MonkeyPatch):
     monkeypatch.setattr("tools.add_license.PROJECT_ROOT", tmp_path)
     monkeypatch.setattr("tools.add_license.CURRENT_YEAR", 2026)
 
@@ -269,7 +271,7 @@ def test_existing_header_spacing_left_intact(tmp_path, monkeypatch):
 # ------------------------------------------------------------
 
 
-def test_relative_to_valueerror_falls_back_to_basename(tmp_path, monkeypatch):
+def test_relative_to_valueerror_falls_back_to_basename(tmp_path: Path, monkeypatch: MonkeyPatch):
     project_root = tmp_path / "project"
     project_root.mkdir()
     monkeypatch.setattr("tools.add_license.PROJECT_ROOT", project_root)
@@ -291,7 +293,7 @@ def test_relative_to_valueerror_falls_back_to_basename(tmp_path, monkeypatch):
 # ------------------------------------------------------------
 
 
-def test_main_processes_all_python_files(tmp_path, monkeypatch):
+def test_main_processes_all_python_files(tmp_path: Path, monkeypatch: MonkeyPatch):
 
     write(tmp_path / "finance" / "a.py", "print('a')\n")
     write(tmp_path / "finance" / "b.py", "print('b')\n")

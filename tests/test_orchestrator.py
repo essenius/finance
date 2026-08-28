@@ -6,11 +6,13 @@ from datetime import datetime
 from unittest.mock import Mock, call
 
 import pytest
+from pytest import LogCaptureFixture
 
-from finance.common.model import FetchData, FetchResult
+from finance.common.model import AssetMetadata, FetchData, FetchResult, SeriesPoint, SeriesState
 from finance.common.time_utils import UTC
 from finance.common.types import AppError, Failure, Success
 from finance.orchestrator import Orchestrator, unwrap
+from tests.support.types import Creator
 
 
 def ok_fetch_result(points: list) -> FetchResult:
@@ -18,29 +20,37 @@ def ok_fetch_result(points: list) -> FetchResult:
 
 
 @pytest.fixture
-def backend():
+def series() -> Mock:
+    series = Mock()
+    series.id = 42
+    series.name = "TEST"
+    return series
+
+
+@pytest.fixture
+def backend() -> Mock:
     return Mock()
 
 
 @pytest.fixture
-def registry():
+def registry() -> Mock:
     return Mock()
 
 
 @pytest.fixture
-def state():
+def state() -> Mock:
     state = Mock()
     state.series = {}
     return state
 
 
 @pytest.fixture
-def fetcher():
+def fetcher() -> Mock:
     return Mock()
 
 
 @pytest.fixture
-def orchestrator(backend, registry, state, fetcher):
+def orchestrator(backend: Mock, registry: Mock, state: Mock, fetcher: Mock) -> Orchestrator:
     return Orchestrator(backend=backend, registry=registry, state=state, fetcher=fetcher)
 
 
@@ -49,7 +59,7 @@ def orchestrator(backend, registry, state, fetcher):
 # ---------------------------------------------------------------------------
 
 
-def test_unwrap_success_no_warning(json_caplog):
+def test_unwrap_success_no_warning(json_caplog: LogCaptureFixture):
     json_caplog.set_level("DEBUG")
     r = Success(123)
     assert unwrap(r, throw=False) == 123
@@ -57,14 +67,14 @@ def test_unwrap_success_no_warning(json_caplog):
     assert "warnings=" not in json_caplog.text
 
 
-def test_unwrap_success_with_warning(json_caplog):
+def test_unwrap_success_with_warning(json_caplog: LogCaptureFixture):
     json_caplog.set_level("WARNING")
     r = Success(42, warnings=["careful"])
     assert unwrap(r, throw=False) == 42
     assert '"warnings": ["careful"]}' in json_caplog.text
 
 
-def test_unwrap_failure_no_throw(json_caplog):
+def test_unwrap_failure_no_throw(json_caplog: LogCaptureFixture):
     json_caplog.set_level("ERROR")
     r = Failure(reason="x", error="broken")
     assert unwrap(r, throw=False) is None
@@ -82,7 +92,9 @@ def test_unwrap_failure_with_throw():
     assert exc.value.args[0] == "x"
 
 
-def test_prepare_loads_state_and_reconciles_backend(orchestrator, backend, registry, state):
+def test_prepare_loads_state_and_reconciles_backend(
+    orchestrator: Orchestrator, backend: Mock, registry: Mock, state: Mock
+):
     asset = Mock(name="asset")
     stored_asset = Mock(name="stored_asset")
     series = Mock(name="series")
@@ -118,7 +130,9 @@ def test_prepare_loads_state_and_reconciles_backend(orchestrator, backend, regis
     backend.refresh_short_lived_series_ids.assert_called_once_with()
 
 
-def test_prepare_does_not_persist_when_nothing_changed(orchestrator, backend, registry, state):
+def test_prepare_does_not_persist_when_nothing_changed(
+    orchestrator: Orchestrator, backend: Mock, registry: Mock, state: Mock
+):
     state.load.return_value = Success(0)
     backend.get_assets.return_value = Success([])
     registry.merge_and_find_new_assets.return_value = []
@@ -138,7 +152,7 @@ def test_prepare_does_not_persist_when_nothing_changed(orchestrator, backend, re
     backend.refresh_short_lived_series_ids.assert_called_once_with()
 
 
-def test_prepare_continues_when_wal_load_fails(orchestrator, backend, registry, state):
+def test_prepare_continues_when_wal_load_fails(orchestrator: Orchestrator, backend: Mock, registry: Mock, state: Mock):
     state.load.return_value = Failure(reason="WAL error")
 
     backend.get_assets.return_value = Success([])
@@ -155,83 +169,41 @@ def test_prepare_continues_when_wal_load_fails(orchestrator, backend, registry, 
     backend.get_series.assert_called_once_with()
 
 
-def test_ingest_points_ingests_all_points_and_updates_range(orchestrator, state):
-    series = Mock()
-    series.id = 42
-    series.name = "TEST"
+def test_ingest_points_ingests_all_points_and_updates_range(
+    orchestrator: Orchestrator, state: Mock, series: Mock, ts: Creator[datetime]
+):
 
-    first = Mock()
-    first.time = datetime(2026, 8, 20, 10, tzinfo=UTC)
-    first.series_id = 42
-
-    second = Mock()
-    second.time = datetime(2026, 8, 20, 11, tzinfo=UTC)
-    second.series_id = 42
-
-    points = [first, second]
+    first = SeriesPoint(series.id, time=ts(0), close=0.0)
+    second = SeriesPoint(series.id, time=ts(1), close=0.1)
 
     state.ingest.return_value = Success(None)
 
-    stored_range = Mock()
-    stored_range.first_point = first.time
-    stored_range.last_point = second.time
-    state.series[42] = stored_range
+    stored_range = SeriesState(first_point=first.time, last_point=second.time)
+    state.series[series.id] = stored_range
 
-    result = orchestrator.ingest_points(points, series)
+    # first test: order low-high
+    result = orchestrator.ingest_points([first, second], series)
 
-    assert result is True
-    assert state.ingest.call_args_list == [
-        ((first,), {}),
-        ((second,), {}),
-    ]
-    state.update_state.assert_called_once_with(
-        42,
-        first.time,
-        second.time,
-    )
+    assert result is True, "low-high ok"
+    assert state.ingest.call_args_list == [((first,), {}), ((second,), {})]
+    state.update_state.assert_called_once_with(42, first.time, second.time)
 
+    # second test: order high-low
+    state.update_state.reset_mock()
 
-def test_ingest_points_uses_lowest_and_highest_timestamp(orchestrator, state):
-    series = Mock()
-    series.id = 42
-    series.name = "TEST"
+    result = orchestrator.ingest_points([second, first], series)
 
-    early = Mock()
-    early.time = datetime(2026, 8, 20, 10, tzinfo=UTC)
-    early.series_id = 42
-
-    late = Mock()
-    late.time = datetime(2026, 8, 20, 12, tzinfo=UTC)
-    late.series_id = 42
-
-    state.ingest.return_value = Success(None)
-
-    stored_range = Mock()
-    stored_range.first_point = early.time
-    stored_range.last_point = late.time
-    state.series[42] = stored_range
-
-    result = orchestrator.ingest_points([late, early], series)
-
-    assert result is True
-    state.update_state.assert_called_once_with(
-        42,
-        early.time,
-        late.time,
-    )
+    assert result is True, "high-low ok"
+    state.update_state.assert_called_once_with(42, first.time, second.time)
 
 
-def test_ingest_points_does_not_update_range_when_point_ingestion_fails(orchestrator, state):
-    series = Mock()
-    series.id = 42
-    series.name = "TEST"
-
+def test_ingest_points_does_not_update_range_when_point_ingestion_fails(
+    orchestrator: Orchestrator, state: Mock, series: Mock
+):
     points = []
 
     for hour in (10, 11, 12):
-        point = Mock()
-        point.time = datetime(2026, 8, 20, hour, tzinfo=UTC)
-        point.series_id = 42
+        point = SeriesPoint(series.id, time=datetime(2026, 8, 20, hour, tzinfo=UTC), close=0)
         points.append(point)
 
     state.ingest.side_effect = [
@@ -247,7 +219,7 @@ def test_ingest_points_does_not_update_range_when_point_ingestion_fails(orchestr
     state.update_state.assert_not_called()
 
 
-def test_handle_fetch_response_returns_false_for_failed_fetch(orchestrator, registry, backend):
+def test_handle_fetch_response_failed_fetch(orchestrator: Orchestrator, registry: Mock, backend: Mock):
     result = Failure(reason="fetch failed", error="connection error")
 
     assert orchestrator.handle_fetch_response(result) is False
@@ -256,19 +228,10 @@ def test_handle_fetch_response_returns_false_for_failed_fetch(orchestrator, regi
     backend.store_asset.assert_not_called()
 
 
-def test_handle_fetch_response_ingests_points_without_metadata(orchestrator, registry):
-    series = Mock()
-    series.id = 42
-    series.name = "TEST"
-
-    point = Mock()
-    point.time = datetime(2026, 8, 20, 10, tzinfo=UTC)
-    point.series_id = series.id
-
-    result = Success(Mock(metadata=None, points=[point], series_id=series.id))
-
+def test_handle_fetch_response_ingests_points_no_metadata(orchestrator: Orchestrator, registry: Mock, series: Mock):
+    point = SeriesPoint(series_id=series.id, time=datetime(2026, 8, 20, 10, tzinfo=UTC), close=0.0)
+    result = Success(FetchData(series_id=series.id, metadata=None, points=[point]))
     registry.get_series_by_id.return_value = series
-
     orchestrator.ingest_points = Mock(return_value=True)
 
     assert orchestrator.handle_fetch_response(result) is True
@@ -278,35 +241,31 @@ def test_handle_fetch_response_ingests_points_without_metadata(orchestrator, reg
     registry.register_provider_metadata.assert_not_called()
 
 
-def test_handle_fetch_response_registers_provider_metadata_without_persisting(orchestrator, registry):
-    series = Mock()
+def test_handle_fetch_response_registers_provider_metadata_without_persisting(
+    orchestrator: Orchestrator, backend: Mock, registry: Mock, series: Mock
+):
+    metadata = AssetMetadata(short_name="abc")
+
+    result = Success(payload=FetchData(series_id=1, points=[], metadata=metadata))
     series.asset_id = 123
-
-    metadata = Mock()
-
-    result = Success(Mock(metadata=metadata, points=[]))
 
     registry.get_series_by_id.return_value = series
     registry.register_provider_metadata.return_value = None
-
     assert orchestrator.handle_fetch_response(result) is True
 
-    registry.register_provider_metadata.assert_called_once_with(
-        123,
-        metadata,
-    )
-    orchestrator.backend.store_asset.assert_not_called()
+    registry.register_provider_metadata.assert_called_once_with(123, metadata)
+    backend.store_asset.assert_not_called()
 
 
-def test_handle_fetch_response_persists_changed_asset_metadata(orchestrator, registry, backend):
-    series = Mock()
-    series.asset_id = 123
-
-    metadata = Mock()
+def test_handle_fetch_response_persists_changed_asset_metadata(
+    orchestrator: Orchestrator, registry: Mock, backend: Mock, series: Mock
+):
+    metadata = AssetMetadata(short_name="abc")
     asset = Mock()
     stored_asset = Mock()
 
-    result = Success(Mock(metadata=metadata, points=[]))
+    result = Success(FetchData(series_id=series.id, metadata=metadata, points=[]))
+    series.asset_id = 123
 
     registry.get_series_by_id.return_value = series
     registry.register_provider_metadata.return_value = asset
@@ -321,14 +280,11 @@ def test_handle_fetch_response_persists_changed_asset_metadata(orchestrator, reg
     registry.register_stored_asset.assert_called_once_with(stored_asset)
 
 
-def test_handle_fetch_response_processes_metadata_and_points(orchestrator, registry):
-    series = Mock()
-    series.asset_id = 123
-
-    metadata = Mock()
+def test_handle_fetch_response_processes_metadata_and_points(orchestrator: Orchestrator, registry: Mock, series: Mock):
+    metadata = AssetMetadata(short_name="abc")
     point = Mock()
-
-    result = Success(Mock(metadata=metadata, points=[point]))
+    result = Success(FetchData(series_id=series.id, metadata=metadata, points=[point]))
+    series.asset_id = 123
 
     registry.get_series_by_id.return_value = series
     registry.register_provider_metadata.return_value = None
@@ -336,38 +292,31 @@ def test_handle_fetch_response_processes_metadata_and_points(orchestrator, regis
     orchestrator.ingest_points = Mock(return_value=True)
 
     assert orchestrator.handle_fetch_response(result) is True
-
     registry.register_provider_metadata.assert_called_once_with(123, metadata)
     orchestrator.ingest_points.assert_called_once_with([point], series)
 
 
-def test_handle_fetch_response_with_no_points_does_not_ingest(orchestrator, registry):
-    series = Mock()
-    series.asset_id = 123
+def test_handle_fetch_response_no_points_does_not_ingest(orchestrator: Orchestrator, registry: Mock, series: Mock):
 
-    result = Success(Mock(metadata=None, points=[]))
-
+    result = Success(FetchData(series_id=series.id, metadata=None, points=[]))
     registry.get_series_by_id.return_value = series
 
-    assert orchestrator.handle_fetch_response(result) is True
-
     orchestrator.ingest_points = Mock()
+    assert orchestrator.handle_fetch_response(result) is True
     orchestrator.ingest_points.assert_not_called()
 
 
-def test_finalize_saves_state_and_returns_zero_on_success(orchestrator, state):
+def test_finalize_saves_state_and_returns_zero_on_success(orchestrator: Orchestrator, state: Mock):
     assert orchestrator.finalize(0) == 0
-
     state.save.assert_called_once_with()
 
 
 def test_finalize_saves_state_and_returns_one_when_fetches_failed(orchestrator, state):
     assert orchestrator.finalize(3) == 1
-
     state.save.assert_called_once_with()
 
 
-def test_run_prepares_processes_fetches_and_finalizes(orchestrator, fetcher):
+def test_run_prepares_processes_fetches_and_finalizes(orchestrator: Orchestrator, fetcher: Mock):
     orchestrator.prepare = Mock()
     orchestrator.handle_fetch_response = Mock(return_value=True)
     orchestrator.finalize = Mock(return_value=0)
@@ -390,7 +339,7 @@ def test_run_prepares_processes_fetches_and_finalizes(orchestrator, fetcher):
     orchestrator.finalize.assert_called_once_with(0)
 
 
-def test_run_counts_failed_fetch_responses(orchestrator, fetcher):
+def test_run_counts_failed_fetch_responses(orchestrator: Orchestrator, fetcher: Mock):
     orchestrator.prepare = Mock()
     orchestrator.handle_fetch_response = Mock(side_effect=[True, False, False, True])
     orchestrator.finalize = Mock(return_value=1)
@@ -405,7 +354,7 @@ def test_run_counts_failed_fetch_responses(orchestrator, fetcher):
     orchestrator.finalize.assert_called_once_with(2)
 
 
-def test_run_finalizes_successfully_when_nothing_is_fetched(orchestrator, fetcher):
+def test_run_finalizes_successfully_when_nothing_is_fetched(orchestrator: Orchestrator, fetcher: Mock):
     orchestrator.prepare = Mock()
     orchestrator.handle_fetch_response = Mock()
     orchestrator.finalize = Mock(return_value=0)

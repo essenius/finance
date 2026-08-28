@@ -3,8 +3,10 @@
 # File: tests/common/test_applogger.py
 
 import logging
+from collections.abc import Iterator
 
 import pytest
+from pytest import LogCaptureFixture
 
 from finance.common.applogger import AppLogger
 
@@ -19,7 +21,7 @@ LOGGER = "finance"
 
 
 @pytest.fixture
-def cover_empty_root_handlers():
+def cover_empty_root_handlers() -> Iterator[None]:
     # Clear handlers (pytest removed them just before this fixture runs)
     root = logging.getLogger()
     root.handlers.clear()
@@ -32,12 +34,12 @@ def cover_empty_root_handlers():
     yield
 
 
-def test_branch_is_covered(cover_empty_root_handlers):
+def test_branch_is_covered(cover_empty_root_handlers: Iterator[None]):
     # Nothing else needed
     assert True
 
 
-def test_error_logs_to_logger(json_caplog):
+def test_error_logs_to_logger(json_caplog: LogCaptureFixture):
     log = AppLogger()
 
     with json_caplog.at_level(logging.ERROR):
@@ -48,11 +50,10 @@ def test_error_logs_to_logger(json_caplog):
     record = json_caplog.records[0]
     assert record.levelname == "ERROR"
     assert record.msg == "boom"
-    assert record.x == 1
     assert f'"level": "ERROR", "logger": "{LOGGER}", "message": "boom", "x": 1' in json_caplog.text
 
 
-def test_info_logs(json_caplog):
+def test_info_logs(json_caplog: LogCaptureFixture):
     log = AppLogger()
 
     with json_caplog.at_level(logging.INFO):
@@ -62,7 +63,7 @@ def test_info_logs(json_caplog):
     assert "bogus" not in json_caplog.text
 
 
-def test_debug_filtered_out(json_caplog):
+def test_debug_filtered_out(json_caplog: LogCaptureFixture):
     log = AppLogger()
 
     # Set global logging level to INFO
@@ -73,7 +74,7 @@ def test_debug_filtered_out(json_caplog):
     assert json_caplog.text == ""
 
 
-def test_log_without_msg(json_caplog):
+def test_log_without_msg(json_caplog: LogCaptureFixture):
     log = AppLogger()
 
     with json_caplog.at_level(logging.INFO):
@@ -83,7 +84,7 @@ def test_log_without_msg(json_caplog):
     assert f'"level": "INFO", "logger": "{LOGGER}", "x": 42}}' in json_caplog.text
 
 
-def test_ok_field_removed(json_caplog):
+def test_ok_field_removed(json_caplog: LogCaptureFixture):
     log = AppLogger()
 
     with json_caplog.at_level(logging.INFO):
@@ -91,7 +92,7 @@ def test_ok_field_removed(json_caplog):
     assert f' "level": "INFO", "logger": "{LOGGER}", "message": "msg", "x": 4}}' in json_caplog.text
 
 
-def test_nested_dict(json_caplog):
+def test_nested_dict(json_caplog: LogCaptureFixture):
     log = AppLogger()
 
     with json_caplog.at_level(logging.INFO):
@@ -102,7 +103,7 @@ def test_nested_dict(json_caplog):
     )
 
 
-def test_warning_level(json_caplog):
+def test_warning_level(json_caplog: LogCaptureFixture):
     log = AppLogger()
 
     with json_caplog.at_level(logging.WARNING):
@@ -112,7 +113,7 @@ def test_warning_level(json_caplog):
     assert f', "level": "WARNING", "logger": "{LOGGER}", "message": "careful", "y": 5}}' in json_caplog.text
 
 
-def test_warning_flattening(json_caplog):
+def test_warning_flattening(json_caplog: LogCaptureFixture):
     log = AppLogger()
 
     with json_caplog.at_level(logging.WARNING):

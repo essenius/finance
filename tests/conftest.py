@@ -3,12 +3,13 @@
 # File: tests/conftest.py
 
 import logging
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from datetime import datetime, time
 from pathlib import Path
 from unittest.mock import Mock
 
 import pytest
+from pytest import LogCaptureFixture
 
 from finance.common.applogger import JsonFormatter, LogConfig, LogConfigurator
 from finance.common.model import Asset, AssetMetadata, Series
@@ -16,9 +17,7 @@ from finance.common.string_enums import Retention, SeriesType
 from finance.common.time_utils import UTC
 from finance.common.types import Failure, Result, Unwrap
 from finance.state.state import State
-from finance.state.wal import JsonlWAL
-from finance.timeseries.series_backend import SeriesBackend
-from tests.support.types import AssertError, Creator, Factory
+from tests.support.types import AssertError, Creator, Factory, StateContext
 
 # ---------------------------------------------------------------------------
 # Test doubles
@@ -126,7 +125,7 @@ def make_metadata() -> Creator[AssetMetadata]:
 
 
 @pytest.fixture
-def make_asset(make_metadata) -> Creator[Asset]:
+def make_asset(make_metadata: Creator[AssetMetadata]) -> Creator[Asset]:
     def _make(name: str = "eur_usd", **overrides) -> Asset:
         defaults = {
             "id": 1,
@@ -148,10 +147,7 @@ def make_asset(make_metadata) -> Creator[Asset]:
 
 @pytest.fixture
 def make_series(make_asset: Creator[Asset]) -> Creator[Series]:
-    def _make(asset: Asset | None, **overrides) -> Series:
-        if asset is None:
-            asset = make_asset()
-            assert asset is not None
+    def _make(asset: Asset, **overrides) -> Series:
 
         defaults = {
             "id": asset.id,
@@ -179,7 +175,7 @@ def make_series(make_asset: Creator[Asset]) -> Creator[Series]:
 
 
 @pytest.fixture
-def state_deps():
+def state_deps() -> tuple[Mock, Mock]:
     wal = Mock()
     backend = Mock()
 
@@ -192,8 +188,8 @@ def state_deps():
 
 
 @pytest.fixture
-def state_env(state_deps) -> tuple[State, SeriesBackend, JsonlWAL]:
-    """Provides a State with mocked WAL + TS client + resolved path."""
+def state_env(state_deps: tuple[Mock, Mock]) -> StateContext:
+    """Provides a State with mocked WAL and mocked backend."""
 
     backend, wal = state_deps
     state = State(backend, wal)
@@ -201,9 +197,8 @@ def state_env(state_deps) -> tuple[State, SeriesBackend, JsonlWAL]:
 
 
 @pytest.fixture
-def state(state_env) -> State:
-    state, _, _ = state_env
-    return state
+def state(state_env: StateContext) -> State:
+    return state_env[0]
 
 
 @pytest.fixture()
@@ -220,7 +215,7 @@ def ts() -> Creator[datetime]:
 
 
 @pytest.fixture
-def setup_logging():
+def setup_logging() -> Iterator[None]:
     cfg = LogConfig.from_config({"level": "debug"})
 
     log_config = LogConfigurator()
@@ -230,7 +225,7 @@ def setup_logging():
 
 
 @pytest.fixture
-def json_caplog(caplog, setup_logging):
+def json_caplog(caplog: LogCaptureFixture, setup_logging: Iterator[None]) -> LogCaptureFixture:
     # setup_logging is intentionally unused: its side effect configures logging.
 
     caplog.handler.setFormatter(JsonFormatter())
@@ -238,7 +233,7 @@ def json_caplog(caplog, setup_logging):
 
 
 @pytest.fixture
-def clean_logging():
+def clean_logging() -> Iterator[None]:
     root = logging.getLogger()
 
     # Remove all handlers

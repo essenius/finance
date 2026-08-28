@@ -3,7 +3,10 @@
 # File: tests/config/test_load_config.py
 
 from datetime import timedelta
+from pathlib import Path
 from unittest.mock import patch
+
+from pytest import MonkeyPatch
 
 from finance.common.configuration import ProviderConfig
 from finance.common.json_utils import JsonObject, JsonReader
@@ -20,14 +23,14 @@ from finance.config.loader import (
 from tests.support.types import AssertError
 
 
-def test_load_yaml_config(tmp_path, unwrap: Unwrap[JsonReader]):
+def test_load_yaml_config(tmp_path: Path, unwrap: Unwrap[JsonReader]):
     yaml_file = tmp_path / "config.yaml"
     yaml_file.write_text("providers:\n  yahoo:\n    default_interval: 10m\n")
     reader: JsonReader = unwrap(load_yaml_config(yaml_file))
     assert reader.get(str, ["providers", "yahoo", "default_interval"]) == "10m"
 
 
-def test_load_config_end_to_end(tmp_path, unwrap: Unwrap[AppConfig]):
+def test_load_config_end_to_end(tmp_path: Path, unwrap: Unwrap[AppConfig]):
     yaml_file = tmp_path / "config.yaml"
     env_file = tmp_path / ".env"
 
@@ -128,7 +131,7 @@ business:
     assert wal_path.name == "mywal.jsonl"
 
 
-def test_load_config_missing_file(tmp_path, assert_error: AssertError):
+def test_load_config_missing_file(tmp_path: Path, assert_error: AssertError):
 
     loader = ConfigLoader(cwd=tmp_path)
     result = loader.load()
@@ -136,7 +139,7 @@ def test_load_config_missing_file(tmp_path, assert_error: AssertError):
     assert_error(result, "Config file not found", None)
 
 
-def test_load_config_dev_mode(monkeypatch, tmp_path, unwrap: Unwrap[AppConfig]):
+def test_load_config_dev_mode(monkeypatch: MonkeyPatch, tmp_path: Path, unwrap: Unwrap[AppConfig]):
     monkeypatch.chdir(tmp_path)
     (tmp_path / "config.yaml").write_text("business:\n  providers: {}\n  assets: {}\n  composites: {}\n")
     (tmp_path / ".env").write_text(
@@ -160,7 +163,7 @@ def test_load_config_dev_mode(monkeypatch, tmp_path, unwrap: Unwrap[AppConfig]):
     }
 
 
-def test_load_config_resolves_paths(tmp_path, unwrap: Unwrap[AppConfig]):
+def test_load_config_resolves_paths(tmp_path: Path, unwrap: Unwrap[AppConfig]):
 
     yaml_file = tmp_path / "my_config.yaml"
     env_file = tmp_path / ".env"

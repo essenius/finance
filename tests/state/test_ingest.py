@@ -3,21 +3,22 @@
 # File: tests/state/test_ingest.py
 
 from dataclasses import replace
+from datetime import datetime
 
-from finance.common.model import SeriesState
+from finance.common.model import SeriesPoint, SeriesState
 from finance.common.types import Failure, Success, Unwrap
-from tests.support.types import AssertError
+from tests.support.types import AssertError, Creator, Factory, StateContext, WalContext
 
 
-def test_ingest_enqueues_and_does_not_update_state(state_env, make_entry):
+def test_ingest_enqueues_and_does_not_update_state(state_env: StateContext, make_entry: Creator[WalContext]):
     state, backend, wal = state_env
 
-    args = make_entry()
+    point = make_entry().point
     backend.add_point.return_value = Success(0)
 
-    result = state.ingest(args["point"])
+    result = state.ingest(point)
 
-    wal.enqueue.assert_called_once_with(args["point"])
+    wal.enqueue.assert_called_once_with(point)
     assert result.ok is True
     # nothing dequeued as backend reported nothing written
     wal.dequeue_multiple.assert_called_with(0)
@@ -26,15 +27,15 @@ def test_ingest_enqueues_and_does_not_update_state(state_env, make_entry):
     assert state.series.get(1) is None
 
 
-def test_ingest_enqueues_and_removes_wal_entry(state_env, make_entry):
+def test_ingest_enqueues_and_removes_wal_entry(state_env: StateContext, make_entry: Creator[WalContext]):
     state, backend, wal = state_env
 
-    args = make_entry()
+    point = make_entry().point
     backend.add_point.return_value = Success(1)
 
-    result = state.ingest(args["point"])
+    result = state.ingest(point)
 
-    wal.enqueue.assert_called_once_with(args["point"])
+    wal.enqueue.assert_called_once_with(point)
     assert result.ok is True
     # nothing dequeued as backend reported nothing written
     wal.dequeue_multiple.assert_called_with(1)
@@ -42,7 +43,9 @@ def test_ingest_enqueues_and_removes_wal_entry(state_env, make_entry):
     assert state.series.get(1) is None
 
 
-def test_load_flushes_fifo_until_empty(state_env, two_wal_entries, unwrap: Unwrap[int]):
+def test_load_flushes_fifo_until_empty(
+    state_env: StateContext, two_wal_entries: Factory[list[SeriesPoint]], unwrap: Unwrap[int]
+):
     state, backend, wal = state_env
 
     wal.read_all.side_effect = [
@@ -60,7 +63,9 @@ def test_load_flushes_fifo_until_empty(state_env, two_wal_entries, unwrap: Unwra
     assert wal.dequeue_multiple.call_count == 3, "dequeue called 3 times (1, 0, 1)"
 
 
-def test_load_stops_on_first_failure(state_env, two_wal_entries, assert_error: AssertError):
+def test_load_stops_on_first_failure(
+    state_env: StateContext, two_wal_entries: Factory[list[SeriesPoint]], assert_error: AssertError
+):
     state, backend, wal = state_env
 
     wal.read_all.return_value = two_wal_entries()
@@ -70,16 +75,17 @@ def test_load_stops_on_first_failure(state_env, two_wal_entries, assert_error: A
 
     result = state.load()
     assert_error(result, "down", "x")
+    assert result.meta is not None
     assert result.meta["failed_timestamp"] == 600
     wal.dequeue_multiple.assert_not_called()
 
 
-def test_ingest_first_point(state_env, make_entry, unwrap: Unwrap[int]):
+def test_ingest_first_point(state_env: StateContext, make_entry: Creator[WalContext], unwrap: Unwrap[int]):
     state, backend, wal = state_env
     backend.add_point.return_value = Success(0)
 
-    args = make_entry(timestamp=1200)
-    write = replace(args["point"], close=1.11)
+    point = make_entry(timestamp=1200).point
+    write = replace(point, close=1.11)
 
     result = state.ingest(write)
 
@@ -88,13 +94,13 @@ def test_ingest_first_point(state_env, make_entry, unwrap: Unwrap[int]):
     wal.enqueue.assert_called_once()
 
 
-def test_ingest_no_first_timestamp(state_env, make_entry, ts):
+def test_ingest_no_first_timestamp(state_env: StateContext, make_entry: Creator[WalContext], ts: Creator[datetime]):
     state, backend, wal = state_env
     backend.add_point.return_value = Success(0)
     # inconsistent state, should treat last as None
     state.series[1] = SeriesState(last_point=ts(1200))
-    args = make_entry(timestamp=1200)
-    write = replace(args["point"], close=1.11)
+    point = make_entry(timestamp=1200).point
+    write = replace(point, close=1.11)
 
     result = state.ingest(write)
 
@@ -103,14 +109,14 @@ def test_ingest_no_first_timestamp(state_env, make_entry, ts):
     wal.enqueue.assert_called_once()
 
 
-def test_ingest_no_last_timestamp(state_env, make_entry, ts):
+def test_ingest_no_last_timestamp(state_env: StateContext, make_entry: Creator[WalContext], ts: Creator[datetime]):
     state, backend, wal = state_env
     backend.add_point.return_value = Success(0)
     # inconsistent state, should treat last as None
     state.series[1] = SeriesState(first_point=ts(0))
 
-    args = make_entry(timestamp=0)
-    write = replace(args["point"], close=1.11)
+    point = make_entry(timestamp=0).point
+    write = replace(point, close=1.11)
 
     result = state.ingest(write)
 
@@ -119,14 +125,16 @@ def test_ingest_no_last_timestamp(state_env, make_entry, ts):
     wal.enqueue.assert_called_once()
 
 
-def test_ingest_new_write_with_flush(state_env, make_entry, make_series_state):
+def test_ingest_new_write_with_flush(
+    state_env: StateContext, make_entry: Creator[WalContext], make_series_state: Creator[SeriesState]
+):
     state, backend, wal = state_env
     backend.add_point.return_value = Success(1)
 
     state.series[1] = make_series_state()
 
-    args = make_entry(timestamp=1800)
-    write = replace(args["point"], close=1.11)
+    point = make_entry(timestamp=1800).point
+    write = replace(point, close=1.11)
     result = state.ingest(write)
 
     assert result.ok is True
@@ -134,14 +142,16 @@ def test_ingest_new_write_with_flush(state_env, make_entry, make_series_state):
     wal.enqueue.assert_called_once()
 
 
-def test_ingest_in_range(state_env, make_entry, make_series_state):
+def test_ingest_in_range(
+    state_env: StateContext, make_entry: Creator[WalContext], make_series_state: Creator[SeriesState]
+):
     state, backend, wal = state_env
     backend.add_point.return_value = Success(2)
 
     state.series[1] = make_series_state(start=0, end=1800)
 
-    args = make_entry(timestamp=1200)
-    write = replace(args["point"], close=1.09)
+    point = make_entry(timestamp=1200).point
+    write = replace(point, close=1.09)
 
     result = state.ingest(write)
 
@@ -150,13 +160,15 @@ def test_ingest_in_range(state_env, make_entry, make_series_state):
     wal.enqueue.assert_called_once()
 
 
-def test_ingest_before_range(state_env, make_entry, make_series_state):
+def test_ingest_before_range(
+    state_env: StateContext, make_entry: Creator[WalContext], make_series_state: Creator[SeriesState]
+):
     state, backend, wal = state_env
     backend.add_point.return_value = Success(1)
     state.series[1] = make_series_state(start=1200, end=1800)
 
-    args = make_entry(timestamp=600)
-    write = replace(args["point"], close=1.09)
+    point = make_entry(timestamp=600).point
+    write = replace(point, close=1.09)
 
     result = state.ingest(write)
 
@@ -165,13 +177,13 @@ def test_ingest_before_range(state_env, make_entry, make_series_state):
     wal.enqueue.assert_called_once()
 
 
-def test_sync_backend_different_counts(state_env, make_entry, unwrap: Unwrap[int]):
+def test_sync_backend_different_counts(state_env: StateContext, make_entry: Creator[WalContext], unwrap: Unwrap[int]):
     state, backend, wal = state_env
     backend.add_point.return_value = Success(1)
     wal.dequeue_multiple.side_effect = None
     wal.dequeue_multiple.return_value = 0
-    args = make_entry(timestamp=1200)
-    write = replace(args["point"], close=1.11)
+    point = make_entry(timestamp=1200).point
+    write = replace(point, close=1.11)
 
     result = state.ingest(write)
 

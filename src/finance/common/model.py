@@ -120,7 +120,7 @@ class AssetMetadata:
         return f"AssetMetadata(short={self.short_name}, currency={self.currency}, timezone={None if self.timezone is None else self.timezone.key})"
 
 
-SeriesPoints = list[SeriesPoint]
+type SeriesPoints = list[SeriesPoint]
 
 
 @dataclass(frozen=True)
@@ -130,9 +130,9 @@ class FetchData:
     metadata: AssetMetadata | None = None
 
 
-FetchResult = Result[FetchData]
-SeriesResult = Result[SeriesPoint | None]
-SeriesPointsResult = Result[SeriesPoints]
+type FetchResult = Result[FetchData]
+type SeriesResult = Result[SeriesPoint | None]
+type SeriesPointsResult = Result[SeriesPoints]
 
 
 @dataclass

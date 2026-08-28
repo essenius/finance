@@ -5,7 +5,6 @@
 from pathlib import Path
 from unittest.mock import Mock
 
-from finance.common.dict_utils import deep_merge
 from finance.common.model import SeriesPoint
 from finance.common.time_utils import now_second_precision
 from finance.config.loader import ConfigLoader
@@ -24,15 +23,15 @@ def main():
     project_root = Path(__file__).resolve().parent
 
     print("Loading config...")
-    loader = ConfigLoader(cwd=project_root, config_path="config.yaml")
+    loader = ConfigLoader(cwd=project_root, config_path=Path("config.yaml"))
     cfg_result = loader.load()
     if cfg_result.ok is False:
         print("Config load failed:", cfg_result.reason, cfg_result.error)
         return
 
-    full_cfg = cfg_result.payload
-    asset_list = full_cfg["assets"]
-    series_list = full_cfg["series"]
+    app_cfg = cfg_result.payload
+    asset_list = app_cfg.assets
+    series_list = app_cfg.series
     print_list(asset_list, "loaded assets")
     print_list(series_list, "loaded series: ")
 
@@ -40,17 +39,13 @@ def main():
         print("Terminating as there are no series")
         return
 
-    secrets = full_cfg["secrets"]["timescaledb"]
-    env_cfg = full_cfg["timescaledb"]
-    print(f"secrets: {secrets}")
+    env_cfg = app_cfg.timescaledb
     print(f"environment config: {env_cfg}")
     print("creating backend")
 
     registry = Registry(assets=asset_list, series=series_list)
 
-    backend_result = SeriesBackend.from_config(
-        config=deep_merge(secrets, env_cfg),  # series_by_id=registry.get_series_by_id
-    )
+    backend_result = SeriesBackend.from_config(env_cfg)
     if backend_result.ok is False:
         print("Backend creation failed:", backend_result.reason, backend_result.error)
         return
@@ -61,8 +56,8 @@ def main():
     print("Preparing...")
     orchestrator.prepare()
 
-    print_list(registry.all_assets(), "registry assets")
-    print_list(registry.all_series(), "registry series")
+    print_list(list(registry.all_assets()), "registry assets")
+    print_list(list(registry.all_series()), "registry series")
 
     assets = unwrap(backend.get_assets())
     print_list(assets, "backend get_assets()")
@@ -72,7 +67,8 @@ def main():
 
     now = now_second_precision()
     print(f"writing point at {now}")
-    id = registry.all_series()[0].id
+    id = list(registry.all_series())[0].id
+    assert id is not None
     point = SeriesPoint(id, now, close=123.48)
     result = backend.add_point(point)
     if result.ok is False:

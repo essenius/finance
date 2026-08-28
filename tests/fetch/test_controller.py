@@ -11,7 +11,7 @@ from zoneinfo import ZoneInfo
 
 from finance.common.candle_identity import CandleIdentity
 from finance.common.configuration import ProviderConfig
-from finance.common.model import Asset, FetchData, FetchResult, Series, SeriesState, SweepConfig
+from finance.common.model import Asset, AssetMetadata, FetchData, FetchResult, Series, SeriesState, SweepConfig
 from finance.common.series_calendar import SeriesCalendar
 from finance.common.string_enums import Retention, SupportedProviders
 from finance.common.time_utils import UTC, snap_to
@@ -46,9 +46,9 @@ def fetch_with_single_result(fc: FetchController, state: State) -> FetchResult:
     return results[0]
 
 
-def make_fake_provider(fetch_result=None):
+def make_fake_provider(fetch_result: FetchResult | None = None) -> Mock:
     if fetch_result is None:
-        fetch_result = Success([])
+        fetch_result = Success(FetchData(series_id=1, points=[]))
     fake_provider = Mock()
     fake_provider.fetch.return_value = fetch_result
     fake_provider.provider_config = Mock()
@@ -59,7 +59,7 @@ def make_fake_provider(fetch_result=None):
 
 
 def make_fetch_controller(
-    series: Iterable[Series],
+    series_list: Iterable[Series],
     get_asset: Callable[[int], Asset | None],
     now_provider: Callable[[], datetime],
     fetch_result=None,
@@ -72,7 +72,7 @@ def make_fetch_controller(
     # Build provider registry based on assets
     providers: dict[str, MarketDataProvider] = dict.fromkeys(PROVIDER_REGISTRY, fake_provider)
 
-    return FetchController(series, get_asset, get_provider, now_provider=now_provider)
+    return FetchController(series_list, get_asset, get_provider, now_provider=now_provider)
 
 
 def mock_fetch(fc: FetchController):
@@ -98,7 +98,7 @@ def test_create_providers():
     assert isinstance(p[SupportedProviders.FRED], FredProvider)
 
 
-def test_controller_skips_fresh(state, make_asset: Creator[Asset], make_series: Creator[Series]):
+def test_controller_skips_fresh(make_asset: Creator[Asset], make_series: Creator[Series], state: State):
     asset = make_asset()
     assets = make_assets([asset])
     series_list = [
@@ -128,7 +128,7 @@ def test_controller_skips_fresh(state, make_asset: Creator[Asset], make_series: 
     mock_fetch(fc).assert_not_called()
 
 
-def test_controller_fetch_when_oldest_too_new(state, make_asset: Creator[Asset], make_series: Creator[Series]):
+def test_controller_fetch_when_oldest_too_new(make_asset: Creator[Asset], make_series: Creator[Series], state: State):
     asset = make_asset()
     assets = make_assets([asset])
     series = [
@@ -157,7 +157,7 @@ def test_controller_fetch_when_oldest_too_new(state, make_asset: Creator[Asset],
 
 
 def test_controller_fetches_when_stale(
-    state, fixed_now: Factory[datetime], make_asset: Creator[Asset], make_series: Creator[Series]
+    fixed_now: Factory[datetime], make_asset: Creator[Asset], make_series: Creator[Series], state: State
 ):
 
     asset = make_asset()
@@ -177,7 +177,7 @@ def test_controller_fetches_when_stale(
 
 
 def test_controller_skips_fetch_with_offset(
-    state, make_asset: Creator[Asset], make_metadata, make_series: Creator[Series]
+    make_asset: Creator[Asset], make_metadata: Creator[AssetMetadata], make_series: Creator[Series], state: State
 ):
 
     fake_hour = 12
@@ -210,10 +210,10 @@ def test_controller_skips_fetch_with_offset(
 
 def test_controller_unknown_provider(
     assert_error: AssertError,
-    state,
     fixed_now: Factory[datetime],
     make_asset: Creator[Asset],
     make_series: Creator[Series],
+    state: State,
 ):
 
     asset = make_asset(provider="mystery")
@@ -230,10 +230,10 @@ def test_controller_unknown_provider(
 
 def test_controller_unknown_asset(
     assert_error: AssertError,
-    state,
     fixed_now: Factory[datetime],
     make_asset: Creator[Asset],
     make_series: Creator[Series],
+    state: State,
 ):
 
     asset = make_asset()
@@ -247,8 +247,12 @@ def test_controller_unknown_asset(
 
 
 def test_controller_malformed_result(
-    assert_error: AssertError, state, fixed_now, make_asset: Creator[Asset], make_series: Creator[Series]
-):  # noqa: F821
+    assert_error: AssertError,
+    fixed_now: Factory[datetime],
+    make_asset: Creator[Asset],
+    make_series: Creator[Series],
+    state: State,
+):
     fake_provider = make_fake_provider(fetch_result=Failure(reason="bad data"))
 
     asset = make_asset()
@@ -262,7 +266,11 @@ def test_controller_malformed_result(
 
 
 def test_controller_none_limit(
-    unwrap: Unwrap[FetchData], state, fixed_now, make_asset: Creator[Asset], make_series: Creator[Series]
+    fixed_now: Factory[datetime],
+    make_asset: Creator[Asset],
+    make_series: Creator[Series],
+    state: State,
+    unwrap: Unwrap[FetchData],
 ):
     fake_provider = make_fake_provider()
     fake_provider.provider_config.get_history_limit.return_value = None
@@ -275,7 +283,9 @@ def test_controller_none_limit(
     unwrap(fetch_with_single_result(fc, state))
 
 
-def test_controller_multiple_assets(state, fixed_now, make_asset: Creator[Asset], make_series: Creator[Series]):
+def test_controller_multiple_assets(
+    fixed_now: Factory[datetime], make_asset: Creator[Asset], make_series: Creator[Series], state: State
+):
 
     fake_provider = make_fake_provider()
 
@@ -302,7 +312,7 @@ def test_controller_multiple_assets(state, fixed_now, make_asset: Creator[Asset]
     assert 2 in state.series
 
 
-def test_compute_fetch_range_intraday(make_series: Creator[Series], make_asset: Creator[Asset]):
+def test_compute_fetch_range_intraday(make_asset: Creator[Asset], make_series: Creator[Series]):
     fake_provider = make_fake_provider(fetch_result=Failure(reason="bad data"))
 
     asset = make_asset()
@@ -374,7 +384,9 @@ def test_compute_fetch_range_intraday(make_series: Creator[Series], make_asset: 
     assert state_entry_2.needs_save, "sweep: needs save"
 
 
-def test_compute_fetch_range_daily(make_series: Creator[Series], make_asset: Creator[Asset], make_metadata):
+def test_compute_fetch_range_daily(
+    make_asset: Creator[Asset], make_metadata: Creator[AssetMetadata], make_series: Creator[Series]
+):
     fake_provider = make_fake_provider(fetch_result=Failure(reason="bad data"))
 
     meta = make_metadata(first_trade_date=date(2021, 10, 1))
@@ -476,7 +488,7 @@ def test_compute_fetch_range_first_after_last(make_asset: Creator[Asset], make_s
     assert result is None, "no points found (last before first)"
 
 
-def test_get_sweep_start(make_asset: Creator[Asset], make_series: Creator[Series], fixed_now):
+def test_get_sweep_start(fixed_now: Factory[datetime], make_asset: Creator[Asset], make_series: Creator[Series]):
     asset = make_asset()
     assets = make_assets([asset])
     series = [

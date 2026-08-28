@@ -37,6 +37,18 @@ RESERVED_LOG_KEYS = (
     "threadName",
 )
 
+# ---------------
+# Helper classes
+# ---------------
+
+
+class AppHandler(logging.StreamHandler):
+    pass
+
+
+class FallbackHandler(logging.StreamHandler):
+    pass
+
 
 class JsonFormatter(logging.Formatter):
     def format(self, record: logging.LogRecord) -> str:
@@ -54,14 +66,6 @@ class JsonFormatter(logging.Formatter):
                 payload[key] = value
 
         return json.dumps(payload)
-
-
-class FallbackHandler(logging.StreamHandler):
-    pass
-
-
-class AppHandler(logging.StreamHandler):
-    pass
 
 
 class LogConfigurator:
@@ -114,6 +118,11 @@ def _is_json_active() -> bool:
     return any(isinstance(h, AppHandler) for h in root.handlers)
 
 
+# -----------
+# Main class
+# -----------
+
+
 class AppLogger:
     def __init__(self, module_name: str | None = None):
         postfix = f".{module_name}" if module_name else ""
@@ -152,17 +161,11 @@ class AppLogger:
         # Emit JSON log (formatter handles serialization)
         self.logger.log(py_level, msg, extra=clean_context, stacklevel=stacklevel)
 
-    def error(self, msg=None, **context: Any):
-        self.log("error", msg, **context)
-
-    def warning(self, msg=None, **context: Any):
-        self.log("warning", msg, **context)
-
-    def info(self, msg=None, **context: Any):
-        self.log("info", msg, **context)
-
     def debug(self, msg=None, **context: Any):
         self.log("debug", msg, **context)
+
+    def error(self, msg=None, **context: Any):
+        self.log("error", msg, **context)
 
     def exception(self, msg=None, **context: Any):
         # Add structured fields
@@ -172,3 +175,9 @@ class AppLogger:
         context["exception.type"] = exc_type.__name__
         context["exception.trace"] = "".join(traceback.format_exception(exc_type, exc_value, exc_tb))
         self.log("error", msg, **context)
+
+    def info(self, msg=None, **context: Any):
+        self.log("info", msg, **context)
+
+    def warning(self, msg=None, **context: Any):
+        self.log("warning", msg, **context)

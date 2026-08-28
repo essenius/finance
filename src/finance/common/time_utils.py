@@ -24,6 +24,21 @@ DURATION_UNITS = {
 WEEKDAY_ABBR_MAP = {abbr.lower(): i for i, abbr in enumerate(calendar.day_abbr)}
 
 
+def normalize_db_time(value):
+    if isinstance(value, datetime):
+        if value.tzinfo is None:
+            # Naive → treat as UTC
+            return value.replace(tzinfo=UTC, microsecond=0)
+        return value.astimezone(UTC).replace(microsecond=0)
+    if isinstance(value, date):
+        return datetime.combine(value, time.min, tzinfo=UTC)
+    raise TypeError(f"Unexpected time type: {type(value)}")
+
+
+def now_second_precision():
+    return datetime.now(tz=UTC).replace(microsecond=0)
+
+
 def parse_duration(text: str | None, context: str | None = None) -> timedelta | None:
     """
     Convert interval strings like '10m', '1h', '1d', '30s' into seconds.
@@ -41,39 +56,11 @@ def parse_duration(text: str | None, context: str | None = None) -> timedelta | 
     return timedelta(seconds=int(value) * DURATION_UNITS[unit])
 
 
-def validate_duration(text: str | None, context: str | None = None) -> str | None:
-    parse_duration(text, context)
-    return text
-
-
-def normalize_db_time(value):
-    if isinstance(value, datetime):
-        if value.tzinfo is None:
-            # Naive → treat as UTC
-            return value.replace(tzinfo=UTC, microsecond=0)
-        return value.astimezone(UTC).replace(microsecond=0)
-    if isinstance(value, date):
-        return datetime.combine(value, time.min, tzinfo=UTC)
-    raise TypeError(f"Unexpected time type: {type(value)}")
-
-
-def now_second_precision():
-    return datetime.now(tz=UTC).replace(microsecond=0)
-
-
-def parse_weekday(name: str | None) -> int | None:
-    if name is None:
-        return None
-    key = name.lower()
-    if key not in WEEKDAY_ABBR_MAP:
-        raise ParseError(f"Cannot understand day '{key}'.")
-    return WEEKDAY_ABBR_MAP[key]
-
-
-def snap_to(time_point: datetime, range: timedelta) -> datetime:
-    delta = range.total_seconds()
-    snapped = (time_point.astimezone(UTC).timestamp() // delta) * delta
-    return datetime.fromtimestamp(snapped, tz=UTC)
+def parse_datetime(s: str) -> datetime | None:
+    try:
+        return datetime.fromisoformat(s) if s is not None else None
+    except Exception:
+        raise ParseError(f"Cannot understand datetime '{s}'.") from None
 
 
 def parse_time(value) -> time | None:
@@ -107,6 +94,30 @@ def parse_time(value) -> time | None:
         raise ParseError(f"Cannot understand time '{value}'.") from None
 
 
+def parse_weekday(name: str | None) -> int | None:
+    if name is None:
+        return None
+    key = name.lower()
+    if key not in WEEKDAY_ABBR_MAP:
+        raise ParseError(f"Cannot understand day '{key}'.")
+    return WEEKDAY_ABBR_MAP[key]
+
+
+def snap_to(time_point: datetime, range: timedelta) -> datetime:
+    delta = range.total_seconds()
+    snapped = (time_point.astimezone(UTC).timestamp() // delta) * delta
+    return datetime.fromtimestamp(snapped, tz=UTC)
+
+
+def validate_duration(text: str | None, context: str | None = None) -> str | None:
+    parse_duration(text, context)
+    return text
+
+
+def write_datetime(dt: datetime) -> str:
+    return datetime.isoformat(dt)
+
+
 def write_time(t: time | None) -> str | None:
     if t is None:
         return None
@@ -119,14 +130,3 @@ def write_timezone(tz: ZoneInfo | None) -> str | None:
         return None
 
     return tz.key
-
-
-def parse_datetime(s: str) -> datetime | None:
-    try:
-        return datetime.fromisoformat(s) if s is not None else None
-    except Exception:
-        raise ParseError(f"Cannot understand datetime '{s}'.") from None
-
-
-def write_datetime(dt: datetime) -> str:
-    return datetime.isoformat(dt)

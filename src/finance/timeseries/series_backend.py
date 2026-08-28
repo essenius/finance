@@ -36,6 +36,10 @@ class SeriesBackend:
         self._last_flush: datetime | None = None
         self._short_lived_series_ids: set[int] = set()
 
+    # ---------------------
+    # Static/Class methods
+    # ---------------------
+
     @classmethod
     def from_config(
         cls,
@@ -54,6 +58,10 @@ class SeriesBackend:
         if refresh_result.ok is False:
             return refresh_result
         return Success(backend)
+
+    # ---------------
+    # Public methods
+    # ---------------
 
     def add_point(self, entry: SeriesPoint) -> Result[int]:
         self._pending.append(entry)
@@ -157,6 +165,17 @@ class SeriesBackend:
 
         return Success(None)
 
+    def save_sweep(self, series_id: int, next_sweep: datetime, sweep_start: datetime) -> Result[int]:
+        sql_query = """
+            INSERT INTO series_state (series_id, next_sweep, sweep_start)
+            VALUES (%s, %s, %s)
+            ON CONFLICT (series_id)
+            DO UPDATE SET next_sweep = EXCLUDED.next_sweep, sweep_start = EXCLUDED.sweep_start
+            RETURNING series_id;
+        """
+        params = (series_id, next_sweep, sweep_start)
+        return self._sql_client.execute_write(sql_query, params)
+
     def store_asset(self, asset: Asset) -> Result[Asset]:
         if asset.effective_metadata is None:
             return Failure(reason="Store asset failed", error=f"No effective metadata to store asset '{asset.name}'")
@@ -244,32 +263,9 @@ class SeriesBackend:
             return result
         return Success(series if series.id is not None else series.with_id(result.payload))
 
-    def save_sweep(self, series_id: int, next_sweep: datetime, sweep_start: datetime) -> Result[int]:
-        sql_query = """
-            INSERT INTO series_state (series_id, next_sweep, sweep_start)
-            VALUES (%s, %s, %s)
-            ON CONFLICT (series_id)
-            DO UPDATE SET next_sweep = EXCLUDED.next_sweep, sweep_start = EXCLUDED.sweep_start
-            RETURNING series_id;
-        """
-        params = (series_id, next_sweep, sweep_start)
-        return self._sql_client.execute_write(sql_query, params)
-
+    # ----------------
     # private methods
-
-    def _should_flush(self) -> bool:
-        now = self.now()
-        if self._last_flush is None:
-            self._last_flush = now
-
-        if not self._pending:
-            return False
-
-        if len(self._pending) >= self._config.max_batch_size:
-            return True
-
-        age = now - self._last_flush
-        return age >= self._config.max_batch_age
+    # ----------------
 
     def _insert_batches(self, entries: list[SeriesPoint], context: str) -> Result[int]:
         sql_template = """
@@ -300,3 +296,17 @@ class SeriesBackend:
                 return result
 
         return Success(len(entries))
+
+    def _should_flush(self) -> bool:
+        now = self.now()
+        if self._last_flush is None:
+            self._last_flush = now
+
+        if not self._pending:
+            return False
+
+        if len(self._pending) >= self._config.max_batch_size:
+            return True
+
+        age = now - self._last_flush
+        return age >= self._config.max_batch_age

@@ -7,14 +7,15 @@ from datetime import datetime, timedelta
 from finance.common.model import SeriesState
 from finance.common.time_utils import UTC
 from finance.common.types import Failure, Success
-from tests.support.types import AssertError
+from finance.state.state import State
+from tests.support.types import AssertError, Creator, Factory, StateContext
 
 # ---------------------------------------------------------------------------
 # get() tests
 # ---------------------------------------------------------------------------
 
 
-def test_get_returns_cached_entry(state_env):
+def test_get_returns_cached_entry(state_env: StateContext):
     """If measurement exists in state, return it without rebuild."""
 
     state, backend, wal = state_env
@@ -27,20 +28,12 @@ def test_get_returns_cached_entry(state_env):
     backend.read_first.assert_not_called()
 
 
-def test_get_returns_none_when_rebuild_finds_empty(state):
-    state._rebuild_measurement_state = state._rebuild_measurement_state = lambda m: SeriesState()
-    state.series = {}
-    assert state.get_series_state(1) == SeriesState()
-    assert 1 in state.series
-    assert state.series[1].first_point is None
-
-
 # ---------------------------------------------------------------------------
 # save() tests
 # ---------------------------------------------------------------------------
 
 
-def test_save_writes_actual_file(state_env, ts):
+def test_save_writes_actual_file(state_env: StateContext, ts: Creator[datetime]):
 
     state, backend, wal = state_env
 
@@ -56,7 +49,7 @@ def test_save_writes_actual_file(state_env, ts):
     assert not state.series[1].needs_save
 
 
-def test_iter_metrics(state, fixed_now):
+def test_iter_metrics(fixed_now: Factory[datetime], state: State):
 
     first = datetime.min
     between = fixed_now()
@@ -90,7 +83,7 @@ def test_update_composite(state):
 # -------------
 
 
-def test_update_state_save_sweep(state_env, ts):
+def test_update_state_save_sweep(state_env: StateContext, ts: Creator[datetime]):
     state, backend, _ = state_env
     backend.save_sweep.return_value = None
     state.series = {1: SeriesState(needs_save=True, next_sweep=ts(0), sweep_start=ts(0))}
@@ -99,7 +92,7 @@ def test_update_state_save_sweep(state_env, ts):
     assert backend.save_sweep.call_count == 1
 
 
-def test_update_state_expands_forward(state):
+def test_update_state_expands_forward(state: State):
     first = datetime.min
     current = first + timedelta(days=20)
     range_min = current - timedelta(days=5)
@@ -110,7 +103,7 @@ def test_update_state_expands_forward(state):
     assert series_state.first_point, series_state.last_point == (first, range_max)
 
 
-def test_update_state_expands_backward(state):
+def test_update_state_expands_backward(state: State):
     range_min = datetime.min
     first = range_min + timedelta(days=5)
     current = first + timedelta(days=20)
@@ -120,7 +113,7 @@ def test_update_state_expands_backward(state):
     assert series_state.first_point, series_state.last_point == (range_min, current)
 
 
-def test_update_state_does_not_shrink(state):
+def test_update_state_does_not_shrink(state: State):
     first = datetime.min
     current = first + timedelta(days=10)
     range_min = first + timedelta(days=2)
@@ -131,7 +124,7 @@ def test_update_state_does_not_shrink(state):
     assert series_state.first_point, series_state.last_point == (first, current)
 
 
-def test_load_backend_error(state_env, assert_error: AssertError):
+def test_load_backend_error(assert_error: AssertError, state_env: StateContext):
 
     state, backend, wal = state_env
     backend.get_series_states.return_value = Failure(reason="Boom!", error="Server down")

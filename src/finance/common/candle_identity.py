@@ -43,20 +43,8 @@ class CandleIdentity:
 
     # with these two, the class automatically supports ==, !=, <, <=, >, >=
 
-    def publish_label(self) -> datetime:
-        return self.value
-
     def date(self) -> date:
         return self.value.date()
-
-    def store_label(self) -> datetime:
-        if self.is_daily:
-            return datetime.combine(self.value.date(), time.min, UTC)
-        else:
-            return self.value.astimezone(UTC)
-
-    def start_timestamp(self):
-        return self.value.timestamp()
 
     def end_timestamp(self):
         if self.is_daily:
@@ -64,3 +52,15 @@ class CandleIdentity:
             # note this is only used to calculate the fetch period based on already determined identities
             return (self.value + self.interval).timestamp() - 1
         return self.value.timestamp()
+
+    def publish_label(self) -> datetime:
+        return self.value
+
+    def start_timestamp(self):
+        return self.value.timestamp()
+
+    def store_label(self) -> datetime:
+        if self.is_daily:
+            return datetime.combine(self.value.date(), time.min, UTC)
+        else:
+            return self.value.astimezone(UTC)

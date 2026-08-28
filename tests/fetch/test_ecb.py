@@ -9,12 +9,13 @@ from zoneinfo import ZoneInfo
 import pytest
 
 from finance.common.candle_identity import CandleIdentity
+from finance.common.json_utils import JsonLike
 from finance.common.model import Asset, FetchData, Series
 from finance.common.time_utils import UTC
 from finance.common.types import Unwrap
 from finance.fetch.ecb import EcbProvider
 from tests.support.fakes import FakeProvider
-from tests.support.types import AssertError, Creator, Factory
+from tests.support.types import AssertError, AssertFetchOk, Creator, Factory
 
 
 def make_identity(label: datetime) -> CandleIdentity:
@@ -25,7 +26,10 @@ type EcbFakeSession = FakeProvider[EcbProvider]
 
 
 def test_ecb_fetch_real_fixture(
-    ecb_provider: Factory[EcbFakeSession], assert_ok, make_asset: Creator[Asset], make_series: Creator[Series]
+    assert_fetch_ok: AssertFetchOk,
+    ecb_provider: Factory[EcbFakeSession],
+    make_asset: Creator[Asset],
+    make_series: Creator[Series],
 ):
     with open("tests/data/ecb_eurusd.json") as f:
         fake_json = json.load(f)
@@ -46,11 +50,14 @@ def test_ecb_fetch_real_fixture(
         "detail": "dataonly",
     }
 
-    assert_ok(result, time=datetime(2026, 5, 8, 0, 0, 0, tzinfo=UTC), close=1.1761)
+    assert_fetch_ok(result, time=datetime(2026, 5, 8, tzinfo=UTC), close=1.1761)
 
 
 def test_ecb_fetch_ok(
-    ecb_provider: Factory[EcbFakeSession], assert_ok, make_asset: Creator[Asset], make_series: Creator[Series]
+    assert_fetch_ok: AssertFetchOk,
+    ecb_provider: Factory[EcbFakeSession],
+    make_asset: Creator[Asset],
+    make_series: Creator[Series],
 ):
     fake_json = {
         "dataSets": [{"series": {"0:0:0:0:0": {"observations": {"0": [1.1761]}}}}],
@@ -65,7 +72,7 @@ def test_ecb_fetch_ok(
     start = make_identity(datetime(2026, 5, 8, tzinfo=ZoneInfo("Europe/Berlin")))
     end = make_identity(datetime(2026, 5, 8, 23, 59, 59, tzinfo=ZoneInfo("Europe/Berlin")))
     result = fake.provider.fetch(series, asset, start=start, end=end, is_incremental=True)
-    assert_ok(result, time=datetime(2026, 5, 8, 0, 0, 0, tzinfo=UTC), close=1.1761)
+    assert_fetch_ok(result, time=datetime(2026, 5, 8, 0, 0, 0, tzinfo=UTC), close=1.1761)
     assert fake.session.url == "https://data-api.ecb.europa.eu/service/data/EXR/D.USD.EUR.SP00.A"
     assert fake.session.params == {"format": "jsondata", "updatedAfter": "2026-05-08", "detail": "dataonly"}
 
@@ -81,9 +88,9 @@ def test_ecb_fetch_ok(
 def test_ecb_fetch_wrong_provider_code(
     assert_error: AssertError,
     ecb_provider: Factory[EcbFakeSession],
-    make_series: Creator[Series],
     make_asset: Creator[Asset],
-    provider_code,
+    make_series: Creator[Series],
+    provider_code: str,
 ):
     fake = ecb_provider()
     fake.session.queue(200, {})
@@ -98,11 +105,11 @@ def test_ecb_fetch_wrong_provider_code(
 
 
 def test_ecb_fetch_non_200(
-    ecb_provider: Factory[EcbFakeSession],
     assert_error: AssertError,
+    ecb_provider: Factory[EcbFakeSession],
+    fixed_now: Factory[datetime],
     make_asset: Creator[Asset],
     make_series: Creator[Series],
-    fixed_now,
 ):
     now = make_identity(fixed_now())
     fake = ecb_provider()
@@ -136,14 +143,14 @@ MALFORMED_CASES = [
 
 @pytest.mark.parametrize("json_data, expected, context", MALFORMED_CASES)
 def test_ecb_malformed_json(
+    assert_error: AssertError,
     ecb_provider: Factory[EcbFakeSession],
     make_asset: Creator[Asset],
     make_series: Creator[Series],
-    json_data,
-    expected,
-    context,
-    assert_error: AssertError,
-    fixed_now,
+    json_data: JsonLike,
+    expected: str,
+    context: str,
+    fixed_now: Factory[datetime],
 ):
     now = make_identity(fixed_now())
     fake = ecb_provider()
@@ -156,11 +163,11 @@ def test_ecb_malformed_json(
 
 
 def test_ecb_fetch_multiple_points_skip_invalid(
-    unwrap: Unwrap[FetchData],
     ecb_provider: Factory[EcbFakeSession],
+    fixed_now: Factory[datetime],
     make_series: Creator[Series],
     make_asset: Creator[Asset],
-    fixed_now,
+    unwrap: Unwrap[FetchData],
 ):
     fake_json = {
         "dataSets": [

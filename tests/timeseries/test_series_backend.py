@@ -2,14 +2,14 @@
 # Licensed under the Apache License, Version 2.0. See the LICENSE file for details.
 # File: tests/timeseries/test_series_backend.py
 
-from datetime import timedelta
+from datetime import datetime, timedelta
 
 from finance.common.configuration import TimescaleConfig
 from finance.common.model import Asset, SeriesPoint, SeriesState
 from finance.common.types import Failure, Result, Success, Unwrap
 from finance.timeseries.backend_protocol import SqlReadPayload
 from finance.timeseries.series_backend import SeriesBackend
-from tests.support.types import AssertError, Creator
+from tests.support.types import AssertError, Creator, Factory
 
 
 class FakeConnection:
@@ -108,7 +108,7 @@ class SqlFakeFail:
         return False
 
 
-def test_from_config_failure_cert(assert_error: AssertError, make_timescale_config):
+def test_from_config_failure_cert(make_timescale_config: Creator[TimescaleConfig], assert_error: AssertError):
     config = make_timescale_config(ssl_mode="verify-ca")
 
     result = SeriesBackend.from_config(config=config, sql_factory=SqlFakeOkFactory())
@@ -121,7 +121,9 @@ def test_from_config_failure_cert(assert_error: AssertError, make_timescale_conf
     )
 
 
-def test_from_config_success_no_defaults(unwrap: Unwrap[SeriesBackend], make_timescale_config):
+def test_from_config_success_no_defaults(
+    make_timescale_config: Creator[TimescaleConfig], unwrap: Unwrap[SeriesBackend]
+):
     config = make_timescale_config(
         **{
             "host": "myhost",
@@ -166,7 +168,7 @@ def test_from_config_success_no_defaults(unwrap: Unwrap[SeriesBackend], make_tim
     assert backend.now is not None
 
 
-def test_from_config_success_defaults(unwrap: Unwrap[SeriesBackend], make_timescale_config: Creator[TimescaleConfig]):
+def test_from_config_success_defaults(make_timescale_config: Creator[TimescaleConfig], unwrap: Unwrap[SeriesBackend]):
 
     backend: SeriesBackend = unwrap(
         SeriesBackend.from_config(config=make_timescale_config(), sql_factory=SqlFakeOkFactory())
@@ -187,14 +189,17 @@ def test_from_config_success_defaults(unwrap: Unwrap[SeriesBackend], make_timesc
     assert backend.now is not None
 
 
-def test_from_config_sql_failure(assert_error: AssertError, make_timescale_config):
+def test_from_config_sql_failure(assert_error: AssertError, make_timescale_config: Creator[TimescaleConfig]):
 
     result = SeriesBackend.from_config(config=make_timescale_config(), sql_factory=SqlFakeFail)
     assert_error(result, "load_short_lived_series_ids operation failed", "Boom!")
 
 
 def test_flush_without_connection_and_exception(
-    fixed_now, make_timescale_config, assert_error: AssertError, unwrap: Unwrap[SeriesBackend]
+    assert_error: AssertError,
+    fixed_now: Factory[datetime],
+    make_timescale_config: Creator[TimescaleConfig],
+    unwrap: Unwrap[SeriesBackend],
 ):
     # force an immediate flush after adding via the batch size
 
@@ -209,7 +214,9 @@ def test_flush_without_connection_and_exception(
     assert_error(result, "Flush_cold operation failed", "Boom!")
 
 
-def test_add_writes_two_entries(fixed_now, make_timescale_config, unwrap: Unwrap[SeriesBackend]):
+def test_add_writes_two_entries(
+    fixed_now: Factory[datetime], make_timescale_config: Creator[TimescaleConfig], unwrap: Unwrap[SeriesBackend]
+):
 
     sql_factory = SqlFakeOkFactory()
     backend: SeriesBackend = unwrap(
@@ -229,7 +236,12 @@ def test_add_writes_two_entries(fixed_now, make_timescale_config, unwrap: Unwrap
     assert sql_client.execute_many_count == 1
 
 
-def test_close_writes(fixed_now, make_timescale_config, unwrap: Unwrap[SeriesBackend], unwrap2: Unwrap[int]):
+def test_close_writes(
+    fixed_now: Factory[datetime],
+    make_timescale_config: Creator[TimescaleConfig],
+    unwrap: Unwrap[SeriesBackend],
+    unwrap2: Unwrap[int],
+):
 
     sql_factory = SqlFakeOkFactory()
     backend = unwrap(SeriesBackend.from_config(config=make_timescale_config(max_batch_size=2), sql_factory=sql_factory))
@@ -245,7 +257,10 @@ def test_close_writes(fixed_now, make_timescale_config, unwrap: Unwrap[SeriesBac
 
 
 def test_flush_writes_when_batch_too_old(
-    fixed_now, make_timescale_config, unwrap: Unwrap[SeriesBackend], unwrap2: Unwrap[int]
+    fixed_now: Factory[datetime],
+    make_timescale_config: Creator[TimescaleConfig],
+    unwrap: Unwrap[SeriesBackend],
+    unwrap2: Unwrap[int],
 ):
     sql_factory = SqlFakeOkFactory()
     backend: SeriesBackend = unwrap(
@@ -265,7 +280,9 @@ def test_flush_writes_when_batch_too_old(
 # ------------------
 
 
-def test_get_series_states_loads_min_max(fixed_now, make_timescale_config, unwrap: Unwrap[SeriesBackend]):
+def test_get_series_states_loads_min_max(
+    fixed_now: Factory[datetime], make_timescale_config: Creator[TimescaleConfig], unwrap: Unwrap[SeriesBackend]
+):
 
     sql_factory = SqlFakeOkFactory()
 
@@ -337,7 +354,9 @@ def test_get_series_states_loads_min_max(fixed_now, make_timescale_config, unwra
     assert not s4.needs_save
 
 
-def test_get_series_states_cold_error(assert_error: AssertError, make_timescale_config, unwrap: Unwrap[SeriesBackend]):
+def test_get_series_states_cold_error(
+    assert_error: AssertError, make_timescale_config: Creator[TimescaleConfig], unwrap: Unwrap[SeriesBackend]
+):
 
     backend: SeriesBackend = unwrap(
         SeriesBackend.from_config(config=make_timescale_config(), sql_factory=SqlFakeOkFactory())
@@ -348,7 +367,9 @@ def test_get_series_states_cold_error(assert_error: AssertError, make_timescale_
     assert_error(result, "get_series_states_range_cold operation failed", "Boom!")
 
 
-def test_get_series_states_hot_error(assert_error: AssertError, make_timescale_config, unwrap: Unwrap[SeriesBackend]):
+def test_get_series_states_hot_error(
+    assert_error: AssertError, make_timescale_config: Creator[TimescaleConfig], unwrap: Unwrap[SeriesBackend]
+):
 
     sql_factory = SqlFakeOkFactory()
     backend: SeriesBackend = unwrap(SeriesBackend.from_config(config=make_timescale_config(), sql_factory=sql_factory))
@@ -361,7 +382,9 @@ def test_get_series_states_hot_error(assert_error: AssertError, make_timescale_c
     assert_error(result, "get_series_states_range_hot operation failed", "Error in 2")
 
 
-def test_get_series_states_sweep_error(assert_error: AssertError, make_timescale_config, unwrap: Unwrap[SeriesBackend]):
+def test_get_series_states_sweep_error(
+    assert_error: AssertError, make_timescale_config: Creator[TimescaleConfig], unwrap: Unwrap[SeriesBackend]
+):
 
     sql_factory = SqlFakeOkFactory()
     backend: SeriesBackend = unwrap(SeriesBackend.from_config(config=make_timescale_config(), sql_factory=sql_factory))
@@ -375,7 +398,10 @@ def test_get_series_states_sweep_error(assert_error: AssertError, make_timescale
 
 
 def test_store_asset_no_effective_metadata(
-    unwrap: Unwrap[SeriesBackend], make_asset: Creator[Asset], make_timescale_config, assert_error: AssertError
+    assert_error: AssertError,
+    unwrap: Unwrap[SeriesBackend],
+    make_asset: Creator[Asset],
+    make_timescale_config: Creator[TimescaleConfig],
 ):
     backend: SeriesBackend = unwrap(
         SeriesBackend.from_config(config=make_timescale_config(), sql_factory=SqlFakeOkFactory())

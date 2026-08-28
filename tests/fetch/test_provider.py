@@ -58,7 +58,7 @@ def test_safe_call_exception():
 # -----------
 
 
-def test_fetch_not_implemented(make_series: Creator[Series], make_asset: Creator[Asset]):
+def test_fetch_not_implemented(make_asset: Creator[Asset], make_series: Creator[Series]):
     name = "eur_usd"
     asset = make_asset(id=1, name=name, provider="yahoo", provider_code="EURUSD=X")
     now = CandleIdentity(datetime(1, 1, 1), False, timedelta(0))

@@ -21,6 +21,10 @@ from ..common.string_enums import Retention, SeriesType, SupportedProviders
 from ..common.time_utils import validate_duration
 from ..common.types import Failure, ParseError, Result, Success
 
+# ---------------
+# Helper classes
+# ---------------
+
 
 @dataclass
 class YamlEnvironmentConfig:
@@ -45,6 +49,11 @@ class BusinessConfig:
     providers: dict[str, ProviderConfig]
     assets: list[Asset]
     series: list[Series]
+
+
+# ----------------
+# Exposed classes
+# ----------------
 
 
 @dataclass
@@ -125,6 +134,8 @@ class ConfigLoader:
 # -----------------------------
 # Load YAML config
 # -----------------------------
+
+# TODO check if integrating into config loader makes sense
 
 
 def load_yaml_config(yaml_path: Path) -> Result[JsonReader]:

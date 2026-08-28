@@ -137,7 +137,7 @@ def test_wal_creates_file_if_missing(tmp_path: Path):
 # ---------------
 
 
-def test_wal_roundtrip_preserves_all_fields(tmp_path: Path, fixed_now: Factory[datetime]):
+def test_wal_roundtrip_preserves_all_fields(fixed_now: Factory[datetime], tmp_path: Path):
     wal_path = tmp_path / "wal.jsonl"
     wal = JsonlWAL(wal_path)
 

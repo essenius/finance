@@ -109,14 +109,3 @@ def make_backend(
         return FakeBackend(SeriesBackend(config=config, sql_client=fake_sql.client, now=clock), fake_sql, clock)
 
     return _make
-
-
-@pytest.fixture
-def make_backend_old(make_backend: Creator[FakeBackend]) -> Creator[SeriesBackend]:
-    def _make(
-        max_batch_size: int = 2, max_batch_age_seconds: int = 2, connected: bool = True, **kwargs
-    ) -> SeriesBackend:
-        fake_backend = make_backend(max_batch_size, max_batch_age_seconds, connected, **kwargs)
-        return fake_backend.backend
-
-    return _make

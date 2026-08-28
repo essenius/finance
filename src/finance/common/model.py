@@ -151,6 +151,9 @@ class Asset:
     # assigned by the backend
     id: int | None = None
 
+    def __repr__(self):
+        return f"Asset(id={self.id}, name={self.name}, symbol={self.symbol}, provider_code={self.provider_code}, metadata={self.effective_metadata})"
+
     @classmethod
     def from_config(cls, name: str, config: dict) -> Asset:
         provider_config = config.get("provider", {})
@@ -164,13 +167,6 @@ class Asset:
             config_metadata=config_meta,
         )
 
-    def with_id(self, new_id: int) -> Asset:
-        return replace(self, id=new_id)
-
-    def same_semantics(self, other: Asset) -> bool:
-        """check if two assets are semantically the same (e.g. indicating a rename)"""
-        return self.provider == other.provider and self.provider_code == other.provider_code
-
     def differs_from(self, other: Asset) -> bool:
         """
         if this is classified as the same entity (one of the identity checks passed),
@@ -183,8 +179,12 @@ class Asset:
             or self.effective_metadata != other.effective_metadata
         )
 
-    def __repr__(self):
-        return f"Asset(id={self.id}, name={self.name}, symbol={self.symbol}, provider_code={self.provider_code}, metadata={self.effective_metadata})"
+    def same_semantics(self, other: Asset) -> bool:
+        """check if two assets are semantically the same (e.g. indicating a rename)"""
+        return self.provider == other.provider and self.provider_code == other.provider_code
+
+    def with_id(self, new_id: int) -> Asset:
+        return replace(self, id=new_id)
 
 
 @dataclass
@@ -207,15 +207,6 @@ class Series:
 
     # assigned by backend
     id: int | None = None
-
-    def interval_delta(self) -> timedelta:
-        return require_duration(self.interval, f"interval for {self.name}")
-
-    def bootstrap_history_delta(self) -> timedelta:
-        return require_duration(self.bootstrap_history, f"bootstrap history for {self.name}")
-
-    def retention_delta(self) -> timedelta | None:
-        return parse_duration(self.retention_period, f"retention period for {self.name}")
 
     @classmethod
     def create(cls, asset: Asset, code: str, config: dict) -> Series:
@@ -251,8 +242,33 @@ class Series:
             publication_offset=publication_offset,
         )
 
-    def with_id(self, new_id: int) -> Series:
-        return replace(self, id=new_id)
+    @staticmethod
+    def is_intraday_interval(interval: timedelta):
+        return interval < timedelta(days=1)
+
+    def __repr__(self):
+        return f"Series(id={self.id}, name={self.name}, asset_id={self.asset_id}, retention={self.retention}, series_type={self.series_type}, interval={self.interval})"
+
+    def bootstrap_history_delta(self) -> timedelta:
+        return require_duration(self.bootstrap_history, f"bootstrap history for {self.name}")
+
+    def differs_from(self, other: Series) -> bool:
+        """
+        if classified as the same entity (i.e. one of the identity checks passed),
+        check if there are differences. Not checked:
+        - asset_name: from the asset identity (via join).
+        - name: assembled from asset_name and code
+        """
+        return self.code != other.code or not self.same_semantics(other)
+
+    def interval_delta(self) -> timedelta:
+        return require_duration(self.interval, f"interval for {self.name}")
+
+    def is_daily(self):
+        return not self.is_intraday()
+
+    def is_intraday(self):
+        return self.is_intraday_interval(self.interval_delta())
 
     def require_id(self) -> int:
         return require(self.id, "series.id")
@@ -261,6 +277,9 @@ class Series:
         id = self.require_id()
         asset_id = require(self.asset_id, "series.asset_id")
         return id, asset_id
+
+    def retention_delta(self) -> timedelta | None:
+        return parse_duration(self.retention_period, f"retention period for {self.name}")
 
     def same_semantics(self, other: Series) -> bool:
         """check if two series are semantically the same (e.g. indicating a rename of the code)"""
@@ -274,27 +293,8 @@ class Series:
             and self.publication_offset == other.publication_offset
         )
 
-    def differs_from(self, other: Series) -> bool:
-        """
-        if classified as the same entity (i.e. one of the identity checks passed),
-        check if there are differences. Not checked:
-        - asset_name: from the asset identity (via join).
-        - name: assembled from asset_name and code
-        """
-        return self.code != other.code or not self.same_semantics(other)
-
-    def __repr__(self):
-        return f"Series(id={self.id}, name={self.name}, asset_id={self.asset_id}, retention={self.retention}, series_type={self.series_type}, interval={self.interval})"
-
-    @staticmethod
-    def is_intraday_interval(interval: timedelta):
-        return interval < timedelta(days=1)
-
-    def is_intraday(self):
-        return self.is_intraday_interval(self.interval_delta())
-
-    def is_daily(self):
-        return not self.is_intraday()
+    def with_id(self, new_id: int) -> Series:
+        return replace(self, id=new_id)
 
 
 @dataclass
@@ -306,12 +306,12 @@ class SeriesState:
     needs_save: bool = False
 
     @staticmethod
-    def is_none_or_smaller(left: datetime | None, right: datetime):
-        return left is None or left < right
-
-    @staticmethod
     def is_none_or_greater(left: datetime | None, right: datetime):
         return left is None or left > right
+
+    @staticmethod
+    def is_none_or_smaller(left: datetime | None, right: datetime):
+        return left is None or left < right
 
     def update_point_range(self, first: datetime, last: datetime):
         # update the captured point range

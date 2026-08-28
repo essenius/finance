@@ -86,7 +86,7 @@ def test_refresh_short_lived_series_ids_handles_disconnected(make_backend: Creat
 # ------------------------------------------------------------
 
 
-def test_store_asset_insert(make_backend: Creator[FakeBackend], make_asset: Creator[Asset]):
+def test_store_asset_insert(make_asset: Creator[Asset], make_backend: Creator[FakeBackend]):
     backend, sql = make_backend().with_sql()
 
     asset: Asset = make_asset(id=None)
@@ -105,7 +105,7 @@ def test_store_asset_insert(make_backend: Creator[FakeBackend], make_asset: Crea
     assert params[2] == "yahoo"
 
 
-def test_store_asset_update(make_backend: Creator[FakeBackend], make_asset: Creator[Asset]):
+def test_store_asset_update(make_asset: Creator[Asset], make_backend: Creator[FakeBackend]):
     backend, sql = make_backend().with_sql()
 
     asset = make_asset(id=99)
@@ -122,7 +122,7 @@ def test_store_asset_update(make_backend: Creator[FakeBackend], make_asset: Crea
 
 
 def test_store_asset_error_propagates(
-    make_backend: Creator[FakeBackend], make_asset: Creator[Asset], assert_error: AssertError
+    assert_error: AssertError, make_asset: Creator[Asset], make_backend: Creator[FakeBackend]
 ):
     backend, sql = make_backend().with_sql()
     asset = make_asset(id=None)
@@ -139,7 +139,7 @@ def test_store_asset_error_propagates(
 
 
 def test_store_series_insert(
-    make_backend: Creator[FakeBackend], make_asset: Creator[Asset], make_series: Creator[Series]
+    make_asset: Creator[Asset], make_backend: Creator[FakeBackend], make_series: Creator[Series]
 ):
     backend, sql = make_backend().with_sql()
 
@@ -164,7 +164,7 @@ def test_store_series_insert(
 
 
 def test_store_series_update(
-    make_backend: Creator[FakeBackend], make_asset: Creator[Asset], make_series: Creator[Series]
+    make_asset: Creator[Asset], make_backend: Creator[FakeBackend], make_series: Creator[Series]
 ):
     backend, sql = make_backend().with_sql()
     asset = make_asset(id=5)
@@ -189,8 +189,8 @@ def test_store_series_update(
 
 def test_store_series_error_execute(
     assert_error: AssertError,
-    make_backend: Creator[FakeBackend],
     make_asset: Creator[Asset],
+    make_backend: Creator[FakeBackend],
     make_series: Creator[Series],
 ):
     backend, sql = make_backend().with_sql()
@@ -204,7 +204,10 @@ def test_store_series_error_execute(
 
 
 def test_store_series_error_no_asset_id(
-    assert_error: AssertError, make_backend, make_asset: Creator[Asset], make_series: Creator[Series]
+    assert_error: AssertError,
+    make_backend: Creator[FakeBackend],
+    make_asset: Creator[Asset],
+    make_series: Creator[Series],
 ):
     backend = make_backend().only()
     asset = make_asset(id=None)

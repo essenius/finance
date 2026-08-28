@@ -21,7 +21,7 @@ from tests.support.types import AssertError, Creator, Factory
 # ----------------------------------------------------------------------
 
 
-def test_fetch_impl_success(yahoo_provider: Factory[YahooFakeSession], unwrap: Unwrap[JsonObject]):
+def test_fetch_impl_success(unwrap: Unwrap[JsonObject], yahoo_provider: Factory[YahooFakeSession]):
     fake = yahoo_provider()
     fake.session.queue(200, {"chart": {"result": [{"foo": "bar"}], "error": None}})
     result = fake.provider._fetch_impl(url="http://x", params={})
@@ -29,7 +29,7 @@ def test_fetch_impl_success(yahoo_provider: Factory[YahooFakeSession], unwrap: U
     assert payload == {"foo": "bar"}
 
 
-def test_fetch_impl_missing_chart(yahoo_provider: Factory[YahooFakeSession], assert_error: AssertError):
+def test_fetch_impl_missing_chart(assert_error: AssertError, yahoo_provider: Factory[YahooFakeSession]):
     fake = yahoo_provider()
     fake.session.queue(200, {})
 
@@ -38,14 +38,14 @@ def test_fetch_impl_missing_chart(yahoo_provider: Factory[YahooFakeSession], ass
     assert_error(result, "Could not interpret fetch response", "no 'chart' in response")
 
 
-def test_fetch_impl_empty_result(yahoo_provider: Factory[YahooFakeSession], assert_error: AssertError):
+def test_fetch_impl_empty_result(assert_error: AssertError, yahoo_provider: Factory[YahooFakeSession]):
     fake = yahoo_provider()
     fake.session.queue(200, {"chart": {"result": []}})
     result = fake.provider._fetch_impl(url="http://x", params={})
     assert_error(result, "Could not interpret fetch response", "['result', 0]: index `0` out of range (level: 1)")
 
 
-def test_fetch_impl_yahoo_error_object(yahoo_provider: Factory[YahooFakeSession], assert_error: AssertError):
+def test_fetch_impl_yahoo_error_object(assert_error: AssertError, yahoo_provider: Factory[YahooFakeSession]):
     fake = yahoo_provider()
     fake.session.queue(
         200,
@@ -74,10 +74,10 @@ def make_identity(label: datetime):
 
 
 def test_fetch_success(
-    yahoo_provider: Creator[YahooFakeSession],
-    unwrap: Unwrap[FetchData],
     make_asset: Creator[Asset],
     make_series: Creator[Series],
+    unwrap: Unwrap[FetchData],
+    yahoo_provider: Creator[YahooFakeSession],
 ):
 
     def fake_now():
@@ -114,11 +114,11 @@ def test_fetch_success(
 
 
 def test_impl_http_error(
-    yahoo_provider: Factory[YahooFakeSession],
     assert_error: AssertError,
+    fixed_now: Factory[datetime],
     make_asset: Creator[Asset],
     make_series: Creator[Series],
-    fixed_now,
+    yahoo_provider: Factory[YahooFakeSession],
 ):
     now = make_identity(fixed_now())
     asset = make_asset()
@@ -139,13 +139,13 @@ def test_impl_http_error(
     ],
 )
 def test_fetch_missing_exchange_timezone(
-    yahoo_provider: Factory[YahooFakeSession],
     assert_error: AssertError,
+    fixed_now: Factory[datetime],
     make_asset: Creator[Asset],
     make_series: Creator[Series],
-    fixed_now,
-    meta,
-    reason,
+    yahoo_provider: Factory[YahooFakeSession],
+    meta: dict,
+    reason: str,
 ):
     fake = yahoo_provider()
     now = make_identity(fixed_now())
@@ -172,11 +172,11 @@ def test_fetch_missing_exchange_timezone(
 
 
 def test_fetch_missing_quote(
-    yahoo_provider: Factory[YahooFakeSession],
     assert_error: AssertError,
+    fixed_now: Factory[datetime],
     make_asset: Creator[Asset],
     make_series: Creator[Series],
-    fixed_now,
+    yahoo_provider: Factory[YahooFakeSession],
 ):
     now = make_identity(fixed_now())
     fake = yahoo_provider()
@@ -207,7 +207,10 @@ def test_fetch_missing_quote(
 
 
 def test_fetch_real_fixture_5m_eliminates_last_and_fills_metadata(
-    yahoo_provider: Creator[YahooFakeSession], unwrap, make_asset: Creator[Asset], make_series: Creator[Series]
+    make_asset: Creator[Asset],
+    make_series: Creator[Series],
+    unwrap: Unwrap[FetchData],
+    yahoo_provider: Creator[YahooFakeSession],
 ):
     with open("tests/data/yahoo_gold_intraday.json") as f:
         fake_json = json.load(f)
@@ -221,13 +224,15 @@ def test_fetch_real_fixture_5m_eliminates_last_and_fills_metadata(
     series = make_series(asset, interval="5m")
     start = make_identity(datetime(2026, 8, 11, 10, 30, tzinfo=UTC))
     end = make_identity(datetime(2026, 8, 11, 12, tzinfo=UTC))
+
     result = fake.provider.fetch(series, asset, start=start, end=end, is_incremental=False)
+
     fetch_result = unwrap(result)
     points = fetch_result.points
     assert len(points) == 16, "last point eliminated (not aligned)"
     last_point: SeriesPoint = points[-1]
     assert last_point.time == datetime(2026, 8, 11, 11, 45, tzinfo=UTC)
-
+    assert fetch_result.metadata is not None
     metadata: AssetMetadata = fetch_result.metadata
     assert metadata.short_name == "Gold Dec 26"
     assert metadata.long_name is None

@@ -12,7 +12,7 @@ from finance.common.model import Asset, Series
 from finance.common.time_utils import UTC
 from finance.fetch.fred import FredProvider
 from tests.support.fakes import FakeProvider
-from tests.support.types import AssertError, Creator, Factory
+from tests.support.types import AssertError, AssertFetchOk, Creator, Factory
 
 type FredFakeSession = FakeProvider[FredProvider]
 
@@ -22,7 +22,7 @@ NOW = CandleIdentity(datetime(1, 1, 1), is_daily=True, interval=timedelta(0))
 
 def test_fred_fetch_normal_with_skipped(
     fred_provider: Factory[FredFakeSession],
-    assert_ok,
+    assert_fetch_ok: AssertFetchOk,
     make_asset: Creator[Asset],
     make_series: Creator[Series],
 ):
@@ -44,7 +44,7 @@ def test_fred_fetch_normal_with_skipped(
     # now is ignored
     result = fake.provider.fetch(make_series(asset), asset, NOW, NOW, True)
     # no change in date as the date is a label, not a timestamp
-    assert_ok(result, datetime(2024, 5, 9, 0, 0, 0, tzinfo=UTC), 2.34)
+    assert_fetch_ok(result, datetime(2024, 5, 9, 0, 0, 0, tzinfo=UTC), 2.34)
     assert result.ok is True
     assert len(result.payload.points) == 1, "Ignored invalid values"
 

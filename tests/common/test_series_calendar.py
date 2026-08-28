@@ -5,7 +5,7 @@
 from datetime import date, datetime, time, timedelta
 from zoneinfo import ZoneInfo
 
-from finance.common.model import Asset, Series
+from finance.common.model import Asset, AssetMetadata, Series
 from finance.common.series_calendar import SeriesCalendar
 from finance.common.time_utils import UTC
 from tests.support.types import Creator
@@ -32,7 +32,9 @@ def make_calendar(
     )
 
 
-def test_from_asset_for_series(make_asset: Creator[Asset], make_series: Creator[Series], make_metadata):
+def test_from_asset_for_series(
+    make_asset: Creator[Asset], make_series: Creator[Series], make_metadata: Creator[AssetMetadata]
+):
     metadata = make_metadata(timezone=ZoneInfo("America/Chicago"), first_trade_date=date(2023, 1, 1))
     asset = make_asset(config_metadata=metadata)
     series = make_series(asset, publication_offset="14h")

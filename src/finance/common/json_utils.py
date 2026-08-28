@@ -32,37 +32,21 @@ class JsonReader:
         self.value = value
         self.context = context
 
+    # ---------------
+    # Public methods
+    # ---------------
+
+    def ensure_type[T](self, value: JsonLike, type: type[T], message: str) -> T:
+        if not isinstance(value, type):
+            raise self.error(message, subject=value)
+        return value
+
     def error(self, message: str, subject: Any = "", level: int = 0) -> ParseError:
         subject = str(subject)
         parts = [part for part in (self.context, subject) if part]
         prefix = f"{':'.join(parts)}: " if parts else ""
         postfix = f" (level: {level})" if level > 0 else ""
         return ParseError(f"{prefix}{message}{postfix}")
-
-    def _normalize_path(self, path: JsonPath) -> list[JsonPathPart] | None:
-        if path is None:
-            return None
-        return [path] if isinstance(path, str) else path
-
-    def is_empty(self):
-        return not self.value
-
-    def items(self) -> Iterator[tuple[str, JsonReader]]:
-        if self.value is None:
-            return iter(())
-
-        if not isinstance(self.value, dict):
-            raise self.error("value must be a JSON object", subject=self.value)
-
-        return ((key, JsonReader(value)) for key, value in self.value.items())
-
-    def get_any(
-        self, path: JsonPath = None, *, allow_missing: AllowMissing = "leaf", default: JsonLike = None
-    ) -> JsonLike:
-        value = self.get_path(path, allow_missing=allow_missing)
-        if isinstance(value, Sentinel):
-            return default
-        return value
 
     @overload
     def get[T: JsonLike](self, expected_type: type[T], path: JsonPath = None, *, default: None = None) -> T | None: ...
@@ -76,21 +60,13 @@ class JsonReader:
             return value
         return self._validate(path, value, expected_type)
 
-    def require[T: JsonLike](self, expected_type: type[T], path: JsonPath = None) -> T:
-        value = self.get_path(path, allow_missing="no")
-        return self._validate(path, value, expected_type)
-
-    def get_object(self, path: JsonPath = None, allow_missing: AllowMissing = "leaf") -> JsonObject:
-        value = self.get_any(path, allow_missing=allow_missing)
-        if isinstance(value, Sentinel) or value is None:
-            # not 100% pure to equate None to an empty object, but good enough for our purposes, and makes types a lot easier
-            return {}
-        if not isinstance(value, dict):
-            raise self.error("must refer to an object", subject=path)
+    def get_any(
+        self, path: JsonPath = None, *, allow_missing: AllowMissing = "leaf", default: JsonLike = None
+    ) -> JsonLike:
+        value = self.get_path(path, allow_missing=allow_missing)
+        if isinstance(value, Sentinel):
+            return default
         return value
-
-    def require_object(self, path: JsonPath = None) -> JsonObject:
-        return self.get_object(path, allow_missing="no")
 
     @overload
     def get_array(
@@ -110,19 +86,19 @@ class JsonReader:
 
         return self._get_array(path, allow_missing, lambda item: self._validate(path, item, expected_type))
 
-    def _get_array[T: JsonLike](
-        self, path: JsonPath, allow_missing: AllowMissing = "no", validator: Callable[[JsonLike], T] | None = None
-    ) -> JsonArray | list[T]:
-        value = self.get_any(path, allow_missing=allow_missing, default=[])
+    def get_first_array_value(self, path: JsonPath, allow_missing: AllowMissing = "no") -> JsonLike:
+        allow2 = allow_missing if allow_missing != "leaf" else "no"
+        array = self.get_array(path, allow_missing=allow2)
+        if not array:
+            raise self.error("expected at least one array value", subject=path)
+        return array[0]
 
-        if isinstance(value, dict):
-            raise self.error("must refer to a list", subject=path)
-
-        values: JsonArray = value if isinstance(value, list) else [value]
-
-        if validator is None:
-            return values
-        return [validator(item) for item in values]
+    def get_first_object_value(self, path: JsonPath, allow_missing: AllowMissing = "no") -> JsonLike:
+        allow2 = allow_missing if allow_missing != "leaf" else "no"
+        obj = self.get_object(path, allow2)
+        if not obj:
+            raise self.error("expected at least one object value", subject=path)
+        return next(iter(obj.values()))
 
     @overload
     def get_nullable_array(
@@ -147,23 +123,13 @@ class JsonReader:
 
         return self._get_array(path, allow_missing, validate)
 
-    def reader_for(self, path: JsonPath, allow_missing: AllowMissing = "no", context: str = "") -> JsonReader:
+    def get_object(self, path: JsonPath = None, allow_missing: AllowMissing = "leaf") -> JsonObject:
         value = self.get_any(path, allow_missing=allow_missing)
-        context = self.context if context == "" else context
-        return JsonReader(value, context)
-
-    def _validate[T: JsonLike](self, path: JsonPath, value: JsonLike, expected_type: type[T]) -> T:
-        if type(value) is expected_type:
-            return cast(T, value)
-
-        if expected_type is float and type(value) is int:
-            return cast(T, float(value))
-
-        raise self.error(f"'{value}' must be of type {expected_type.__name__}", subject=path)
-
-    def ensure_type[T](self, value: JsonLike, type: type[T], message: str) -> T:
-        if not isinstance(value, type):
-            raise self.error(message, subject=value)
+        if isinstance(value, Sentinel) or value is None:
+            # not 100% pure to equate None to an empty object, but good enough for our purposes, and makes types a lot easier
+            return {}
+        if not isinstance(value, dict):
+            raise self.error("must refer to an object", subject=path)
         return value
 
     @overload
@@ -210,16 +176,58 @@ class JsonReader:
 
         return current
 
-    def get_first_object_value(self, path: JsonPath, allow_missing: AllowMissing = "no") -> JsonLike:
-        allow2 = allow_missing if allow_missing != "leaf" else "no"
-        obj = self.get_object(path, allow2)
-        if not obj:
-            raise self.error("expected at least one object value", subject=path)
-        return next(iter(obj.values()))
+    def is_empty(self):
+        return not self.value
 
-    def get_first_array_value(self, path: JsonPath, allow_missing: AllowMissing = "no") -> JsonLike:
-        allow2 = allow_missing if allow_missing != "leaf" else "no"
-        array = self.get_array(path, allow_missing=allow2)
-        if not array:
-            raise self.error("expected at least one array value", subject=path)
-        return array[0]
+    def items(self) -> Iterator[tuple[str, JsonReader]]:
+        if self.value is None:
+            return iter(())
+
+        if not isinstance(self.value, dict):
+            raise self.error("value must be a JSON object", subject=self.value)
+
+        return ((key, JsonReader(value)) for key, value in self.value.items())
+
+    def reader_for(self, path: JsonPath, allow_missing: AllowMissing = "no", context: str = "") -> JsonReader:
+        value = self.get_any(path, allow_missing=allow_missing)
+        context = self.context if context == "" else context
+        return JsonReader(value, context)
+
+    def require[T: JsonLike](self, expected_type: type[T], path: JsonPath = None) -> T:
+        value = self.get_path(path, allow_missing="no")
+        return self._validate(path, value, expected_type)
+
+    def require_object(self, path: JsonPath = None) -> JsonObject:
+        return self.get_object(path, allow_missing="no")
+
+    # ----------------
+    # Private methods
+    # ----------------
+
+    def _get_array[T: JsonLike](
+        self, path: JsonPath, allow_missing: AllowMissing = "no", validator: Callable[[JsonLike], T] | None = None
+    ) -> JsonArray | list[T]:
+        value = self.get_any(path, allow_missing=allow_missing, default=[])
+
+        if isinstance(value, dict):
+            raise self.error("must refer to a list", subject=path)
+
+        values: JsonArray = value if isinstance(value, list) else [value]
+
+        if validator is None:
+            return values
+        return [validator(item) for item in values]
+
+    def _normalize_path(self, path: JsonPath) -> list[JsonPathPart] | None:
+        if path is None:
+            return None
+        return [path] if isinstance(path, str) else path
+
+    def _validate[T: JsonLike](self, path: JsonPath, value: JsonLike, expected_type: type[T]) -> T:
+        if type(value) is expected_type:
+            return cast(T, value)
+
+        if expected_type is float and type(value) is int:
+            return cast(T, float(value))
+
+        raise self.error(f"'{value}' must be of type {expected_type.__name__}", subject=path)

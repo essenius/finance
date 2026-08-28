@@ -27,69 +27,6 @@ class LogConfig:
         )
 
 
-@dataclass
-class TimescaleConfig:
-    host: str
-    dbname: str
-    user: str
-    password: str
-    port: int
-    sslmode: str
-    sslrootcert: str
-
-    max_batch_size: int
-    max_batch_age: timedelta
-
-    CONNECTION_FIELDS = ("host", "port", "dbname", "user", "password", "sslmode", "sslrootcert")
-    MANDATORY_FIELDS = ("host", "db", "user", "password")
-
-    @classmethod
-    def validate(cls, config: JsonObject) -> Result[None]:
-        reader = JsonReader(config)
-        missing = []
-        for field in cls.MANDATORY_FIELDS:
-            if not reader.get(str, field):
-                missing.append(field)
-        if len(missing) == 0:
-            return Success(None)
-        return Failure(reason="TimescaleDB configuration incomplete", error=f"Missing mandatory fields: {missing}")
-
-    @classmethod
-    def from_config(cls, config: JsonObject) -> TimescaleConfig:
-        reader = JsonReader(config)
-        return cls(
-            host=reader.require(str, "host"),
-            port=reader.get(int, "port", default=5432),
-            dbname=reader.require(str, "db"),
-            user=reader.require(str, "user"),
-            password=reader.require(str, "password"),
-            sslmode=reader.get(str, "ssl_mode", default="verify-full"),
-            sslrootcert=reader.get(str, "ssl_root_cert", default="system"),
-            max_batch_size=reader.get(int, "max_batch_size", default=1000),
-            max_batch_age=timedelta(seconds=reader.get(float, "max_batch_age_seconds", default=2.0)),
-        )
-
-    def connect_config(self) -> dict:
-        return {field: getattr(self, field) for field in self.CONNECTION_FIELDS}
-
-
-@dataclass
-class SweepConfig:
-    window: timedelta
-    cadence: timedelta
-
-    @classmethod
-    def from_config(cls, config: JsonObject, context: str = "") -> SweepConfig:
-        reader = JsonReader(config)
-        window = require_duration(reader.get(str, "window", default="0"), context)
-        cadence = require_duration(reader.get(str, "cadence", default="0"), context)
-        return cls(window=window, cadence=cadence)
-
-    @classmethod
-    def zero(cls) -> SweepConfig:
-        return cls(window=timedelta(0), cadence=timedelta(0))
-
-
 @dataclass(frozen=True)
 class ProviderConfig:
     name: str
@@ -155,3 +92,66 @@ class ProviderConfig:
 
     def get_sweep(self, interval: timedelta) -> SweepConfig:
         return self.get_from_duration_table(interval, self.sweep) or SweepConfig.zero()
+
+
+@dataclass
+class SweepConfig:
+    window: timedelta
+    cadence: timedelta
+
+    @classmethod
+    def from_config(cls, config: JsonObject, context: str = "") -> SweepConfig:
+        reader = JsonReader(config)
+        window = require_duration(reader.get(str, "window", default="0"), context)
+        cadence = require_duration(reader.get(str, "cadence", default="0"), context)
+        return cls(window=window, cadence=cadence)
+
+    @classmethod
+    def zero(cls) -> SweepConfig:
+        return cls(window=timedelta(0), cadence=timedelta(0))
+
+
+@dataclass
+class TimescaleConfig:
+    host: str
+    dbname: str
+    user: str
+    password: str
+    port: int
+    sslmode: str
+    sslrootcert: str
+
+    max_batch_size: int
+    max_batch_age: timedelta
+
+    CONNECTION_FIELDS = ("host", "port", "dbname", "user", "password", "sslmode", "sslrootcert")
+    MANDATORY_FIELDS = ("host", "db", "user", "password")
+
+    @classmethod
+    def validate(cls, config: JsonObject) -> Result[None]:
+        reader = JsonReader(config)
+        missing = []
+        for field in cls.MANDATORY_FIELDS:
+            if not reader.get(str, field):
+                missing.append(field)
+        if len(missing) == 0:
+            return Success(None)
+        return Failure(reason="TimescaleDB configuration incomplete", error=f"Missing mandatory fields: {missing}")
+
+    @classmethod
+    def from_config(cls, config: JsonObject) -> TimescaleConfig:
+        reader = JsonReader(config)
+        return cls(
+            host=reader.require(str, "host"),
+            port=reader.get(int, "port", default=5432),
+            dbname=reader.require(str, "db"),
+            user=reader.require(str, "user"),
+            password=reader.require(str, "password"),
+            sslmode=reader.get(str, "ssl_mode", default="verify-full"),
+            sslrootcert=reader.get(str, "ssl_root_cert", default="system"),
+            max_batch_size=reader.get(int, "max_batch_size", default=1000),
+            max_batch_age=timedelta(seconds=reader.get(float, "max_batch_age_seconds", default=2.0)),
+        )
+
+    def connect_config(self) -> dict:
+        return {field: getattr(self, field) for field in self.CONNECTION_FIELDS}

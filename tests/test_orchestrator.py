@@ -93,7 +93,7 @@ def test_unwrap_failure_with_throw():
 
 
 def test_prepare_loads_state_and_reconciles_backend(
-    orchestrator: Orchestrator, backend: Mock, registry: Mock, state: Mock
+    backend: Mock, orchestrator: Orchestrator, registry: Mock, state: Mock
 ):
     asset = Mock(name="asset")
     stored_asset = Mock(name="stored_asset")
@@ -131,7 +131,7 @@ def test_prepare_loads_state_and_reconciles_backend(
 
 
 def test_prepare_does_not_persist_when_nothing_changed(
-    orchestrator: Orchestrator, backend: Mock, registry: Mock, state: Mock
+    backend: Mock, orchestrator: Orchestrator, registry: Mock, state: Mock
 ):
     state.load.return_value = Success(0)
     backend.get_assets.return_value = Success([])
@@ -152,7 +152,7 @@ def test_prepare_does_not_persist_when_nothing_changed(
     backend.refresh_short_lived_series_ids.assert_called_once_with()
 
 
-def test_prepare_continues_when_wal_load_fails(orchestrator: Orchestrator, backend: Mock, registry: Mock, state: Mock):
+def test_prepare_continues_when_wal_load_fails(backend: Mock, orchestrator: Orchestrator, registry: Mock, state: Mock):
     state.load.return_value = Failure(reason="WAL error")
 
     backend.get_assets.return_value = Success([])
@@ -170,7 +170,7 @@ def test_prepare_continues_when_wal_load_fails(orchestrator: Orchestrator, backe
 
 
 def test_ingest_points_ingests_all_points_and_updates_range(
-    orchestrator: Orchestrator, state: Mock, series: Mock, ts: Creator[datetime]
+    orchestrator: Orchestrator, series: Mock, state: Mock, ts: Creator[datetime]
 ):
 
     first = SeriesPoint(series.id, time=ts(0), close=0.0)
@@ -198,7 +198,7 @@ def test_ingest_points_ingests_all_points_and_updates_range(
 
 
 def test_ingest_points_does_not_update_range_when_point_ingestion_fails(
-    orchestrator: Orchestrator, state: Mock, series: Mock
+    orchestrator: Orchestrator, series: Mock, state: Mock
 ):
     points = []
 
@@ -219,7 +219,7 @@ def test_ingest_points_does_not_update_range_when_point_ingestion_fails(
     state.update_state.assert_not_called()
 
 
-def test_handle_fetch_response_failed_fetch(orchestrator: Orchestrator, registry: Mock, backend: Mock):
+def test_handle_fetch_response_failed_fetch(backend: Mock, orchestrator: Orchestrator, registry: Mock):
     result = Failure(reason="fetch failed", error="connection error")
 
     assert orchestrator.handle_fetch_response(result) is False
@@ -242,7 +242,7 @@ def test_handle_fetch_response_ingests_points_no_metadata(orchestrator: Orchestr
 
 
 def test_handle_fetch_response_registers_provider_metadata_without_persisting(
-    orchestrator: Orchestrator, backend: Mock, registry: Mock, series: Mock
+    backend: Mock, orchestrator: Orchestrator, registry: Mock, series: Mock
 ):
     metadata = AssetMetadata(short_name="abc")
 
@@ -258,7 +258,7 @@ def test_handle_fetch_response_registers_provider_metadata_without_persisting(
 
 
 def test_handle_fetch_response_persists_changed_asset_metadata(
-    orchestrator: Orchestrator, registry: Mock, backend: Mock, series: Mock
+    backend: Mock, orchestrator: Orchestrator, registry: Mock, series: Mock
 ):
     metadata = AssetMetadata(short_name="abc")
     asset = Mock()
@@ -316,7 +316,7 @@ def test_finalize_saves_state_and_returns_one_when_fetches_failed(orchestrator, 
     state.save.assert_called_once_with()
 
 
-def test_run_prepares_processes_fetches_and_finalizes(orchestrator: Orchestrator, fetcher: Mock):
+def test_run_prepares_processes_fetches_and_finalizes(fetcher: Mock, orchestrator: Orchestrator):
     orchestrator.prepare = Mock()
     orchestrator.handle_fetch_response = Mock(return_value=True)
     orchestrator.finalize = Mock(return_value=0)
@@ -339,7 +339,7 @@ def test_run_prepares_processes_fetches_and_finalizes(orchestrator: Orchestrator
     orchestrator.finalize.assert_called_once_with(0)
 
 
-def test_run_counts_failed_fetch_responses(orchestrator: Orchestrator, fetcher: Mock):
+def test_run_counts_failed_fetch_responses(fetcher: Mock, orchestrator: Orchestrator):
     orchestrator.prepare = Mock()
     orchestrator.handle_fetch_response = Mock(side_effect=[True, False, False, True])
     orchestrator.finalize = Mock(return_value=1)
@@ -354,7 +354,7 @@ def test_run_counts_failed_fetch_responses(orchestrator: Orchestrator, fetcher: 
     orchestrator.finalize.assert_called_once_with(2)
 
 
-def test_run_finalizes_successfully_when_nothing_is_fetched(orchestrator: Orchestrator, fetcher: Mock):
+def test_run_finalizes_successfully_when_nothing_is_fetched(fetcher: Mock, orchestrator: Orchestrator):
     orchestrator.prepare = Mock()
     orchestrator.handle_fetch_response = Mock()
     orchestrator.finalize = Mock(return_value=0)

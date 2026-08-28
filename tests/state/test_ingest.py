@@ -10,7 +10,7 @@ from finance.common.types import Failure, Success, Unwrap
 from tests.support.types import AssertError, Creator, Factory, StateContext, WalContext
 
 
-def test_ingest_enqueues_and_does_not_update_state(state_env: StateContext, make_entry: Creator[WalContext]):
+def test_ingest_enqueues_and_does_not_update_state(make_entry: Creator[WalContext], state_env: StateContext):
     state, backend, wal = state_env
 
     point = make_entry().point
@@ -27,7 +27,7 @@ def test_ingest_enqueues_and_does_not_update_state(state_env: StateContext, make
     assert state.series.get(1) is None
 
 
-def test_ingest_enqueues_and_removes_wal_entry(state_env: StateContext, make_entry: Creator[WalContext]):
+def test_ingest_enqueues_and_removes_wal_entry(make_entry: Creator[WalContext], state_env: StateContext):
     state, backend, wal = state_env
 
     point = make_entry().point
@@ -64,7 +64,7 @@ def test_load_flushes_fifo_until_empty(
 
 
 def test_load_stops_on_first_failure(
-    state_env: StateContext, two_wal_entries: Factory[list[SeriesPoint]], assert_error: AssertError
+    assert_error: AssertError, state_env: StateContext, two_wal_entries: Factory[list[SeriesPoint]]
 ):
     state, backend, wal = state_env
 
@@ -80,7 +80,7 @@ def test_load_stops_on_first_failure(
     wal.dequeue_multiple.assert_not_called()
 
 
-def test_ingest_first_point(state_env: StateContext, make_entry: Creator[WalContext], unwrap: Unwrap[int]):
+def test_ingest_first_point(make_entry: Creator[WalContext], state_env: StateContext, unwrap: Unwrap[int]):
     state, backend, wal = state_env
     backend.add_point.return_value = Success(0)
 
@@ -94,7 +94,7 @@ def test_ingest_first_point(state_env: StateContext, make_entry: Creator[WalCont
     wal.enqueue.assert_called_once()
 
 
-def test_ingest_no_first_timestamp(state_env: StateContext, make_entry: Creator[WalContext], ts: Creator[datetime]):
+def test_ingest_no_first_timestamp(make_entry: Creator[WalContext], state_env: StateContext, ts: Creator[datetime]):
     state, backend, wal = state_env
     backend.add_point.return_value = Success(0)
     # inconsistent state, should treat last as None
@@ -109,7 +109,7 @@ def test_ingest_no_first_timestamp(state_env: StateContext, make_entry: Creator[
     wal.enqueue.assert_called_once()
 
 
-def test_ingest_no_last_timestamp(state_env: StateContext, make_entry: Creator[WalContext], ts: Creator[datetime]):
+def test_ingest_no_last_timestamp(make_entry: Creator[WalContext], state_env: StateContext, ts: Creator[datetime]):
     state, backend, wal = state_env
     backend.add_point.return_value = Success(0)
     # inconsistent state, should treat last as None
@@ -126,7 +126,7 @@ def test_ingest_no_last_timestamp(state_env: StateContext, make_entry: Creator[W
 
 
 def test_ingest_new_write_with_flush(
-    state_env: StateContext, make_entry: Creator[WalContext], make_series_state: Creator[SeriesState]
+    make_entry: Creator[WalContext], make_series_state: Creator[SeriesState], state_env: StateContext
 ):
     state, backend, wal = state_env
     backend.add_point.return_value = Success(1)
@@ -143,7 +143,7 @@ def test_ingest_new_write_with_flush(
 
 
 def test_ingest_in_range(
-    state_env: StateContext, make_entry: Creator[WalContext], make_series_state: Creator[SeriesState]
+    make_entry: Creator[WalContext], make_series_state: Creator[SeriesState], state_env: StateContext
 ):
     state, backend, wal = state_env
     backend.add_point.return_value = Success(2)
@@ -161,7 +161,7 @@ def test_ingest_in_range(
 
 
 def test_ingest_before_range(
-    state_env: StateContext, make_entry: Creator[WalContext], make_series_state: Creator[SeriesState]
+    make_entry: Creator[WalContext], make_series_state: Creator[SeriesState], state_env: StateContext
 ):
     state, backend, wal = state_env
     backend.add_point.return_value = Success(1)
@@ -177,7 +177,7 @@ def test_ingest_before_range(
     wal.enqueue.assert_called_once()
 
 
-def test_sync_backend_different_counts(state_env: StateContext, make_entry: Creator[WalContext], unwrap: Unwrap[int]):
+def test_sync_backend_different_counts(make_entry: Creator[WalContext], state_env: StateContext, unwrap: Unwrap[int]):
     state, backend, wal = state_env
     backend.add_point.return_value = Success(1)
     wal.dequeue_multiple.side_effect = None

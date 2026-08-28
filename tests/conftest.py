@@ -146,7 +146,7 @@ def make_asset(make_metadata: Creator[AssetMetadata]) -> Creator[Asset]:
 
 
 @pytest.fixture
-def make_series(make_asset: Creator[Asset]) -> Creator[Series]:
+def make_series() -> Creator[Series]:
     def _make(asset: Asset, **overrides) -> Series:
 
         defaults = {

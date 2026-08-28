@@ -2,7 +2,6 @@
 # Licensed under the Apache License, Version 2.0. See the LICENSE file for details.
 # File: tests/fetch/conftest.py
 
-from collections.abc import Callable
 from datetime import datetime
 
 import pytest
@@ -14,11 +13,11 @@ from finance.fetch.ecb import EcbProvider
 from finance.fetch.fred import FredProvider
 from finance.fetch.yahoo import YahooProvider
 from tests.support.fakes import FakeProvider, FakeSession
-from tests.support.types import Creator, Factory
+from tests.support.types import AssertFetchOk, Creator, Factory
 
 
 @pytest.fixture
-def assert_ok() -> Callable[[FetchResult, datetime, float], None]:
+def assert_fetch_ok() -> AssertFetchOk:
     def _assert_ok(result: FetchResult, time: datetime, close: float) -> None:
         assert result.ok is True
         point = result.payload.points[0]

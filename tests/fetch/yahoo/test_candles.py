@@ -26,10 +26,10 @@ def normalize(input: int) -> datetime:
 
 
 def test_extract_candles_valid_output_structure(
-    yahoo_provider: Creator[YahooFakeSession],
-    unwrap: Unwrap[SeriesPoints],
     make_asset: Creator[Asset],
     make_series: Creator[Series],
+    unwrap: Unwrap[SeriesPoints],
+    yahoo_provider: Creator[YahooFakeSession],
 ):
     """Full candle set → all fields extracted correctly."""
 
@@ -70,10 +70,10 @@ def test_extract_candles_valid_output_structure(
 
 
 def test_extract_candles_skips_invalid(
-    yahoo_provider: Factory[YahooFakeSession],
     assert_warning: AssertWarning,
     make_asset: Creator[Asset],
     make_series: Creator[Series],
+    yahoo_provider: Factory[YahooFakeSession],
 ):
     """Invalid candle (None value) → skipped with warning."""
 
@@ -106,10 +106,10 @@ def test_extract_candles_skips_invalid(
 
 
 def test_extract_candles_signals_incomplete(
-    yahoo_provider: Factory[YahooFakeSession],
     assert_warning: AssertWarning,
     make_asset: Creator[Asset],
     make_series: Creator[Series],
+    yahoo_provider: Factory[YahooFakeSession],
 ):
     """Invalid candle (None value) → skipped with warning."""
 
@@ -145,7 +145,9 @@ def test_extract_candles_signals_incomplete(
 
 
 def test_extract_candles_handles_missing_timestamp(
-    yahoo_provider: Factory[YahooFakeSession], make_asset: Creator[Asset], make_series: Creator[Series]
+    make_asset: Creator[Asset],
+    make_series: Creator[Series],
+    yahoo_provider: Factory[YahooFakeSession],
 ):
     """Missing timestamp array → fail."""
 
@@ -161,10 +163,10 @@ def test_extract_candles_handles_missing_timestamp(
 
 
 def test_extract_candles_empty_result(
-    yahoo_provider: Factory[YahooFakeSession],
-    unwrap: Unwrap[SeriesPoints],
     make_asset: Creator[Asset],
     make_series: Creator[Series],
+    unwrap: Unwrap[SeriesPoints],
+    yahoo_provider: Factory[YahooFakeSession],
 ):
     """Quote exists but contains no arrays → empty candle list."""
 

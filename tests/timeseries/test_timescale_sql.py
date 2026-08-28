@@ -64,7 +64,7 @@ def test_execute_write_fails(assert_error: AssertError, sql_with_fake_connection
     fake_sql.cursor.fetchone.assert_called_once()
 
 
-def test_close(sql_with_fake_psycopg: ContextManagerFactory[FakeSql], assert_error: AssertError):
+def test_close(assert_error: AssertError, sql_with_fake_psycopg: ContextManagerFactory[FakeSql]):
 
     with sql_with_fake_psycopg(execute_error=True) as fake_sql:
         sql = fake_sql.client
@@ -76,7 +76,7 @@ def test_close(sql_with_fake_psycopg: ContextManagerFactory[FakeSql], assert_err
         assert_error(result, reason="Database startup failed", error="Execute boom!")
 
 
-def test_connect_exception(sql_with_fake_psycopg: ContextManagerFactory[FakeSql], assert_error: AssertError):
+def test_connect_exception(assert_error: AssertError, sql_with_fake_psycopg: ContextManagerFactory[FakeSql]):
     with sql_with_fake_psycopg(execute_error=True) as fake_sql:
         sql = fake_sql.client
         sql.close_connection()

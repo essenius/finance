@@ -58,12 +58,6 @@ class MarketDataProvider:
         self.session = session or requests.Session()
         self.now = now_provider
 
-    def _safe_call[T](self, fn: Callable[[], Result[T]], context: str) -> Result[T]:
-        try:
-            return fn()
-        except Exception as exc:
-            return Failure(reason=f"Exception during {context}", error=exc)
-
     def fetch(
         self, series: Series, asset: Asset, start: CandleIdentity, end: CandleIdentity, is_incremental: bool
     ) -> FetchResult:
@@ -71,3 +65,9 @@ class MarketDataProvider:
         Fetch data points for the given asset definition between start_time and end_time.
         """
         return Failure(reason="fetch not implemented")
+
+    def _safe_call[T](self, fn: Callable[[], Result[T]], context: str) -> Result[T]:
+        try:
+            return fn()
+        except Exception as exc:
+            return Failure(reason=f"Exception during {context}", error=exc)

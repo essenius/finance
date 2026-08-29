@@ -32,40 +32,9 @@ class EcbProvider(MarketDataProvider):
             fn=lambda: self._fetch(series, asset.provider_code, params), context=f"ECB fetch of {series.name}"
         )
 
-    def _make_url(self, provider_code: str) -> str | None:
-        parts = provider_code.split("_")
-        if len(parts) != 2:
-            return None
-        base, quote = parts
-        if not base or not quote:
-            return None
-        return f"{BASE_URL}/EXR/D.{base}.{quote}.SP00.A"
-
-    def _parse_points(self, series: Series, observations: JsonObject, date_values: JsonArray) -> list[SeriesPoint]:
-        points: list[SeriesPoint] = []
-
-        date_reader = JsonReader(date_values)
-        for obs_index, obs_value in observations.items():
-            try:
-                # we use the id field as we only need the date.
-                date_str = date_reader.require(str, [int(obs_index), "id"])
-
-                value_reader = JsonReader(obs_value)
-                value = value_reader.get_array(expected_type=float)[0]
-            except Exception:
-                continue
-
-            try:
-                # synchronize timestamps to UTC (ECB uses CET).
-                # this is OK, since for daily data, dates are labels. We always
-                # express them in UTC midnight so we can compare different series.
-                time = datetime.fromisoformat(date_str).replace(tzinfo=UTC)
-            except Exception:
-                continue
-
-            points.append(SeriesPoint(series_id=series.require_id(), time=time, close=value))
-
-        return points
+    # ----------------
+    # Private methods
+    # ----------------
 
     def _fetch(self, series: Series, provider_code: str, params: dict) -> FetchResult:
         """provider_code: e.g. 'USD_EUR'"""
@@ -104,3 +73,38 @@ class EcbProvider(MarketDataProvider):
         points = self._parse_points(series, observations, date_values)
         result = FetchData(series_id=series.require_id(), points=points, metadata=None)
         return Success(result)
+
+    def _make_url(self, provider_code: str) -> str | None:
+        parts = provider_code.split("_")
+        if len(parts) != 2:
+            return None
+        base, quote = parts
+        if not base or not quote:
+            return None
+        return f"{BASE_URL}/EXR/D.{base}.{quote}.SP00.A"
+
+    def _parse_points(self, series: Series, observations: JsonObject, date_values: JsonArray) -> list[SeriesPoint]:
+        points: list[SeriesPoint] = []
+
+        date_reader = JsonReader(date_values)
+        for obs_index, obs_value in observations.items():
+            try:
+                # we use the id field as we only need the date.
+                date_str = date_reader.require(str, [int(obs_index), "id"])
+
+                value_reader = JsonReader(obs_value)
+                value = value_reader.get_array(expected_type=float)[0]
+            except Exception:
+                continue
+
+            try:
+                # synchronize timestamps to UTC (ECB uses CET).
+                # this is OK, since for daily data, dates are labels. We always
+                # express them in UTC midnight so we can compare different series.
+                time = datetime.fromisoformat(date_str).replace(tzinfo=UTC)
+            except Exception:
+                continue
+
+            points.append(SeriesPoint(series_id=series.require_id(), time=time, close=value))
+
+        return points

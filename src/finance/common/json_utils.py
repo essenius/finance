@@ -38,15 +38,8 @@ class JsonReader:
 
     def ensure_type[T](self, value: JsonLike, type: type[T], message: str) -> T:
         if not isinstance(value, type):
-            raise self.error(message, subject=value)
+            raise self._error(message, subject=value)
         return value
-
-    def error(self, message: str, subject: Any = "", level: int = 0) -> ParseError:
-        subject = str(subject)
-        parts = [part for part in (self.context, subject) if part]
-        prefix = f"{':'.join(parts)}: " if parts else ""
-        postfix = f" (level: {level})" if level > 0 else ""
-        return ParseError(f"{prefix}{message}{postfix}")
 
     @overload
     def get[T: JsonLike](self, expected_type: type[T], path: JsonPath = None, *, default: None = None) -> T | None: ...
@@ -90,14 +83,14 @@ class JsonReader:
         allow2 = allow_missing if allow_missing != "leaf" else "no"
         array = self.get_array(path, allow_missing=allow2)
         if not array:
-            raise self.error("expected at least one array value", subject=path)
+            raise self._error("expected at least one array value", subject=path)
         return array[0]
 
     def get_first_object_value(self, path: JsonPath, allow_missing: AllowMissing = "no") -> JsonLike:
         allow2 = allow_missing if allow_missing != "leaf" else "no"
         obj = self.get_object(path, allow2)
         if not obj:
-            raise self.error("expected at least one object value", subject=path)
+            raise self._error("expected at least one object value", subject=path)
         return next(iter(obj.values()))
 
     @overload
@@ -129,7 +122,7 @@ class JsonReader:
             # not 100% pure to equate None to an empty object, but good enough for our purposes, and makes types a lot easier
             return {}
         if not isinstance(value, dict):
-            raise self.error("must refer to an object", subject=path)
+            raise self._error("must refer to an object", subject=path)
         return value
 
     @overload
@@ -157,14 +150,14 @@ class JsonReader:
                 if value is None:
                     if allow_missing == "yes" or (allow_missing == "leaf" and is_leaf):
                         return Sentinel()
-                    raise self.error(f"Missing required key `{part}`", subject=path, level=i)
+                    raise self._error(f"Missing required key `{part}`", subject=path, level=i)
                 current = value
                 continue
 
             if isinstance(current, list):
                 part = self.ensure_type(part, int, "array index must be an int")
                 if part < 0 or part >= len(current):
-                    raise self.error(f"index `{part}` out of range", subject=path, level=i)
+                    raise self._error(f"index `{part}` out of range", subject=path, level=i)
                 current = current[part]
                 continue
             message = (
@@ -172,7 +165,7 @@ class JsonReader:
                 if current is None
                 else f"type `{None if current is None else type(current).__name__}` is not a container"
             )
-            raise self.error(message, subject=path, level=i)
+            raise self._error(message, subject=path, level=i)
 
         return current
 
@@ -184,7 +177,7 @@ class JsonReader:
             return iter(())
 
         if not isinstance(self.value, dict):
-            raise self.error("value must be a JSON object", subject=self.value)
+            raise self._error("value must be a JSON object", subject=self.value)
 
         return ((key, JsonReader(value)) for key, value in self.value.items())
 
@@ -204,13 +197,20 @@ class JsonReader:
     # Private methods
     # ----------------
 
+    def _error(self, message: str, subject: Any = "", level: int = 0) -> ParseError:
+        subject = str(subject)
+        parts = [part for part in (self.context, subject) if part]
+        prefix = f"{':'.join(parts)}: " if parts else ""
+        postfix = f" (level: {level})" if level > 0 else ""
+        return ParseError(f"{prefix}{message}{postfix}")
+
     def _get_array[T: JsonLike](
         self, path: JsonPath, allow_missing: AllowMissing = "no", validator: Callable[[JsonLike], T] | None = None
     ) -> JsonArray | list[T]:
         value = self.get_any(path, allow_missing=allow_missing, default=[])
 
         if isinstance(value, dict):
-            raise self.error("must refer to a list", subject=path)
+            raise self._error("must refer to a list", subject=path)
 
         values: JsonArray = value if isinstance(value, list) else [value]
 
@@ -230,4 +230,4 @@ class JsonReader:
         if expected_type is float and type(value) is int:
             return cast(T, float(value))
 
-        raise self.error(f"'{value}' must be of type {expected_type.__name__}", subject=path)
+        raise self._error(f"'{value}' must be of type {expected_type.__name__}", subject=path)

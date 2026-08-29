@@ -112,7 +112,7 @@ def test_prepare_loads_state_and_reconciles_backend(
     registry.reconcile_series.return_value = reconciled
     backend.store_series.return_value = Success(stored_series)
 
-    orchestrator.prepare()
+    orchestrator._prepare()
 
     state.load.assert_called_once_with()
     backend.get_assets.assert_called_once_with()
@@ -143,7 +143,7 @@ def test_prepare_does_not_persist_when_nothing_changed(
     reconciled.to_persist = []
     registry.reconcile_series.return_value = reconciled
 
-    orchestrator.prepare()
+    orchestrator._prepare()
 
     backend.store_asset.assert_not_called()
     backend.store_series.assert_not_called()
@@ -163,7 +163,7 @@ def test_prepare_continues_when_wal_load_fails(backend: Mock, orchestrator: Orch
     reconciled.to_persist = []
     registry.reconcile_series.return_value = reconciled
 
-    orchestrator.prepare()
+    orchestrator._prepare()
 
     backend.get_assets.assert_called_once_with()
     backend.get_series.assert_called_once_with()
@@ -182,7 +182,7 @@ def test_ingest_points_ingests_all_points_and_updates_range(
     state.series[series.id] = stored_range
 
     # first test: order low-high
-    result = orchestrator.ingest_points([first, second], series)
+    result = orchestrator._ingest_points([first, second], series)
 
     assert result is True, "low-high ok"
     assert state.ingest.call_args_list == [((first,), {}), ((second,), {})]
@@ -191,7 +191,7 @@ def test_ingest_points_ingests_all_points_and_updates_range(
     # second test: order high-low
     state.update_state.reset_mock()
 
-    result = orchestrator.ingest_points([second, first], series)
+    result = orchestrator._ingest_points([second, first], series)
 
     assert result is True, "high-low ok"
     state.update_state.assert_called_once_with(42, first.time, second.time)
@@ -212,7 +212,7 @@ def test_ingest_points_does_not_update_range_when_point_ingestion_fails(
         Success(None),
     ]
 
-    all_ok = orchestrator.ingest_points(points, series)
+    all_ok = orchestrator._ingest_points(points, series)
 
     assert not all_ok
     assert state.ingest.call_count == 3
@@ -222,7 +222,7 @@ def test_ingest_points_does_not_update_range_when_point_ingestion_fails(
 def test_handle_fetch_response_failed_fetch(backend: Mock, orchestrator: Orchestrator, registry: Mock):
     result = Failure(reason="fetch failed", error="connection error")
 
-    assert orchestrator.handle_fetch_response(result) is False
+    assert orchestrator._handle_fetch_response(result) is False
 
     registry.get_series_by_id.assert_not_called()
     backend.store_asset.assert_not_called()
@@ -232,12 +232,12 @@ def test_handle_fetch_response_ingests_points_no_metadata(orchestrator: Orchestr
     point = SeriesPoint(series_id=series.id, time=datetime(2026, 8, 20, 10, tzinfo=UTC), close=0.0)
     result = Success(FetchData(series_id=series.id, metadata=None, points=[point]))
     registry.get_series_by_id.return_value = series
-    orchestrator.ingest_points = Mock(return_value=True)
+    orchestrator._ingest_points = Mock(return_value=True)
 
-    assert orchestrator.handle_fetch_response(result) is True
+    assert orchestrator._handle_fetch_response(result) is True
 
     registry.get_series_by_id.assert_called_once_with(42)
-    orchestrator.ingest_points.assert_called_once_with([point], series)
+    orchestrator._ingest_points.assert_called_once_with([point], series)
     registry.register_provider_metadata.assert_not_called()
 
 
@@ -251,7 +251,7 @@ def test_handle_fetch_response_registers_provider_metadata_without_persisting(
 
     registry.get_series_by_id.return_value = series
     registry.register_provider_metadata.return_value = None
-    assert orchestrator.handle_fetch_response(result) is True
+    assert orchestrator._handle_fetch_response(result) is True
 
     registry.register_provider_metadata.assert_called_once_with(123, metadata)
     backend.store_asset.assert_not_called()
@@ -271,7 +271,7 @@ def test_handle_fetch_response_persists_changed_asset_metadata(
     registry.register_provider_metadata.return_value = asset
     backend.store_asset.return_value = Success(stored_asset)
 
-    assert orchestrator.handle_fetch_response(result) is True
+    assert orchestrator._handle_fetch_response(result) is True
 
     registry.register_provider_metadata.assert_called_once_with(123, metadata)
     backend.store_asset.assert_called_once_with(asset)
@@ -289,11 +289,11 @@ def test_handle_fetch_response_processes_metadata_and_points(orchestrator: Orche
     registry.get_series_by_id.return_value = series
     registry.register_provider_metadata.return_value = None
 
-    orchestrator.ingest_points = Mock(return_value=True)
+    orchestrator._ingest_points = Mock(return_value=True)
 
-    assert orchestrator.handle_fetch_response(result) is True
+    assert orchestrator._handle_fetch_response(result) is True
     registry.register_provider_metadata.assert_called_once_with(123, metadata)
-    orchestrator.ingest_points.assert_called_once_with([point], series)
+    orchestrator._ingest_points.assert_called_once_with([point], series)
 
 
 def test_handle_fetch_response_no_points_does_not_ingest(orchestrator: Orchestrator, registry: Mock, series: Mock):
@@ -301,25 +301,25 @@ def test_handle_fetch_response_no_points_does_not_ingest(orchestrator: Orchestra
     result = Success(FetchData(series_id=series.id, metadata=None, points=[]))
     registry.get_series_by_id.return_value = series
 
-    orchestrator.ingest_points = Mock()
-    assert orchestrator.handle_fetch_response(result) is True
-    orchestrator.ingest_points.assert_not_called()
+    orchestrator._ingest_points = Mock()
+    assert orchestrator._handle_fetch_response(result) is True
+    orchestrator._ingest_points.assert_not_called()
 
 
 def test_finalize_saves_state_and_returns_zero_on_success(orchestrator: Orchestrator, state: Mock):
-    assert orchestrator.finalize(0) == 0
+    assert orchestrator._finalize(0) == 0
     state.save.assert_called_once_with()
 
 
-def test_finalize_saves_state_and_returns_one_when_fetches_failed(orchestrator, state):
-    assert orchestrator.finalize(3) == 1
+def test_finalize_saves_state_and_returns_one_when_fetches_failed(orchestrator: Orchestrator, state: Mock):
+    assert orchestrator._finalize(3) == 1
     state.save.assert_called_once_with()
 
 
 def test_run_prepares_processes_fetches_and_finalizes(fetcher: Mock, orchestrator: Orchestrator):
-    orchestrator.prepare = Mock()
-    orchestrator.handle_fetch_response = Mock(return_value=True)
-    orchestrator.finalize = Mock(return_value=0)
+    orchestrator._prepare = Mock()
+    orchestrator._handle_fetch_response = Mock(return_value=True)
+    orchestrator._finalize = Mock(return_value=0)
 
     result1 = Mock()
     result2 = Mock()
@@ -328,40 +328,40 @@ def test_run_prepares_processes_fetches_and_finalizes(fetcher: Mock, orchestrato
 
     assert orchestrator.run() == 0
 
-    orchestrator.prepare.assert_called_once_with()
+    orchestrator._prepare.assert_called_once_with()
     fetcher.fetch_incrementally.assert_called_once_with(orchestrator.state)
 
-    assert orchestrator.handle_fetch_response.call_args_list == [
+    assert orchestrator._handle_fetch_response.call_args_list == [
         ((result1,), {}),
         ((result2,), {}),
     ]
 
-    orchestrator.finalize.assert_called_once_with(0)
+    orchestrator._finalize.assert_called_once_with(0)
 
 
 def test_run_counts_failed_fetch_responses(fetcher: Mock, orchestrator: Orchestrator):
-    orchestrator.prepare = Mock()
-    orchestrator.handle_fetch_response = Mock(side_effect=[True, False, False, True])
-    orchestrator.finalize = Mock(return_value=1)
+    orchestrator._prepare = Mock()
+    orchestrator._handle_fetch_response = Mock(side_effect=[True, False, False, True])
+    orchestrator._finalize = Mock(return_value=1)
 
     results = [Mock(), Mock(), Mock(), Mock()]
     fetcher.fetch_incrementally.return_value = results
 
     assert orchestrator.run() == 1
 
-    orchestrator.prepare.assert_called_once_with()
-    orchestrator.handle_fetch_response.assert_has_calls([call(result) for result in results])
-    orchestrator.finalize.assert_called_once_with(2)
+    orchestrator._prepare.assert_called_once_with()
+    orchestrator._handle_fetch_response.assert_has_calls([call(result) for result in results])
+    orchestrator._finalize.assert_called_once_with(2)
 
 
 def test_run_finalizes_successfully_when_nothing_is_fetched(fetcher: Mock, orchestrator: Orchestrator):
-    orchestrator.prepare = Mock()
-    orchestrator.handle_fetch_response = Mock()
-    orchestrator.finalize = Mock(return_value=0)
+    orchestrator._prepare = Mock()
+    orchestrator._handle_fetch_response = Mock()
+    orchestrator._finalize = Mock(return_value=0)
 
     fetcher.fetch_incrementally.return_value = []
 
     assert orchestrator.run() == 0
 
-    orchestrator.handle_fetch_response.assert_not_called()
-    orchestrator.finalize.assert_called_once_with(0)
+    orchestrator._handle_fetch_response.assert_not_called()
+    orchestrator._finalize.assert_called_once_with(0)

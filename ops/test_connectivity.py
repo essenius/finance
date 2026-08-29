@@ -54,7 +54,7 @@ def main():
 
     orchestrator = Orchestrator(backend=backend, registry=registry, state=Mock(), fetcher=Mock())
     print("Preparing...")
-    orchestrator.prepare()
+    orchestrator._prepare()
 
     print_list(list(registry.all_assets()), "registry assets")
     print_list(list(registry.all_series()), "registry series")

@@ -33,6 +33,15 @@ class TimescaleSqlClient:
                 self._connection.close()
         self._connection = None
 
+    def execute_many(
+        self, query: LiteralString, params: list[tuple], *, table: str | None = None, context: str
+    ) -> Result[None]:
+        return self._database_operation(lambda cur: cur.executemany(self._resolve_query(query, table), params), context)
+
+    def is_connected(self) -> bool:
+        conn = self._connection
+        return conn is not None and not conn.closed
+
     def execute_read(
         self, query: LiteralString, params: tuple | None = None, *, table: str | None = None, context: str = "Read"
     ) -> Result[SqlReadPayload]:
@@ -57,15 +66,6 @@ class TimescaleSqlClient:
             return row[0]
 
         return self._database_operation(operation, context)
-
-    def execute_many(
-        self, query: LiteralString, params: list[tuple], *, table: str | None = None, context: str
-    ) -> Result[None]:
-        return self._database_operation(lambda cur: cur.executemany(self._resolve_query(query, table), params), context)
-
-    def is_connected(self) -> bool:
-        conn = self._connection
-        return conn is not None and not conn.closed
 
     # ---  Private methods ---
 

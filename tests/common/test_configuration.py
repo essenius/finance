@@ -36,12 +36,12 @@ def test_provider_config_history_limits_and_overlap():
     }
     assert config.timeout_delta() == timedelta(seconds=20)
 
-    assert config.get_history_limit(timedelta(minutes=0)) == timedelta(days=5)
-    assert config.get_history_limit(timedelta(minutes=5)) == timedelta(days=5)
-    assert config.get_history_limit(timedelta(hours=1)) == timedelta(days=60)
-    assert config.get_history_limit(timedelta(hours=6)) == timedelta(days=60)
-    assert config.get_history_limit(timedelta(days=1)) is None
-    assert config.get_history_limit(timedelta(weeks=1)) is None
+    assert config._get_history_limit(timedelta(minutes=0)) == timedelta(days=5)
+    assert config._get_history_limit(timedelta(minutes=5)) == timedelta(days=5)
+    assert config._get_history_limit(timedelta(hours=1)) == timedelta(days=60)
+    assert config._get_history_limit(timedelta(hours=6)) == timedelta(days=60)
+    assert config._get_history_limit(timedelta(days=1)) is None
+    assert config._get_history_limit(timedelta(weeks=1)) is None
 
     intraday_sweep = SweepConfig(timedelta(hours=2), timedelta(minutes=30))
     daily_sweep = SweepConfig(timedelta(days=7), timedelta(days=1))
@@ -60,8 +60,8 @@ def test_provider_config_empty_history_limits_and_overlaps():
     assert config.api_key is None
     assert config.history_limits == {}
 
-    assert config.get_history_limit(timedelta(minutes=0)) is None
-    assert config.get_history_limit(timedelta(weeks=1)) is None
+    assert config._get_history_limit(timedelta(minutes=0)) is None
+    assert config._get_history_limit(timedelta(weeks=1)) is None
     assert config.get_sweep(timedelta(weeks=1)) == SweepConfig(window=timedelta(0), cadence=timedelta(0))
 
 

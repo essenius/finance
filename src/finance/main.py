@@ -29,15 +29,15 @@ from .timeseries.timescale_sql import TimescaleSqlClient
 logger = AppLogger()
 
 
+def main(argv: list[str] | None = None) -> int:
+    args = parse_args(argv)
+    return run(args.config)
+
+
 def parse_args(argv: list[str] | None = None):
     parser = argparse.ArgumentParser(description="Finance ingestion service")
     parser.add_argument("--config", type=Path, help="Path to the YAML configuration file (absolute or relative)")
     return parser.parse_args(argv)
-
-
-def main(argv: list[str] | None = None) -> int:
-    args = parse_args(argv)
-    return run(args.config)
 
 
 def run(

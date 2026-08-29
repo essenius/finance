@@ -43,9 +43,9 @@ class ProviderConfig:
         reader = JsonReader(config)
         name = reader.require(str, "name")
         raw_history_limits = reader.get_object(["constraints", "history_limits"], allow_missing="yes")
-        history_limits: dict[timedelta, timedelta | None] = ProviderConfig.parse_duration_table(raw_history_limits)
+        history_limits: dict[timedelta, timedelta | None] = ProviderConfig._parse_duration_table(raw_history_limits)
         sweep_config = reader.get_object("sweep")
-        sweep: dict[timedelta, SweepConfig] = ProviderConfig.parse_sweep_table(sweep_config)
+        sweep: dict[timedelta, SweepConfig] = ProviderConfig._parse_sweep_table(sweep_config)
         api_key = reader.get(str, "api_key")
         return cls(
             name=name,
@@ -55,26 +55,15 @@ class ProviderConfig:
             sweep=sweep,
         )
 
-    @staticmethod
-    def parse_sweep_table(config: dict) -> dict[timedelta, SweepConfig]:
-        sweeps = {}
-        for key, sweep_config in config.items():
-            sweep_key = timedelta(0) if key == "default" else parse_duration(key, "key")
-            sweep = SweepConfig.from_config(sweep_config or {}, f"sweep of key '{key}'")
-            sweeps[sweep_key] = sweep
-        return sweeps
+    def get_sweep(self, interval: timedelta) -> SweepConfig:
+        return self._get_from_duration_table(interval, self.sweep) or SweepConfig.zero()
+
+    # ----------------
+    # Private methods
+    # ----------------
 
     @staticmethod
-    def parse_duration_table(config: JsonObject) -> dict[timedelta, timedelta | None]:
-        limits = {}
-        for key, limit in config.items():
-            limit_key = timedelta(0) if key == "default" else parse_duration(key, "key")
-            limit_value = None if limit is None else parse_duration(str(limit), f"theshold of key '{key}'")
-            limits[limit_key] = limit_value
-        return limits
-
-    @staticmethod
-    def get_from_duration_table[T](delta: timedelta, table: dict[timedelta, T] | None) -> T | None:
+    def _get_from_duration_table[T](delta: timedelta, table: dict[timedelta, T] | None) -> T | None:
         if not table:
             return None
 
@@ -87,11 +76,26 @@ class ProviderConfig:
 
         return chosen
 
-    def get_history_limit(self, interval: timedelta) -> timedelta | None:
-        return self.get_from_duration_table(interval, self.history_limits)
+    def _get_history_limit(self, interval: timedelta) -> timedelta | None:
+        return self._get_from_duration_table(interval, self.history_limits)
 
-    def get_sweep(self, interval: timedelta) -> SweepConfig:
-        return self.get_from_duration_table(interval, self.sweep) or SweepConfig.zero()
+    @staticmethod
+    def _parse_duration_table(config: JsonObject) -> dict[timedelta, timedelta | None]:
+        limits = {}
+        for key, limit in config.items():
+            limit_key = timedelta(0) if key == "default" else parse_duration(key, "key")
+            limit_value = None if limit is None else parse_duration(str(limit), f"theshold of key '{key}'")
+            limits[limit_key] = limit_value
+        return limits
+
+    @staticmethod
+    def _parse_sweep_table(config: dict) -> dict[timedelta, SweepConfig]:
+        sweeps = {}
+        for key, sweep_config in config.items():
+            sweep_key = timedelta(0) if key == "default" else parse_duration(key, "key")
+            sweep = SweepConfig.from_config(sweep_config or {}, f"sweep of key '{key}'")
+            sweeps[sweep_key] = sweep
+        return sweeps
 
 
 @dataclass
@@ -127,16 +131,8 @@ class TimescaleConfig:
     CONNECTION_FIELDS = ("host", "port", "dbname", "user", "password", "sslmode", "sslrootcert")
     MANDATORY_FIELDS = ("host", "db", "user", "password")
 
-    @classmethod
-    def validate(cls, config: JsonObject) -> Result[None]:
-        reader = JsonReader(config)
-        missing = []
-        for field in cls.MANDATORY_FIELDS:
-            if not reader.get(str, field):
-                missing.append(field)
-        if len(missing) == 0:
-            return Success(None)
-        return Failure(reason="TimescaleDB configuration incomplete", error=f"Missing mandatory fields: {missing}")
+    def connect_config(self) -> dict:
+        return {field: getattr(self, field) for field in self.CONNECTION_FIELDS}
 
     @classmethod
     def from_config(cls, config: JsonObject) -> TimescaleConfig:
@@ -153,5 +149,13 @@ class TimescaleConfig:
             max_batch_age=timedelta(seconds=reader.get(float, "max_batch_age_seconds", default=2.0)),
         )
 
-    def connect_config(self) -> dict:
-        return {field: getattr(self, field) for field in self.CONNECTION_FIELDS}
+    @classmethod
+    def validate(cls, config: JsonObject) -> Result[None]:
+        reader = JsonReader(config)
+        missing = []
+        for field in cls.MANDATORY_FIELDS:
+            if not reader.get(str, field):
+                missing.append(field)
+        if len(missing) == 0:
+            return Success(None)
+        return Failure(reason="TimescaleDB configuration incomplete", error=f"Missing mandatory fields: {missing}")

@@ -39,6 +39,10 @@ class FredProvider(MarketDataProvider):
 
         return self._safe_call(fn=lambda: self._fetch(series, params), context="FRED fetch")
 
+    # ----------------
+    # Private methods
+    # ----------------
+
     def _fetch(self, series: Series, params: dict) -> FetchResult:
 
         response = self.session.get(BASE_URL, params=params, timeout=self.provider_config.timeout_delta().seconds)

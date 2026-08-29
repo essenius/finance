@@ -61,31 +61,71 @@ class Orchestrator:
         self.state = state
         self.fetcher = fetcher
 
-    def prepare(self):
-        logger.info(f"Finance version: {finance.__version__} started.")
+    def run(self) -> int:
+        self._prepare()
 
-        logger.debug("Loading state")
-        flush_count = unwrap(self.state.load(), throw=False)
-        logger.debug(f"Flushed {flush_count} items from the WAL")
+        fetch_failures = 0
 
-        logger.debug("Reconciling loaded config with backend")
-        saved_assets = unwrap(self.backend.get_assets())
-        to_persist = self.registry.merge_and_find_new_assets(saved_assets)
-        for asset in to_persist:
-            logger.debug(f"Persisting asset {asset.name}")
-            stored = unwrap(self.backend.store_asset(asset))
-            self.registry.register_stored_asset(stored)
+        for result in self.fetcher.fetch_incrementally(self.state):
+            if not self._handle_fetch_response(result):
+                fetch_failures += 1
 
-        saved_series = unwrap(self.backend.get_series())
-        reconciled_series = self.registry.reconcile_series(saved_series)
-        for series in reconciled_series.to_persist:
-            logger.debug(f"Persisting series {series.name}")
-            stored = unwrap(self.backend.store_series(series))
-            self.registry.register_stored_series(stored)
+        return self._finalize(fetch_failures)
 
-        self.backend.refresh_short_lived_series_ids()
+    # ----------------
+    # Private methods
+    # ----------------
 
-    def ingest_points(self, points: SeriesPoints, series: Series):
+    def _finalize(self, fetch_failures: int) -> int:
+
+        if fetch_failures:
+            logger.error(f"Fetch completed with {fetch_failures} failures")
+
+        # CO:# calculate and save composites -- removed from V1 scope. TODO: re-introduce
+        # CO: engine = unwrap(composite_engine_builder(composites, state))
+
+        # CO: composite_failures = 0
+
+        # CO: for result in engine.evaluate_incrementally():
+        # CO:    cfg = composites[result.series_name]
+        # CO:    #bucket = buckets[cfg["timeseries"]]
+        # CO:    if not process_result(result, state, cfg.get("tags")):
+        # CO:        composite_failures += 1
+
+        # CO: if composite_failures:
+        # CO:    logger.error(f"Composite evaluation completed with {composite_failures} failures")
+
+        # Persist state
+        self.state.save()
+
+        if fetch_failures:  # or composite_failures:
+            return 1
+        logger.info("Done.")
+        return 0
+
+    def _handle_fetch_response(self, result: FetchResult) -> bool:
+        payload = unwrap(result, throw=False)
+
+        if result.ok is False:
+            return False
+
+        payload = require(payload)
+        series = self.registry.get_series_by_id(payload.series_id)
+
+        if payload.metadata is not None:
+            asset_to_save = self.registry.register_provider_metadata(
+                require(series.asset_id, "asset ID"), payload.metadata
+            )
+            if asset_to_save is not None:
+                stored = unwrap(self.backend.store_asset(asset_to_save))
+                self.registry.register_stored_asset(stored)
+
+        if not payload.points:
+            return True
+
+        return self._ingest_points(payload.points, series)
+
+    def _ingest_points(self, points: SeriesPoints, series: Series):
         # this assumes the payload is ordered low-high or high-low
         batch_first = points[0].time
         batch_last = points[-1].time
@@ -115,62 +155,26 @@ class Orchestrator:
             )
         return all_ok
 
-    def handle_fetch_response(self, result: FetchResult) -> bool:
-        payload = unwrap(result, throw=False)
+    def _prepare(self):
+        logger.info(f"Finance version: {finance.__version__} started.")
 
-        if result.ok is False:
-            return False
+        logger.debug("Loading state")
+        flush_count = unwrap(self.state.load(), throw=False)
+        logger.debug(f"Flushed {flush_count} items from the WAL")
 
-        payload = require(payload)
-        series = self.registry.get_series_by_id(payload.series_id)
+        logger.debug("Reconciling loaded config with backend")
+        saved_assets = unwrap(self.backend.get_assets())
+        to_persist = self.registry.merge_and_find_new_assets(saved_assets)
+        for asset in to_persist:
+            logger.debug(f"Persisting asset {asset.name}")
+            stored = unwrap(self.backend.store_asset(asset))
+            self.registry.register_stored_asset(stored)
 
-        if payload.metadata is not None:
-            asset_to_save = self.registry.register_provider_metadata(
-                require(series.asset_id, "asset ID"), payload.metadata
-            )
-            if asset_to_save is not None:
-                stored = unwrap(self.backend.store_asset(asset_to_save))
-                self.registry.register_stored_asset(stored)
+        saved_series = unwrap(self.backend.get_series())
+        reconciled_series = self.registry.reconcile_series(saved_series)
+        for series in reconciled_series.to_persist:
+            logger.debug(f"Persisting series {series.name}")
+            stored = unwrap(self.backend.store_series(series))
+            self.registry.register_stored_series(stored)
 
-        if not payload.points:
-            return True
-
-        return self.ingest_points(payload.points, series)
-
-    def finalize(self, fetch_failures: int) -> int:
-
-        if fetch_failures:
-            logger.error(f"Fetch completed with {fetch_failures} failures")
-
-        # CO:# calculate and save composites -- removed from V1 scope. TODO: re-introduce
-        # CO: engine = unwrap(composite_engine_builder(composites, state))
-
-        # CO: composite_failures = 0
-
-        # CO: for result in engine.evaluate_incrementally():
-        # CO:    cfg = composites[result.series_name]
-        # CO:    #bucket = buckets[cfg["timeseries"]]
-        # CO:    if not process_result(result, state, cfg.get("tags")):
-        # CO:        composite_failures += 1
-
-        # CO: if composite_failures:
-        # CO:    logger.error(f"Composite evaluation completed with {composite_failures} failures")
-
-        # Persist state
-        self.state.save()
-
-        if fetch_failures:  # or composite_failures:
-            return 1
-        logger.info("Done.")
-        return 0
-
-    def run(self) -> int:
-        self.prepare()
-
-        fetch_failures = 0
-
-        for result in self.fetcher.fetch_incrementally(self.state):
-            if not self.handle_fetch_response(result):
-                fetch_failures += 1
-
-        return self.finalize(fetch_failures)
+        self.backend.refresh_short_lived_series_ids()

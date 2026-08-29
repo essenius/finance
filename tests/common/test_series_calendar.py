@@ -59,9 +59,9 @@ def test_snap_forward_interval_and_back():
 
     interval = timedelta(minutes=15)
     calendar = make_calendar(interval=interval)
-    assert calendar.get_publication_offset() == interval
-    assert not calendar.is_overnight()
-    assert not calendar.is_daily()
+    assert calendar._get_publication_offset() == interval
+    assert not calendar._is_overnight()
+    assert not calendar._is_daily()
 
     base = datetime(2026, 7, 10, 9, tzinfo=UTC)
     assert calendar.snap_forward_interval(base) == base, "snap forward did not change"
@@ -90,12 +90,12 @@ def test_weekly_limits_days_normal_series():
     )
 
     # Friday is in the weekend, so start/end must be before
-    start, end = calendar.weekly_trading_window_days(date(2026, 7, 10))
+    start, end = calendar._weekly_trading_window_days(date(2026, 7, 10))
     assert start == date(2026, 7, 4)
     assert end == date(2026, 7, 8)
 
     # Sunday is not in the weekend, so start must be before and end after
-    start, end = calendar.weekly_trading_window_days(date(2026, 7, 12))
+    start, end = calendar._weekly_trading_window_days(date(2026, 7, 12))
     assert start == date(2026, 7, 11)
     assert end == date(2026, 7, 15)
 
@@ -109,18 +109,18 @@ def test_weekly_limits_days_overnight_series():
     )
 
     # Saturday
-    start, end = calendar.weekly_trading_window_days(date(2026, 7, 11))
+    start, end = calendar._weekly_trading_window_days(date(2026, 7, 11))
     # Start is Monday, as that is the trading day (even though it starts Sunday)
     assert start == date(2026, 7, 6)
     assert end == date(2026, 7, 10)
 
     # Monday
-    start, end = calendar.weekly_trading_window_days(date(2026, 7, 6))
+    start, end = calendar._weekly_trading_window_days(date(2026, 7, 6))
     assert start == date(2026, 7, 6)
     assert end == date(2026, 7, 10)
 
     # Sunday
-    start, end = calendar.weekly_trading_window_days(date(2026, 7, 12))
+    start, end = calendar._weekly_trading_window_days(date(2026, 7, 12))
     assert start == date(2026, 7, 6)
     assert end == date(2026, 7, 10)
 
@@ -136,12 +136,12 @@ def test_weekly_limits_normal_series():
     )
 
     # Friday is in the weekend, so start/end must be before
-    start, end = calendar.weekly_trading_window(datetime(2026, 7, 10, 15, tzinfo=dubai))
+    start, end = calendar._weekly_trading_window(datetime(2026, 7, 10, 15, tzinfo=dubai))
     assert start == datetime(2026, 7, 4, 9, tzinfo=dubai)
     assert end == datetime(2026, 7, 8, 16, tzinfo=dubai)
 
     # Sunday is not in the weekend, so start must be before and end after
-    start, end = calendar.weekly_trading_window(datetime(2026, 7, 12, 15, tzinfo=dubai))
+    start, end = calendar._weekly_trading_window(datetime(2026, 7, 12, 15, tzinfo=dubai))
     assert start == datetime(2026, 7, 11, 9, tzinfo=dubai)
     assert end == datetime(2026, 7, 15, 16, tzinfo=dubai)
 
@@ -155,18 +155,18 @@ def test_weekly_limits_overnight_series():
     )
 
     # Friday after market close
-    start, end = calendar.weekly_trading_window(datetime(2026, 7, 10, 6, tzinfo=sydney))
+    start, end = calendar._weekly_trading_window(datetime(2026, 7, 10, 6, tzinfo=sydney))
     # Start is Sunday, not Monday
     assert start == datetime(2026, 7, 5, 14, tzinfo=sydney)
     assert end == datetime(2026, 7, 10, 4, tzinfo=sydney)
 
     # Monday during trading hours
-    start, end = calendar.weekly_trading_window(datetime(2026, 7, 6, 15, tzinfo=sydney))
+    start, end = calendar._weekly_trading_window(datetime(2026, 7, 6, 15, tzinfo=sydney))
     assert start == datetime(2026, 7, 5, 14, tzinfo=sydney)
     assert end == datetime(2026, 7, 10, 4, tzinfo=sydney)
 
     # Sunday before market open
-    start, end = calendar.weekly_trading_window(datetime(2026, 7, 12, 12, tzinfo=sydney))
+    start, end = calendar._weekly_trading_window(datetime(2026, 7, 12, 12, tzinfo=sydney))
     assert start == datetime(2026, 7, 5, 14, tzinfo=sydney)
     assert end == datetime(2026, 7, 10, 4, tzinfo=sydney)
 
@@ -178,7 +178,7 @@ def test_daily_limits_normal_series():
         market_open=time(9, 0),
         market_close=time(15, 0),
     )
-    start, end = calendar.daily_trading_window_snapped(datetime(2026, 7, 9, 12, tzinfo=hawaii))
+    start, end = calendar._daily_trading_window_snapped(datetime(2026, 7, 9, 12, tzinfo=hawaii))
     assert start == datetime(2026, 7, 9, 9, tzinfo=hawaii)
     assert end == datetime(2026, 7, 9, 15, tzinfo=hawaii)
 
@@ -192,12 +192,12 @@ def test_daily_limits_overnight_series():
     )
 
     # before opening
-    start, end = calendar.daily_trading_window_snapped(datetime(2026, 7, 6, 12, tzinfo=hawaii))
+    start, end = calendar._daily_trading_window_snapped(datetime(2026, 7, 6, 12, tzinfo=hawaii))
     assert start == datetime(2026, 7, 5, 17, tzinfo=hawaii)
     assert end == datetime(2026, 7, 6, 16, tzinfo=hawaii)
 
     # after opening
-    start, end = calendar.daily_trading_window_snapped(datetime(2026, 7, 6, 18, tzinfo=hawaii))
+    start, end = calendar._daily_trading_window_snapped(datetime(2026, 7, 6, 18, tzinfo=hawaii))
     assert start == datetime(2026, 7, 6, 17, tzinfo=hawaii)
     assert end == datetime(2026, 7, 7, 16, tzinfo=hawaii)
 
@@ -305,9 +305,9 @@ def test_snap_forward_identity_daily_overnight():
     )
 
     # tests for helpers while we have a suitable calendar
-    assert calendar.get_publication_offset() == timedelta(hours=4), "4 hours offset from publication label"
-    assert calendar.is_overnight()
-    assert calendar.is_daily()
+    assert calendar._get_publication_offset() == timedelta(hours=4), "4 hours offset from publication label"
+    assert calendar._is_overnight()
+    assert calendar._is_daily()
 
     weekend_started = datetime(2026, 7, 10, 2, 1, tzinfo=UTC)
     next_id = calendar.snap_forward_identity(weekend_started)

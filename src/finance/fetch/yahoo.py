@@ -121,7 +121,7 @@ class YahooProvider(MarketDataProvider):
 
     def _extract_arrays(self, reader: JsonReader) -> Result[tuple[list[int], dict[str, list[float | None]]] | None]:
         try:
-            timestamps = reader.get_array("timestamp", expected_type=int)
+            timestamps = reader.get_array("timestamp", expected_type=int, allow_missing="yes")
             if not timestamps:
                 return Success(None, warnings=["no timestamp in result"])
 
@@ -168,7 +168,6 @@ class YahooProvider(MarketDataProvider):
         except Exception as e:
             return Failure(reason=f"invalid exchange timezone '{timezone_name}': {e}")
 
-        first_trade_date = None
         first_trade_timestamp = meta_reader.get(int, "firstTradeDate", default=0)
         first_trade_date = date_from_timestamp(first_trade_timestamp, timezone)
 

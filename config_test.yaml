@@ -80,18 +80,15 @@ business:
     24x7:
       week_start: sun
       week_end: sat
+      market_open: min
+      market_close: max
 
     24x5: {}
       # defaults are correct
 
     eu_equities:
       timezone: Europe/Amsterdam
-      # if used without quotes, yaml converts this to a sexagesimal number.
-      # As that is ambiguous betweeh hh:mm:ss (hour*3600+minutes*60+seconds) 
-      # and hh:mm (hours*60+minutes), only hh:mm is supported here,
-      # since for open and close times, seconds are not likely to be needed.
-      # if you need hh:mm:ss nonetheless, put it in quotes: "09:30:25"
-      market_open: 09:00
+      market_open: 9:00
       market_close: 17:30
 
     us_equities:
@@ -101,7 +98,7 @@ business:
 
     cboe_equities:
       timezone: America/Chicago
-      market_open: 08:30
+      market_open: 8:30
       market_close: 15:00
 
     cme_futures:
@@ -139,13 +136,9 @@ business:
         name: yahoo
         code: EURUSD=X
       symbol: EURUSD
-      metadata: [24x5, london]
       tags:
-        instrument: forex
-        exchange: FOREX
         region: GLOBAL
-        currency: USD
-        unit: ratio
+        unit: 1 EUR
       series:
         daily: daily
 
@@ -174,14 +167,8 @@ business:
       provider:
         name: yahoo
         code: GC=F
-      symbol: GOLD
-      metadata: us_commodities
-      tags:
-        instrument: commodity
-        exchange: COMMODITY
-        region: GLOBAL
-        currency: USD
-        unit: 100_troy_ounce
+      region: GLOBAL
+      unit: 100_troy_ounce
       series:
         intraday: intraday
         daily: daily
@@ -190,14 +177,8 @@ business:
       provider:
         name: yahoo
         code: CL=F
-      symbol: WTI
-      metadata: us_commodities
-      tags:
-        instrument: commodity
-        exchange: COMMODITY
-        region: GLOBAL
-        currency: USD
-        unit: barrel
+      region: GLOBAL
+      unit: barrel
       series:
         intraday: intraday
         daily: daily
@@ -206,14 +187,8 @@ business:
       provider:
         name: yahoo
         code: BZ=F
-      symbol: BRENT
-      metadata: us_commodities
-      tags:
-        instrument: commodity
-        exchange: COMMODITY
-        region: GLOBAL
-        currency: USD
-        unit: barrel
+      region: GLOBAL
+      unit: barrel
       series:
         intraday: intraday
         daily: daily
@@ -226,13 +201,8 @@ business:
       provider:
         name: yahoo
         code: SHEL
-      metadata: us_equities
-      tags:
-        instrument: equity
-        exchange: NYSE
-        region: GLOBAL
-        currency: USD
-        unit: share
+      region: GLOBAL
+      unit: share
       series:
         intraday: intraday
         daily: daily
@@ -241,39 +211,93 @@ business:
       provider:
         name: yahoo
         code: SHELL.AS
-      symbol: SHELL.AS
-      metadata: eu_equities
-      tags:
-        instrument: equity
-        exchange: EURONEXT
-        region: GLOBAL
-        currency: EUR
-        unit: share
+      region: GLOBAL
+      unit: share
       series:
         intraday: intraday
         daily: daily
 
     # -------------------------
-    # ETFs
+    # ETFs / ETCs
     # -------------------------
 
+    # iShares Core Global Aggregate Bonds
+    euna:
+      provider:
+        name: yahoo
+        code: EUNA.DE
+      region: WORLD
+      unit: share
+      series:
+        intraday: intraday
+        daily: daily
+
+    # Xtrackers MSCI World ex USA UCITS
+    exus:
+      provider:
+        name: yahoo
+        code: EXUS.DE
+      region: WORLD EX US
+      unit: share
+      series:
+        intraday: intraday
+        daily: daily
+
+    # Amundi Euro Govt. Bonds 1-3 yr
+    lyq2:
+      provider:
+        name: yahoo
+        code: LYQ2.DE
+      region: EUROPE
+      unit: share
+      series:
+        intraday: intraday
+        daily: daily
+
+    # iShares Physical Gold ETC
+    ppfb:
+      provider:
+        name: yahoo
+        code: PPFB.DE
+      region: WORLD
+      unit: share
+      series:
+        intraday: intraday
+        daily: daily
+    
+    # Vanguard Global Aggregate Bonds
+    vagf:
+      provider:
+        name: yahoo
+        code: VAGF.DE
+      region: WORLD
+      unit: share
+      series:
+        intraday: intraday
+        daily: daily
+    
+    # Vanguard S&P 500 UCITS ETF USD Acc
+    vuaa:
+      provider:
+        name: yahoo
+        code: VUAA.DE
+      region: US
+      unit: share
+      series:
+        intraday: intraday
+        daily: daily
+
+    # Vanguard FTSE All-World UCITS
     vwce:
       provider:
         name: yahoo
         code: VWCE.AS
-      symbol: VWCE
-      long_name: Vanguard FTSE All-World UCITS ETF USD Acc
-      first_trade_date: 2019-07-23
-      metadata: eu_equities
-      tags:
-        instrument: ETF
-        exchange: AMS
-        region: WORLD
-        currency: EUR
-        unit: share
+      region: WORLD
+      unit: share
       series:
         intraday: intraday
         daily: daily
+
 
     # -------------------------
     # INDEXES
@@ -282,14 +306,8 @@ business:
       provider:
         name: yahoo
         code: ^GSPC
-      symbol: SPX
-      metadata: us_equities
-      tags:
-        instrument: index
-        exchange: NYSE
-        region: US
-        currency: USD
-        unit: index_point
+      region: US
+      unit: index_point
       series:
         daily: daily
 
@@ -297,14 +315,8 @@ business:
       provider:
         name: yahoo
         code: ^VIX
-      symbol: VIX
-      metadata: cboe_equities
-      tags:
-        instrument: index
-        exchange: CBOE
-        region: US
-        currency: USD
-        unit: index_point
+      region: US
+      unit: index_point
       series:
         daily: daily
 
@@ -316,13 +328,8 @@ business:
         name: yahoo
         code: "BTC-USD"
       symbol: BTCUSD
-      metadata: 24x7
-      tags:
-        instrument: crypto
-        exchange: CRYPTO
-        region: GLOBAL
-        currency: USD
-        unit: coin
+      region: GLOBAL
+      unit: coin
       series:
         intraday: intraday
         daily: daily

@@ -3,14 +3,14 @@
 # File: src/finance/fetch/controller.py
 
 from collections.abc import Callable, Iterable
-from datetime import datetime, timedelta
+from datetime import datetime
 
 from finance.common.guards import require
 
 from ..common.applogger import AppLogger
 from ..common.candle_identity import CandleIdentity
 from ..common.configuration import ProviderConfig
-from ..common.model import Asset, FetchResult, Series, SeriesState, SweepConfig
+from ..common.model import Asset, FetchResult, Series, SeriesState
 from ..common.series_calendar import SeriesCalendar
 from ..common.string_enums import SupportedProviders
 from ..common.time_utils import now_second_precision
@@ -44,19 +44,17 @@ def create_providers(providers_config: dict[str, ProviderConfig]) -> dict[str, M
 class FetchController:
     def __init__(
         self,
-        series: Iterable[Series],
         get_asset_by_id: Callable[[int], Asset | None],
         get_provider: Callable[[str], MarketDataProvider | None],
         **kwargs,
     ):
-        self.series_list: Iterable[Series] = series
         self.get_asset_by_id = get_asset_by_id
         self.get_provider = get_provider
         self.now = kwargs.pop("now_provider", now_second_precision)
 
-    def fetch_incrementally(self, state: State) -> Iterable[FetchResult]:
+    def fetch_incrementally(self, series_list: Iterable[Series], state: State) -> Iterable[FetchResult]:
 
-        for series in self.series_list:
+        for series in series_list:
             series_id, asset_id = series.require_ids()
             state_entry = state.get_series_state(series_id)
             asset = self.get_asset_by_id(asset_id)
@@ -117,7 +115,7 @@ class FetchController:
                 end = last_req
             return (start, end, False)
 
-        sweep_start = self._get_sweep_start(state, sweep_config, last_req)
+        sweep_start = state.get_sweep_start(sweep_config, last_req)
         if sweep_start is not None:
             retention = series.retention_delta()
             if retention is not None:
@@ -170,9 +168,3 @@ class FetchController:
         )
         return first_identity, last_identity
 
-    def _get_sweep_start(self, state: SeriesState, sweep: SweepConfig, last: CandleIdentity) -> datetime | None:
-        if sweep.window <= timedelta(0):
-            return None
-        if state.next_sweep is not None and state.next_sweep > last.store_label():
-            return None
-        return state.sweep_start

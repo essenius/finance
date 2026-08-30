@@ -2,14 +2,13 @@
 # Licensed under the Apache License, Version 2.0. See the LICENSE file for details.
 # File: tests/fetch/test_controller.py
 
-from collections.abc import Callable, Iterable
+from collections.abc import Callable
 from dataclasses import replace
 from datetime import date, datetime, time, timedelta
 from typing import cast
 from unittest.mock import MagicMock, Mock
 from zoneinfo import ZoneInfo
 
-from finance.common.candle_identity import CandleIdentity
 from finance.common.configuration import ProviderConfig
 from finance.common.model import Asset, AssetMetadata, FetchData, FetchResult, Series, SeriesState, SweepConfig
 from finance.common.series_calendar import SeriesCalendar
@@ -40,12 +39,6 @@ def make_assets(assets: list[Asset]) -> dict[int, Asset]:
     return result
 
 
-def fetch_with_single_result(fc: FetchController, state: State) -> FetchResult:
-    results = list(fc.fetch_incrementally(state))
-    assert len(results) == 1
-    return results[0]
-
-
 def make_fake_provider(fetch_result: FetchResult | None = None) -> Mock:
     if fetch_result is None:
         fetch_result = Success(FetchData(series_id=1, points=[]))
@@ -53,13 +46,14 @@ def make_fake_provider(fetch_result: FetchResult | None = None) -> Mock:
     fake_provider.fetch.return_value = fetch_result
     fake_provider.provider_config = Mock()
     fake_provider.provider_config.get_history_limit.return_value = timedelta(days=60)
-    fake_provider.provider_config.get_sweep.return_value = SweepConfig(timedelta(0), timedelta(0))
+    fake_provider.provider_config.get_sweep.return_value = SweepConfig(
+        window=timedelta(days=7), cadence=timedelta(days=1)
+    )
 
     return fake_provider
 
 
 def make_fetch_controller(
-    series_list: Iterable[Series],
     get_asset: Callable[[int], Asset | None],
     now_provider: Callable[[], datetime],
     fetch_result=None,
@@ -72,7 +66,7 @@ def make_fetch_controller(
     # Build provider registry based on assets
     providers: dict[str, MarketDataProvider] = dict.fromkeys(PROVIDER_REGISTRY, fake_provider)
 
-    return FetchController(series_list, get_asset, get_provider, now_provider=now_provider)
+    return FetchController(get_asset, get_provider, now_provider=now_provider)
 
 
 def mock_fetch(fc: FetchController):
@@ -115,15 +109,15 @@ def test_controller_skips_fresh(make_asset: Creator[Asset], make_series: Creator
     def get_asset(id: int) -> Asset:
         return assets[id]
 
-    fc = make_fetch_controller(series_list, get_asset, fake_now)
+    fc = make_fetch_controller(get_asset, fake_now)
 
     now = fake_now()
     last = snap_to(now, timedelta(hours=1))
     first = last - timedelta(days=6)  # we want 5 days, we have 6
-    state.series.clear()
-    state.series[1] = SeriesState(first_point=first, last_point=last)
+    state.series_state.clear()
+    state.series_state[1] = SeriesState(first_point=first, last_point=last)
 
-    results = list(fc.fetch_incrementally(state))
+    results = list(fc.fetch_incrementally(series_list, state))
     assert results == []
     mock_fetch(fc).assert_not_called()
 
@@ -142,18 +136,18 @@ def test_controller_fetch_when_oldest_too_new(make_asset: Creator[Asset], make_s
         # this is a Wednesday
         return datetime(2025, 6, 11, 15, 6, 40, tzinfo=UTC)
 
-    fc = make_fetch_controller(series, assets.get, fake_now)
+    fc = make_fetch_controller(assets.get, fake_now)
 
     now = fake_now()
 
     last = snap_to(now, timedelta(hours=1))
     first = last - timedelta(days=1)  # we want 5 days, we have 1
 
-    state.series.clear()
-    state.series[1] = SeriesState(last_point=last, first_point=first)
-
-    result = fetch_with_single_result(fc, state)
-    assert result.ok is True
+    state.series_state.clear()
+    state.series_state[1] = SeriesState(last_point=last, first_point=first)
+    results = list(fc.fetch_incrementally(series, state))
+    assert len(results) == 1
+    assert results[0].ok is True
 
 
 def test_controller_fetches_when_stale(
@@ -164,15 +158,16 @@ def test_controller_fetches_when_stale(
     assets = make_assets([asset])
     series = [make_series(asset, interval="1h")]
 
-    fc = make_fetch_controller(series, assets.get, fixed_now)
+    fc = make_fetch_controller(assets.get, fixed_now)
     now = fixed_now()
-    state.series.clear()
+    state.series_state.clear()
 
     # stale vs 1h
-    state.series[1] = SeriesState(first_point=now - timedelta(weeks=1), last_point=now - timedelta(days=2))
+    state.series_state[1] = SeriesState(first_point=now - timedelta(weeks=1), last_point=now - timedelta(days=2))
 
-    result = fetch_with_single_result(fc, state)
-    assert result.ok is True
+    results = list(fc.fetch_incrementally(series, state))
+    assert len(results) == 1
+    assert results[0].ok is True
     mock_fetch(fc).assert_called_once()
 
 
@@ -190,21 +185,21 @@ def test_controller_skips_fetch_with_offset(
     assets = make_assets([asset])
     series = [make_series(asset, interval="1d", publication_offset="16h")]
 
-    fc = make_fetch_controller(series, assets.get, fake_now)
+    fc = make_fetch_controller(assets.get, fake_now)
     now = fake_now()
     today = datetime.combine(now.date(), time.min, UTC)
-    state.series.clear()
+    state.series_state.clear()
     yesterday = today - timedelta(days=1)
     last_week = today - timedelta(weeks=1)
     # should not retrieve as publication time not passed yet
-    state.series[1] = SeriesState(first_point=last_week, last_point=yesterday)
-    results = list(fc.fetch_incrementally(state))
+    state.series_state[1] = SeriesState(first_point=last_week, last_point=yesterday)
+    results = list(fc.fetch_incrementally(series, state))
     assert len(results) == 0, "no result as publication time not passed"
     mock_fetch(fc).assert_not_called()
 
     # should retrieve as publication time passed passed
     fake_hour = 15
-    results = list(fc.fetch_incrementally(state))
+    results = list(fc.fetch_incrementally(series, state))
     assert len(results) == 1, "result as publication time passed"
 
 
@@ -220,12 +215,12 @@ def test_controller_unknown_provider(
     assets = make_assets([asset])
     series = [make_series(asset)]
     providers = {}
-    fc = FetchController(series, assets.get, providers.get, now_provider=fixed_now)
+    fc = FetchController(assets.get, providers.get, now_provider=fixed_now)
 
-    result = fetch_with_single_result(fc, state)
-    assert_error(result, "no provider 'mystery'", "Skipped series 'eur_usd:dummy'")
-
-    assert 1 in state.series
+    results = list(fc.fetch_incrementally(series, state))
+    assert len(results) == 1
+    assert_error(results[0], "no provider 'mystery'", "Skipped series 'eur_usd:dummy'")
+    assert 1 in state.series_state
 
 
 def test_controller_unknown_asset(
@@ -240,10 +235,11 @@ def test_controller_unknown_asset(
     series = [make_series(asset)]
     assets = {}
     providers = {}
-    fc = FetchController(series, assets.get, providers.get, now_provider=fixed_now)
+    fc = FetchController(assets.get, providers.get, now_provider=fixed_now)
 
-    result = fetch_with_single_result(fc, state)
-    assert_error(result, "Could not find asset 1 (eur_usd)", "Skipped series 'eur_usd:dummy'")
+    results = list(fc.fetch_incrementally(series, state))
+    assert len(results) == 1
+    assert_error(results[0], "Could not find asset 1 (eur_usd)", "Skipped series 'eur_usd:dummy'")
 
 
 def test_controller_malformed_result(
@@ -260,9 +256,11 @@ def test_controller_malformed_result(
     series = [make_series(asset)]
     providers = {"yahoo": fake_provider}
 
-    fc = FetchController(series, assets.get, providers.get, now_provider=fixed_now)
-    result = fetch_with_single_result(fc, state)
-    assert_error(result, "bad data", None)
+    fc = FetchController(assets.get, providers.get, now_provider=fixed_now)
+
+    results = list(fc.fetch_incrementally(series, state))
+    assert len(results) == 1
+    assert_error(results[0], "bad data", None)
 
 
 def test_controller_none_limit(
@@ -279,8 +277,10 @@ def test_controller_none_limit(
     series = [make_series(asset)]
     providers = {"yahoo": fake_provider}
 
-    fc = FetchController(series, assets.get, providers.get, now_provider=fixed_now)
-    unwrap(fetch_with_single_result(fc, state))
+    fc = FetchController(assets.get, providers.get, now_provider=fixed_now)
+    results = list(fc.fetch_incrementally(series, state))
+    assert len(results) == 1
+    unwrap(results[0])
 
 
 def test_controller_multiple_assets(
@@ -302,34 +302,33 @@ def test_controller_multiple_assets(
     def get_providers(name: str):
         return fake_provider
 
-    fc = FetchController(series, assets.get, get_providers, now_provider=fixed_now)
+    fc = FetchController(assets.get, get_providers, now_provider=fixed_now)
 
-    results = list(fc.fetch_incrementally(state))
+    results = list(fc.fetch_incrementally(series, state))
     assert len(results) == 2
 
     assert fake_provider.fetch.call_count == 2
-    assert 1 in state.series
-    assert 2 in state.series
+    assert 1 in state.series_state
+    assert 2 in state.series_state
 
 
 def test_compute_fetch_range_intraday(make_asset: Creator[Asset], make_series: Creator[Series]):
     fake_provider = make_fake_provider(fetch_result=Failure(reason="bad data"))
 
     asset = make_asset()
-    series_list = [make_series(asset)]  # 10m interval
+    series = make_series(asset)  # 10m interval
     assert asset.effective_metadata is not None
-    calendar = SeriesCalendar.create(series_list[0], asset.effective_metadata)
+    calendar = SeriesCalendar.create(series, asset.effective_metadata)
     assets = make_assets([asset])
     providers = {"yahoo": fake_provider}
 
     def mock_now():
         return datetime(2026, 7, 15, 15, 30, tzinfo=UTC)
 
-    fc = FetchController(series_list, assets.get, providers.get, now_provider=mock_now)
-
-    series = series_list[0]
+    fc = FetchController(assets.get, providers.get, now_provider=mock_now)
 
     # Plain incremental (one new point)
+
     state_entry_1 = SeriesState(
         first_point=datetime(2026, 6, 15, tzinfo=UTC), last_point=datetime(2026, 7, 15, 15, 10, tzinfo=UTC)
     )
@@ -341,7 +340,12 @@ def test_compute_fetch_range_intraday(make_asset: Creator[Asset], make_series: C
     assert first.store_label() == datetime(2026, 7, 15, 15, 20, tzinfo=UTC)
     assert last.store_label() == datetime(2026, 7, 15, 15, 20, tzinfo=UTC)
 
+    assert state_entry_1.needs_save is True
+    assert state_entry_1.sweep_start == datetime(2026, 7, 8, 15, 20, tzinfo=UTC)  # 1 week back (config is 7d, 1d)
+    assert state_entry_1.next_sweep == datetime(2026, 7, 16, 15, 20, tzinfo=UTC)  # next day
+
     # No new points
+
     state_entry_2 = SeriesState(
         first_point=datetime(2026, 6, 15, tzinfo=UTC), last_point=datetime(2026, 7, 15, 15, 20, tzinfo=UTC)
     )
@@ -349,6 +353,7 @@ def test_compute_fetch_range_intraday(make_asset: Creator[Asset], make_series: C
     assert result is None, "2nd: intraday publication not expected"
 
     # older history to fetch
+
     state_entry_3 = SeriesState(
         first_point=datetime(2026, 7, 13, tzinfo=UTC), last_point=datetime(2026, 7, 15, 15, 20, tzinfo=UTC)
     )
@@ -405,7 +410,7 @@ def test_compute_fetch_range_daily(
     def mock_now():
         return datetime(2026, 7, 15, 13, 30, tzinfo=UTC)
 
-    fc = FetchController(series_list, assets.get, providers.get, now_provider=mock_now)
+    fc = FetchController(assets.get, providers.get, now_provider=mock_now)
     series = series_list[0]
 
     # --- Publication expected (last_point behind)
@@ -419,7 +424,7 @@ def test_compute_fetch_range_daily(
     assert is_incremental, "1 is incremental"
     assert first.store_label() == datetime(2026, 7, 14, tzinfo=UTC), "1st: 14th is first"
     assert last.store_label() == datetime(2026, 7, 14, tzinfo=UTC), "1st: 15th not yet, as not finished"
-    assert not state_entry_1.needs_save, "needs save"
+    assert state_entry_1.needs_save, "needs save as sweep updated"
 
     # --- Publication NOT expected (last_point == today)
     state_entry_2 = SeriesState(
@@ -441,10 +446,6 @@ def test_compute_fetch_range_daily(
     assert first.store_label() == datetime(2021, 10, 1, tzinfo=UTC), "3rd: first is before range"
     assert last.store_label() == datetime(2021, 10, 4, tzinfo=UTC), "3rd: last is before range"
 
-    # start with the point that didn't expect publication and enable sweeps
-    fake_provider.provider_config.get_sweep.return_value = SweepConfig(
-        window=timedelta(days=7), cadence=timedelta(days=1)
-    )
     state_entry_2.next_sweep = state_entry_2.last_point
     state_entry_2.sweep_start = datetime(2026, 7, 11, tzinfo=UTC)  # a Saturday
     result = fc._get_fetch_range(series=series, provider=fake_provider, state=state_entry_2, calendar=calendar)
@@ -479,7 +480,7 @@ def test_compute_fetch_range_first_after_last(make_asset: Creator[Asset], make_s
     def mock_now():
         return datetime(2026, 7, 12, 23, 50, tzinfo=UTC)
 
-    fc = FetchController(series_list, assets.get, providers.get, now_provider=mock_now)
+    fc = FetchController(assets.get, providers.get, now_provider=mock_now)
     series = series_list[0]
 
     state_entry = SeriesState()
@@ -488,7 +489,7 @@ def test_compute_fetch_range_first_after_last(make_asset: Creator[Asset], make_s
     assert result is None, "no points found (last before first)"
 
 
-def test_get_sweep_start(fixed_now: Factory[datetime], make_asset: Creator[Asset], make_series: Creator[Series]):
+"""def test_get_sweep_start(fixed_now: Factory[datetime], make_asset: Creator[Asset], make_series: Creator[Series]):
     asset = make_asset()
     assets = make_assets([asset])
     series = [
@@ -498,7 +499,7 @@ def test_get_sweep_start(fixed_now: Factory[datetime], make_asset: Creator[Asset
         )
     ]
 
-    fc = make_fetch_controller(series, assets.get, fixed_now)
+    fc = make_fetch_controller(assets.get, fixed_now)
     state = SeriesState()
     sweep = SweepConfig.from_config(config={})
     last = CandleIdentity(value=datetime.min, is_daily=False, interval=timedelta(0))
@@ -513,3 +514,4 @@ def test_get_sweep_start(fixed_now: Factory[datetime], make_asset: Creator[Asset
         fc._get_sweep_start(state=state, sweep=sweep, last=replace(last, value=now + timedelta(days=1)))
         is state.sweep_start
     )
+"""

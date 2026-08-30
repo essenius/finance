@@ -117,4 +117,6 @@ class TimescaleSqlClient:
     def _resolve_query(self, query: LiteralString, table: str | None) -> QueryNoTemplate:
         if table is None:
             return SQL(query)
+        if "{table}" not in query:
+            raise ParseError("table parameter supplied, but query contains no {table} placeholder")
         return SQL(query).format(table=Identifier(table))

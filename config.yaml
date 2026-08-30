@@ -86,11 +86,6 @@ business:
 
     eu_equities:
       timezone: Europe/Amsterdam
-      # if used without quotes, yaml converts this to a sexagesimal number.
-      # As that is ambiguous betweeh hh:mm:ss (hour*3600+minutes*60+seconds) 
-      # and hh:mm (hours*60+minutes), only hh:mm is supported here,
-      # since for open and close times, seconds are not likely to be needed.
-      # if you need hh:mm:ss nonetheless, put it in quotes: "09:30:25"
       market_open: 09:00
       market_close: 17:30
 
@@ -263,7 +258,6 @@ business:
         code: VWCE.AS
       symbol: VWCE
       long_name: Vanguard FTSE All-World UCITS ETF USD Acc
-      first_trade_date: 2019-07-23
       metadata: eu_equities
       tags:
         instrument: ETF

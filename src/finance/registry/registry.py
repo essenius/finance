@@ -68,7 +68,7 @@ class Registry:
     def merge_and_find_new_assets(self, saved_assets: list[Asset]) -> list[Asset]:
         db_by_name = {a.name: a for a in saved_assets}
 
-        to_persist = []
+        to_persist: list[Asset] = []
 
         def find_existing_asset(yaml_asset):
             # First match by name (YAML identity)
@@ -91,9 +91,10 @@ class Registry:
             else:
                 # the configured metadata overrides what is in the database (i.e. currently effective)
                 yaml_asset.id = db_asset.id
-                effective_metadata = apply_overrides(db_asset.effective_metadata, yaml_asset.config_metadata)
-                if effective_metadata != db_asset.effective_metadata:
-                    yaml_asset.effective_metadata = effective_metadata
+                yaml_asset.effective_metadata = apply_overrides(db_asset.effective_metadata, yaml_asset.config_metadata)
+                if yaml_asset.effective_metadata != db_asset.effective_metadata:
+                    to_persist.append(yaml_asset)
+                self.register_stored_asset(yaml_asset)
 
         # CO: orphans = [
         # CO:     db_asset
@@ -123,8 +124,8 @@ class Registry:
                 None,
             )
 
-        to_persist = []
-        final = []
+        to_persist: list[Series] = []
+        final: list[Series] = []
 
         for yaml_series in self._yaml_series:
             # get the asset id. Yaml doesn't know about ids

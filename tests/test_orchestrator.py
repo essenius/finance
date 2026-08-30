@@ -40,7 +40,7 @@ def registry() -> Mock:
 @pytest.fixture
 def state() -> Mock:
     state = Mock()
-    state.series = {}
+    state.series_state = {}
     return state
 
 
@@ -179,7 +179,7 @@ def test_ingest_points_ingests_all_points_and_updates_range(
     state.ingest.return_value = Success(None)
 
     stored_range = SeriesState(first_point=first.time, last_point=second.time)
-    state.series[series.id] = stored_range
+    state.series_state[series.id] = stored_range
 
     # first test: order low-high
     result = orchestrator._ingest_points([first, second], series)
@@ -316,20 +316,23 @@ def test_finalize_saves_state_and_returns_one_when_fetches_failed(orchestrator: 
     state.save.assert_called_once_with()
 
 
-def test_run_prepares_processes_fetches_and_finalizes(fetcher: Mock, orchestrator: Orchestrator):
+def test_run_prepares_processes_fetches_and_finalizes(fetcher: Mock, registry: Mock, orchestrator: Orchestrator):
     orchestrator._prepare = Mock()
     orchestrator._handle_fetch_response = Mock(return_value=True)
     orchestrator._finalize = Mock(return_value=0)
 
     result1 = Mock()
     result2 = Mock()
+    series1 = Mock()
+
+    registry.all_series.return_value = series1
 
     fetcher.fetch_incrementally.return_value = [result1, result2]
 
     assert orchestrator.run() == 0
 
     orchestrator._prepare.assert_called_once_with()
-    fetcher.fetch_incrementally.assert_called_once_with(orchestrator.state)
+    fetcher.fetch_incrementally.assert_called_once_with(series1, orchestrator.state)
 
     assert orchestrator._handle_fetch_response.call_args_list == [
         ((result1,), {}),

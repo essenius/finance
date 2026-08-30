@@ -51,7 +51,7 @@ def test_merge_and_find_new_assets_update(make_asset: Creator[Asset], make_metad
 
     registry = Registry(assets=[asset_yaml])
     result = registry.merge_and_find_new_assets([asset_db])
-    assert result == [], "No need to save as already persisted"
+    assert len(result) == 1, "Different metadata, so must save"
     updated_asset = registry._yaml_assets[0]
     assert updated_asset.id == 1
     assert updated_asset.config_metadata == asset_yaml.config_metadata, "config metadata not changed"
@@ -68,8 +68,8 @@ def test_reconcile_assets_match_provider(make_asset: Creator[Asset], make_metada
 
     result = registry.merge_and_find_new_assets([asset_db])
 
-    assert result == []
-    updated_asset = registry._yaml_assets[0]
+    assert len(result) == 1
+    updated_asset = result[0]
     assert updated_asset.id == 2
     assert updated_asset.name == "RRR"
     assert updated_asset.symbol == "RRR"

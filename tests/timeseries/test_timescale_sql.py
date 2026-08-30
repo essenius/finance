@@ -3,8 +3,10 @@
 # File: tests/timeseries/test_timescale_sql.py
 
 
+import pytest
 from psycopg.sql import SQL, Composed, Identifier
 
+from finance.common.types import ParseError
 from tests.support.fakes import FakeSql
 from tests.support.types import AssertError, ContextManagerFactory, Creator
 
@@ -91,3 +93,18 @@ def test_connect_succeeded(sql_with_fake_psycopg: ContextManagerFactory[FakeSql]
         result = fake_sql.client.execute_many("", [], context="many")
         assert result.ok is True
         assert result.payload is None
+
+
+def test_resolve_query(sql_with_fake_psycopg: ContextManagerFactory[FakeSql]):
+    with sql_with_fake_psycopg() as fake_sql:
+        sql = fake_sql.client
+        assert sql._resolve_query("select * from test;", None) == SQL("select * from test;"), (
+            "resolved without parameter"
+        )
+        assert sql._resolve_query("select * from {table};", "test") == Composed(
+            [SQL("select * from "), Identifier("test"), SQL(";")]
+        )
+
+        with pytest.raises(ParseError) as pe:
+            sql._resolve_query("select {} from table", table="cold")
+        assert pe.value.args[0] == "table parameter supplied, but query contains no {table} placeholder"

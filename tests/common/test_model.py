@@ -2,10 +2,11 @@
 # Licensed under the Apache License, Version 2.0. See the LICENSE file for details.
 # File: tests/common/test_model.py
 
-from datetime import datetime, timedelta
+from datetime import date, datetime, time, timedelta
 
 import pytest
 
+from finance.common.json_utils import JsonObject
 from finance.common.model import Asset, AssetMetadata, Series, SeriesPoint, SeriesState
 from finance.common.string_enums import Retention, SeriesType
 from finance.common.types import ParseError
@@ -79,7 +80,7 @@ def test_asset_create_with_wrong_timezone():
 
 def test_series_create_with_id_differs(make_asset: Creator[Asset]):
     asset = make_asset(name="spx", id=3)
-    config = {
+    config: JsonObject = {
         "symbol": "SPX",
         "series_type": "candle",
         "interval": "1d",
@@ -120,7 +121,7 @@ def test_series_create_with_id_differs(make_asset: Creator[Asset]):
 
 def test_series_create_with_defaults_daily(make_asset: Creator[Asset]):
     asset = make_asset(name="spx", id=3)
-    config = {
+    config: JsonObject = {
         "symbol": "SPX",
         "interval": "1d",
     }
@@ -151,3 +152,13 @@ def test_update_point_range():
     overlap = current - timedelta(days=1)
     state.update_point_range(first=overlap, last=current)
     assert state.first_point, state.last_point == (first, current)
+
+
+def test_asset_metadata_from_config():
+    config: JsonObject = {"first_trade_date": "2001-02-03", "week_start": "mon", "market_close": "15:00"}
+    meta = AssetMetadata.from_config(config)
+    assert meta.first_trade_date == date(2001, 2, 3)
+    assert meta.week_start == "mon"
+    assert meta.week_end is None
+    assert meta.market_close == time(hour=15)
+    assert meta.market_open is None

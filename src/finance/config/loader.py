@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import os
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -51,6 +52,10 @@ class BusinessConfig:
     series: list[Series]
 
 
+class YamlJsonLoader(yaml.SafeLoader):
+    pass
+
+
 # ----------------
 # Exposed classes
 # ----------------
@@ -71,6 +76,28 @@ class ConfigLoader:
         self.env_path = (cwd / ".env").resolve()
         self.environ = environ
         self.config_path = config_path
+        self.init_yaml_loader()
+
+    def init_yaml_loader(self):
+        # Remove YAML-specific timestamp resolution (JSON doesn't recognize date/time/datetime).
+        for key, resolvers in list(YamlJsonLoader.yaml_implicit_resolvers.items()):
+            YamlJsonLoader.yaml_implicit_resolvers[key] = [
+                (tag, regexp) for tag, regexp in resolvers if tag != "tag:yaml.org,2002:timestamp"
+            ]
+
+        # Replace YAML 1.1 integer resolution with decimal-only integers.
+        # The goal is removing parsing times like 9:30 as sexagesimal ints
+        # (hour*3600+minutes*60+seconds or hours*60+minutes)
+        # Yaml 1.2 already removed it, but we still have 1.1 here.
+        # Note this also eliminates hexadecimal, but we don't use that here.
+        _decimal_int = re.compile(r"""^(?:[-+]?0|[-+]?[1-9][0-9_]*)$""")
+
+        for key, resolvers in YamlJsonLoader.yaml_implicit_resolvers.items():
+            YamlJsonLoader.yaml_implicit_resolvers[key] = [
+                (tag, regexp) for tag, regexp in resolvers if tag != "tag:yaml.org,2002:int"
+            ]
+            if key in "-+0123456789":
+                YamlJsonLoader.yaml_implicit_resolvers[key].append(("tag:yaml.org,2002:int", _decimal_int))
 
     def load(self) -> Result[AppConfig]:
         config_env = self.load_env_variables()
@@ -144,7 +171,7 @@ def load_yaml_config(yaml_path: Path) -> Result[JsonReader]:
 
     try:
         with yaml_path.open("r", encoding="utf-8") as f:
-            result = yaml.safe_load(f) or {}
+            result = yaml.load(f, Loader=YamlJsonLoader) or {}
             return Success(JsonReader(result))
     except yaml.YAMLError as exc:
         return Failure(reason="Invalid YAML", error=exc)

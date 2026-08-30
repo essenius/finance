@@ -269,7 +269,7 @@ class SeriesBackend:
 
     def _insert_batches(self, entries: list[SeriesPoint], context: str) -> Result[int]:
         sql_template = """
-        INSERT INTO {} (series_id, time, open, high, low, close, volume)
+        INSERT INTO {table} (series_id, time, open, high, low, close, volume)
         VALUES (%s, %s, %s, %s, %s, %s, %s)
         ON CONFLICT (series_id, time)
         DO UPDATE SET

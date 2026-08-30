@@ -56,7 +56,7 @@ def series_state_from_range_rows(rows: list[tuple]) -> dict[int, SeriesState]:
     state: dict[int, SeriesState] = {}
     for row in rows:
         series_id = int(row[0])
-        state[series_id] = SeriesState(first_point=row[1], last_point=row[2], needs_save=True)
+        state[series_id] = SeriesState(first_point=row[1], last_point=row[2], needs_save=False)
     return state
 
 

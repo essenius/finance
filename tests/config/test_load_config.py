@@ -2,7 +2,7 @@
 # Licensed under the Apache License, Version 2.0. See the LICENSE file for details.
 # File: tests/config/test_load_config.py
 
-from datetime import timedelta
+from datetime import date, time, timedelta
 from pathlib import Path
 from unittest.mock import patch
 
@@ -58,6 +58,8 @@ business:
         code: "^GSPC"
       symbol: SPX
       metadata: 24x7
+      first_trade_date: 2008-09-10
+      market_open: 9:30:15
       tags:
         instrument: index
         exchange: NYSE
@@ -99,9 +101,10 @@ business:
     assert metadata.exchange == "NYSE"
     assert metadata.unit is None
     assert metadata.region is None
-    assert metadata.first_trade_date is None
+    assert metadata.first_trade_date == date(2008, 9, 10)
     assert metadata.week_start == "sun"
     assert metadata.week_end == "sat"
+    assert metadata.market_open == time(hour=9, minute=30, second=15)
 
     # series
     assert len(app_config.series) == 1

@@ -8,11 +8,13 @@ from dataclasses import dataclass, replace
 from datetime import date, datetime, time, timedelta
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
+from finance.common.json_utils import JsonObject, JsonReader
+
 from ..common.candle_identity import CandleIdentity
 from ..common.configuration import SweepConfig
 from ..common.guards import require, require_duration
 from ..common.string_enums import Candle, Retention, SeriesType
-from ..common.time_utils import UTC, parse_duration, parse_time, parse_weekday, validate_duration
+from ..common.time_utils import UTC, parse_date, parse_duration, parse_time, parse_weekday, validate_duration
 from ..common.types import ParseError
 from .types import Result
 
@@ -84,8 +86,9 @@ class AssetMetadata:
     week_end: str | None = None
 
     @classmethod
-    def from_config(cls, config: dict) -> AssetMetadata:
-        raw_timezone = config.get("timezone")
+    def from_config(cls, config: JsonObject) -> AssetMetadata:
+        reader = JsonReader(config)
+        raw_timezone = reader.get(str, "timezone")
         timezone = None
         if raw_timezone is not None:
             try:
@@ -93,27 +96,27 @@ class AssetMetadata:
             except ZoneInfoNotFoundError:
                 raise ParseError(f"Cannot understand timezone '{raw_timezone}'.") from None
 
-        week_start = config.get("week_start")
+        week_start = reader.get(str, "week_start")
         # check and raise error if filled and wrong, but keep string representation
         parse_weekday(week_start)
 
-        week_end = config.get("week_end")
+        week_end = reader.get(str, "week_end")
         parse_weekday(week_end)
 
         return cls(
-            long_name=config.get("long_name"),
-            short_name=config.get("short_name"),
-            instrument=config.get("instrument"),
-            region=config.get("region"),
-            exchange=config.get("exchange"),
-            currency=config.get("currency"),
-            unit=config.get("unit"),
+            long_name=reader.get(str, "long_name"),
+            short_name=reader.get(str, "short_name"),
+            instrument=reader.get(str, "instrument"),
+            region=reader.get(str, "region"),
+            exchange=reader.get(str, "exchange"),
+            currency=reader.get(str, "currency"),
+            unit=reader.get(str, "unit"),
             timezone=timezone,
-            first_trade_date=config.get("first_trade_date"),
+            first_trade_date=parse_date(reader.get(str, "first_trade_date")),
             week_start=week_start,
             week_end=week_end,
-            market_open=parse_time(config.get("market_open")),
-            market_close=parse_time(config.get("market_close")),
+            market_open=parse_time(reader.get(str, "market_open")),
+            market_close=parse_time(reader.get(str, "market_close")),
         )
 
     def __repr__(self):
@@ -155,15 +158,16 @@ class Asset:
         return f"Asset(id={self.id}, name={self.name}, symbol={self.symbol}, provider_code={self.provider_code}, metadata={self.effective_metadata})"
 
     @classmethod
-    def from_config(cls, name: str, config: dict) -> Asset:
-        provider_config = config.get("provider", {})
+    def from_config(cls, name: str, config: JsonObject) -> Asset:
+        reader = JsonReader(config)
+        provider_reader = reader.reader_for("provider", allow_missing="no")
         config_meta = AssetMetadata.from_config(config)
 
         return cls(
             name=name,
-            symbol=config.get("symbol", name),
-            provider=provider_config["name"],
-            provider_code=provider_config["code"],
+            symbol=reader.get(str, "symbol", default=name.upper()),
+            provider=provider_reader.require(str, "name"),
+            provider_code=provider_reader.require(str, "code"),
             config_metadata=config_meta,
         )
 
@@ -209,33 +213,35 @@ class Series:
     id: int | None = None
 
     @classmethod
-    def create(cls, asset: Asset, code: str, config: dict) -> Series:
+    def create(cls, asset: Asset, code: str, config: JsonObject) -> Series:
         """Create a new Series instance. Checks values and can raise ParseError"""
 
+        reader = JsonReader(config)
         name = f"{asset.name}:{code}"
 
         # the caller must take care of validating this exists
-        interval = require_duration(config["interval"], f"interval for {name}")
+        raw_interval = reader.require(str, "interval")
+        interval = require_duration(raw_interval, f"interval for {name}")
         is_intraday = Series.is_intraday_interval(interval)
-        raw_retention = config.get("retention")
+        raw_retention = reader.get(str, "retention")
         # if no retention was specified, then we use long lived if the interval is a day or more
         if raw_retention is None:
             retention = Retention.SHORT_LIVED if is_intraday else Retention.LONG_LIVED
         else:
             retention = Retention.require(raw_retention)  # no context, caller will provide it
-        retention_period = validate_duration(config.get("retention_period"), "retention period")
-        bootstrap_history = validate_duration(config.get("bootstrap_history"), "bootstrap history") or (
+        retention_period = validate_duration(reader.get(str, "retention_period"), "retention period")
+        bootstrap_history = validate_duration(reader.get(str, "bootstrap_history"), "bootstrap history") or (
             "10y" if retention == Retention.LONG_LIVED else "30d"
         )
 
-        publication_offset = validate_duration(config.get("publication_offset"), "publication offset")
+        publication_offset = validate_duration(reader.get(str, "publication_offset"), "publication offset")
         return cls(
             name=name,
             code=code,
             asset_id=asset.id,
             asset_name=asset.name,
-            interval=config["interval"],
-            series_type=SeriesType.require(config.get("series_type", SeriesType.CANDLE)),
+            interval=raw_interval,
+            series_type=SeriesType.require(reader.get(str, "series_type", default=str(SeriesType.CANDLE))),
             retention=retention,
             retention_period=retention_period,
             bootstrap_history=bootstrap_history,
@@ -312,6 +318,15 @@ class SeriesState:
     @staticmethod
     def is_none_or_smaller(left: datetime | None, right: datetime):
         return left is None or left < right
+
+    def get_sweep_start(self, sweep: SweepConfig, last: CandleIdentity) -> datetime | None:
+        if self.next_sweep is None or self.sweep_start is None:
+            self.update_sweep_state(sweep, last)
+        if sweep.window <= timedelta(0):
+            return None
+        if self.next_sweep is not None and self.next_sweep > last.store_label():
+            return None
+        return self.sweep_start
 
     def update_point_range(self, first: datetime, last: datetime):
         # update the captured point range

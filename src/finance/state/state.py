@@ -15,15 +15,15 @@ class State:
     def __init__(self, backend: SeriesBackend, wal: JsonlWAL):
         self._backend: SeriesBackend = backend
         self._wal: JsonlWAL = wal
-        self.series: dict[int, SeriesState] = {}
+        self.series_state: dict[int, SeriesState] = {}
 
     def get_series_state(self, series_id: int) -> SeriesState:
-        entry = self.series.get(series_id)
+        entry = self.series_state.get(series_id)
         if entry is not None:
             return entry
 
-        self.series[series_id] = SeriesState()
-        return self.series[series_id]
+        self.series_state[series_id] = SeriesState()
+        return self.series_state[series_id]
 
     def ingest(self, point: SeriesPoint) -> Result[int]:
         """
@@ -38,32 +38,33 @@ class State:
         result = self._backend.get_series_states()
         if result.ok is False:
             return result
-        self.series = result.payload
+        self.series_state = result.payload
         self._update_wal_range()
         return self._flush_wal()
 
     def save(self) -> None:
         self._flush_wal()
-        for id, state_entry in self.series.items():
-            if state_entry.needs_save:
-                self._backend.save_sweep(
-                    id, require(state_entry.next_sweep, "next"), require(state_entry.sweep_start, "start")
-                )
-                state_entry.needs_save = False
+        for id, state_entry in self.series_state.items():
+            self._save_sweep(id, state_entry)
 
     def update_state(self, series_id: int, first: datetime, last: datetime) -> None:
         """
         Update the state after a batch has been ingested. Save if needed
         """
-        s = require(self.get_series_state(series_id), "series state")
-        s.update_point_range(first, last)
-        if s.needs_save:
-            self._backend.save_sweep(series_id, require(s.next_sweep, "next"), require(s.sweep_start, "start"))
-            s.needs_save = False
+        series_state = require(self.get_series_state(series_id), "series state")
+        series_state.update_point_range(first, last)
+        self._save_sweep(series_id, series_state)
 
     # ----------------
     # Private methods
     # ----------------
+
+    def _save_sweep(self, id: int, series_state: SeriesState) -> None:
+        if series_state.needs_save:
+            self._backend.save_sweep(
+                id, require(series_state.next_sweep, "next"), require(series_state.sweep_start, "start")
+            )
+            series_state.needs_save = False
 
     def _flush_wal(self) -> Result[int]:
         flushed_count = 0

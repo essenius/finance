@@ -2,7 +2,7 @@
 # Licensed under the Apache License, Version 2.0. See the LICENSE file for details.
 # File: tests/common/test_time_utils.py
 
-from datetime import datetime, time, timedelta
+from datetime import date, datetime, time, timedelta
 from zoneinfo import ZoneInfo
 
 import pytest
@@ -12,12 +12,14 @@ from finance.common.time_utils import (
     UTC,
     normalize_db_time,
     now_second_precision,
+    parse_date,
     parse_datetime,
     parse_duration,
     parse_time,
     parse_weekday,
     snap_to,
     validate_duration,
+    write_date,
     write_datetime,
     write_time,
     write_timezone,
@@ -100,19 +102,16 @@ def test_parse_write_time():
     assert time_str == "23:59:59.999999"
     assert parse_time("max") == time.max
 
-    a_time = require(parse_time(955), "a_time")  # 15:55 in sexagesimal
-    assert a_time == time(hour=15, minute=55)
-    assert write_time(a_time) == "15:55:00", "writing always in seconds"
+    a_time = require(parse_time("09:53"), "time in hh:mm")
+    assert a_time == time(hour=9, minute=53)
+    assert write_time(a_time) == "09:53:00", "writing always in hh:mm:ss"
 
-    a_datetime = require(parse_time("9:00:05"), "a_datetime")
-    assert a_datetime == time(hour=9, second=5), "string parsing uses seconds too"
-    time_str = write_time(a_datetime)
+    a_time = require(parse_time("9:00:05"), "time in h:mm:ss")
+    assert a_time == time(hour=9, second=5), "string parsing uses seconds too"
+    time_str = write_time(a_time)
     assert time_str == "09:00:05"
-    assert parse_time(time_str) == a_datetime
+    assert parse_time(time_str) == a_time
 
-    with pytest.raises(ParseError) as exc_info:
-        parse_time(58230)  # 16:10:30"
-    assert str(exc_info.value) == "Cannot understand sexagesimal value '58230' (970:30). Use hh:mm only or use quotes."
     with pytest.raises(ParseError) as exc_info:
         parse_time("bogus")
     assert str(exc_info.value) == "Cannot understand time 'bogus'."
@@ -142,6 +141,16 @@ def test_parse_write_timezone():
 
     timezone_str = write_timezone(UTC)
     assert timezone_str == "UTC"
+
+
+def test_parse_write_date():
+    d = date(2026, 8, 29)
+    d_str = write_date(d)
+    assert d_str == "2026-08-29"
+    assert parse_date(d_str) == d
+    with pytest.raises(ParseError) as exc_info:
+        parse_date("bogus")
+    assert str(exc_info.value) == "Cannot understand date 'bogus'."
 
 
 def test_parse_write_datetime():

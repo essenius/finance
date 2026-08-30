@@ -56,27 +56,24 @@ def parse_duration(text: str | None, context: str | None = None) -> timedelta | 
     return timedelta(seconds=int(value) * DURATION_UNITS[unit])
 
 
-def parse_datetime(s: str) -> datetime | None:
+def parse_date(s: str | None) -> date | None:
+    try:
+        return date.fromisoformat(s) if s is not None else None
+    except Exception:
+        raise ParseError(f"Cannot understand date '{s}'.") from None
+
+
+def parse_datetime(s: str | None) -> datetime | None:
     try:
         return datetime.fromisoformat(s) if s is not None else None
     except Exception:
         raise ParseError(f"Cannot understand datetime '{s}'.") from None
 
 
-def parse_time(value) -> time | None:
+def parse_time(value: str | None) -> time | None:
     if value is None:
         return None
-    if isinstance(value, int):
-        # YAML sexagesimal integer (expects only hh:mm)
-        hours = value // 60
-        minutes = value % 60
-        if hours > 23:
-            raise ParseError(
-                f"Cannot understand sexagesimal value '{value}' ({hours}:{minutes}). Use hh:mm only or use quotes."
-            )
-        return time(hour=hours, minute=minutes)
 
-    # used "hh:mm"
     value = str(value).strip().lower()
     if value == "min":
         return time.min
@@ -112,6 +109,10 @@ def snap_to(time_point: datetime, range: timedelta) -> datetime:
 def validate_duration(text: str | None, context: str | None = None) -> str | None:
     parse_duration(text, context)
     return text
+
+
+def write_date(d: date) -> str:
+    return date.isoformat(d)
 
 
 def write_datetime(dt: datetime) -> str:

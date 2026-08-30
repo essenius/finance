@@ -7,7 +7,7 @@ from collections.abc import Callable, Iterable
 from datetime import datetime
 from pathlib import Path
 
-from finance.common.configuration import ProviderConfig, TimescaleConfig
+from finance.common.configuration import ProviderConfig
 
 from .common.applogger import AppLogger, LogConfigurator
 from .common.model import Asset, Series
@@ -45,14 +45,10 @@ def run(
     load_config: Callable[[], Result[AppConfig]] | None = None,
     registry_factory: Callable[[Iterable[Asset], Iterable[Series]], Registry] = Registry,
     sql_factory: Callable[..., BackendProtocol] = TimescaleSqlClient,
-    backend_factory: Callable[
-        [TimescaleConfig, Callable[..., BackendProtocol]], Result[SeriesBackend]
-    ] = SeriesBackend.from_config,
+    backend_factory: Callable[..., Result[SeriesBackend]] = SeriesBackend.from_config,
     provider_factory: Callable[[dict[str, ProviderConfig]], dict[str, MarketDataProvider]] = create_providers,
     state_factory: Callable[..., State] = State,
-    fetch_controller_factory: Callable[
-        [Iterable[Series], Callable[[int], Asset | None], Callable[[str], MarketDataProvider | None]], FetchController
-    ] = FetchController,
+    fetch_controller_factory: Callable[..., FetchController] = FetchController,
     # composite_engine_builder: Callable[[dict[str, Any], State], Result[CompositeEngine]] = CompositeEngine.build,
     wal_factory: Callable[[Path], JsonlWAL] = JsonlWAL,
     orchestrator_factory: Callable[..., Orchestrator] = Orchestrator,
@@ -87,7 +83,7 @@ def run(
         wal = wal_factory(config.paths["wal"])
         state = state_factory(backend=backend, wal=wal)
         providers = provider_factory(config.providers)
-        fetch_controller = fetch_controller_factory(registry.all_series(), registry.get_asset_by_id, providers.get)
+        fetch_controller = fetch_controller_factory(registry.get_asset_by_id, providers.get)
 
         orchestrator = orchestrator_factory(backend=backend, registry=registry, state=state, fetcher=fetch_controller)
         return orchestrator.run()

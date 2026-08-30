@@ -66,7 +66,7 @@ class Orchestrator:
 
         fetch_failures = 0
 
-        for result in self.fetcher.fetch_incrementally(self.state):
+        for result in self.fetcher.fetch_incrementally(self.registry.all_series(), self.state):
             if not self._handle_fetch_response(result):
                 fetch_failures += 1
 
@@ -149,7 +149,7 @@ class Orchestrator:
         if all_ok:
             series_id = require(series.id)
             self.state.update_state(series_id, batch_first, batch_last)
-            range = self.state.series[series_id]
+            range = self.state.series_state[series_id]
             logger.debug(
                 f"Range for {series.name} after updating: {require(range.first_point).isoformat()} - {require(range.last_point).isoformat()}"
             )

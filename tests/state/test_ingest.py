@@ -24,7 +24,7 @@ def test_ingest_enqueues_and_does_not_update_state(make_entry: Creator[WalContex
     wal.dequeue_multiple.assert_called_with(0)
 
     # this should not write timestamps, happens separately after ingesting the batch
-    assert state.series.get(1) is None
+    assert state.series_state.get(1) is None
 
 
 def test_ingest_enqueues_and_removes_wal_entry(make_entry: Creator[WalContext], state_env: StateContext):
@@ -40,7 +40,7 @@ def test_ingest_enqueues_and_removes_wal_entry(make_entry: Creator[WalContext], 
     # nothing dequeued as backend reported nothing written
     wal.dequeue_multiple.assert_called_with(1)
     # this should not write timestamps
-    assert state.series.get(1) is None
+    assert state.series_state.get(1) is None
 
 
 def test_load_flushes_fifo_until_empty(
@@ -98,7 +98,7 @@ def test_ingest_no_first_timestamp(make_entry: Creator[WalContext], state_env: S
     state, backend, wal = state_env
     backend.add_point.return_value = Success(0)
     # inconsistent state, should treat last as None
-    state.series[1] = SeriesState(last_point=ts(1200))
+    state.series_state[1] = SeriesState(last_point=ts(1200))
     point = make_entry(timestamp=1200).point
     write = replace(point, close=1.11)
 
@@ -113,7 +113,7 @@ def test_ingest_no_last_timestamp(make_entry: Creator[WalContext], state_env: St
     state, backend, wal = state_env
     backend.add_point.return_value = Success(0)
     # inconsistent state, should treat last as None
-    state.series[1] = SeriesState(first_point=ts(0))
+    state.series_state[1] = SeriesState(first_point=ts(0))
 
     point = make_entry(timestamp=0).point
     write = replace(point, close=1.11)
@@ -131,7 +131,7 @@ def test_ingest_new_write_with_flush(
     state, backend, wal = state_env
     backend.add_point.return_value = Success(1)
 
-    state.series[1] = make_series_state()
+    state.series_state[1] = make_series_state()
 
     point = make_entry(timestamp=1800).point
     write = replace(point, close=1.11)
@@ -148,7 +148,7 @@ def test_ingest_in_range(
     state, backend, wal = state_env
     backend.add_point.return_value = Success(2)
 
-    state.series[1] = make_series_state(start=0, end=1800)
+    state.series_state[1] = make_series_state(start=0, end=1800)
 
     point = make_entry(timestamp=1200).point
     write = replace(point, close=1.09)
@@ -165,7 +165,7 @@ def test_ingest_before_range(
 ):
     state, backend, wal = state_env
     backend.add_point.return_value = Success(1)
-    state.series[1] = make_series_state(start=1200, end=1800)
+    state.series_state[1] = make_series_state(start=1200, end=1800)
 
     point = make_entry(timestamp=600).point
     write = replace(point, close=1.09)

@@ -337,13 +337,13 @@ def test_get_series_states_loads_min_max(
     assert (s2.first_point, s2.last_point) == (cold_rows[1][1], cold_rows[1][2])
     assert s2.sweep_start is None
     assert s2.next_sweep is None
-    assert s2.needs_save
+    assert not s2.needs_save
 
     # Validate series 3 (hot and no sweep)
     hot_rows = hot_result["rows"]
     s3: SeriesState = state[3]
     assert (s3.first_point, s3.last_point) == (hot_rows[0][1], hot_rows[0][2])
-    assert s3.needs_save
+    assert not s3.needs_save
 
     # Validate series 4 (only sweep)
     s4: SeriesState = state[4]

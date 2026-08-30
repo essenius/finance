@@ -108,8 +108,7 @@ def test_run_wires_dependencies_and_returns_orchestrator_result():
         assert providers_config is config.providers
         return providers
 
-    def fetch_controller_factory(series, get_asset, get_provider) -> FetchController:
-        assert series is registry.all_series()
+    def fetch_controller_factory(get_asset, get_provider) -> FetchController:
         assert get_asset is registry.get_asset_by_id
         assert get_provider is providers.get
         return fetcher

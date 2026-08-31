@@ -23,9 +23,10 @@ class Header:
         Parse an existing header.
         Returns (Header instance, header_end_index) or (None, None).
         """
-        start_year = None
-        end_year = None
-        header_end = None
+        start_year: int | None = None
+        end_year: int | None = None
+        header_end: int | None = None
+        filename: str = ""
 
         for i, line in enumerate(lines[:10]):
             m = COPYRIGHT_RE.match(line)
@@ -33,14 +34,15 @@ class Header:
                 start_year = int(m.group(1))
                 end_year = int(m.group(2)) if m.group(2) else None
 
-            if FILE_RE.match(line) and start_year is not None:
+            file_match = FILE_RE.match(line)
+            if file_match and start_year is not None:
                 header_end = i + 1
+                filename = file_match.group(1)
                 break
 
         if start_year is None or header_end is None:
             return None, None
 
-        filename = FILE_RE.match(lines[header_end - 1]).group(1)
         return cls(start_year, end_year, filename), header_end
 
     def update_year(self, current_year: int):

@@ -41,7 +41,7 @@ def test_asset_create_with_id_differs():
         currency=None,
         unit=None,
         timezone=None,
-        first_trade_date=None,
+        first_available_date=None,
         week_start=None,
         week_end=None,
         market_open=None,
@@ -155,9 +155,9 @@ def test_update_point_range():
 
 
 def test_asset_metadata_from_config():
-    config: JsonObject = {"first_trade_date": "2001-02-03", "week_start": "mon", "market_close": "15:00"}
+    config: JsonObject = {"first_available_date": "2001-02-03", "week_start": "mon", "market_close": "15:00"}
     meta = AssetMetadata.from_config(config)
-    assert meta.first_trade_date == date(2001, 2, 3)
+    assert meta.first_available_date == date(2001, 2, 3)
     assert meta.week_start == "mon"
     assert meta.week_end is None
     assert meta.market_close == time(hour=15)

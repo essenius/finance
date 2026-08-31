@@ -1,8 +1,8 @@
 # Copyright 2026 Rik Essenius
 # Licensed under the Apache License, Version 2.0. See the LICENSE file for details.
-# File: tests/common/test_dict_utils.py
+# File: tests/common/test_object_utils.py
 
-from finance.common.dict_utils import deep_merge
+from finance.common.object_utils import deep_merge
 
 
 def test_scalar_overwrite():

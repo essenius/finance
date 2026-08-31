@@ -68,7 +68,7 @@ class State:
 
     def _flush_wal(self) -> Result[int]:
         flushed_count = 0
-        warnings = []
+        warnings: list[str] = []
         # We need to create a snapshot, as the process changes the WAL
         entries = list(self._wal.read_all())
         for entry in entries:
@@ -100,7 +100,7 @@ class State:
         return self._sync_wal(result.payload)
 
     def _sync_wal(self, written_count: int) -> Result[int]:
-        warnings = []
+        warnings: list[str] = []
         removed_count = self._wal.dequeue_multiple(written_count)
         if removed_count != written_count:
             warnings.append(f"Requested to remove {written_count} entries from the WAL but removed {removed_count}")

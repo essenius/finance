@@ -3,21 +3,15 @@
 # Licensed under the Apache License, Version 2.0. See the LICENSE file for details.
 # File: scripts/deploy.sh
 
+# exit if command fails, unset variable is error, and a pipeline fails if any command in it fails
 set -euo pipefail
 
-ENV_FILE="${ENV_FILE:-.env}"
-
-if [ ! -f "$ENV_FILE" ]; then
-    echo "ERROR: Environment file '$ENV_FILE' not found"
-    exit 1
-fi
-
-set -a
-source "$ENV_FILE"
-set +a
-
-: "${ENV_ROOT:?ENV_ROOT is not set}"
+env | grep ROOT
+echo -----
+env | grep VENV
+echo -----
 : "${ENV_VENV:?ENV_VENV is not set}"
+: "${ENV_ROOT:?ENV_ROOT is not set}"
 
 DEV_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 
@@ -44,12 +38,27 @@ if [[ ! -f "$ENV_ROOT/config.yaml" ]]; then
     cp "$DEV_ROOT/config.yaml" "$ENV_ROOT"
 fi
 
+ENV_CREATED=false
+
+SOURCE="$DEV_ROOT/.env.example"
 TARGET="$ENV_ROOT/.env"
+
 if [[ ! -f "$TARGET" ]]; then
-    SOURCE="$DEV_ROOT/.env.example"
-    echo "=== $SOURCE to $TARGET ==="
+    echo "=== creating $TARGET from $SOURCE ==="
     cp "$SOURCE" "$TARGET"
     sed -i 's/^# File: .env.example$/# File: .env/' "$TARGET"
+    echo "Please edit $TARGET with the required production values."
+    echo "Deployment will need to be re-run after configuration."
+    touch "$ENV_ROOT/.configuration-incomplete"
+    exit 0
 fi
 
+if ! "$ENV_VENV/bin/python" "$DEV_ROOT/scripts/validate_env.py" "$SOURCE" "$TARGET"; then
+    echo "ERROR: Environment validation failed; deployment aborted."
+    exit 2
+fi
+
+if [[ -f "$ENV_ROOT/.configuration-incomplete" ]]; then
+    rm "$ENV_ROOT/.configuration-incomplete"
+fi
 echo "=== Deployment complete ==="

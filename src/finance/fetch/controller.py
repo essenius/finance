@@ -167,4 +167,3 @@ class FetchController:
             f"series: {series.name} ({series.id}): {first_identity.store_label()} - {last_identity.store_label()}"
         )
         return first_identity, last_identity
-

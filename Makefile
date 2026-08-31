@@ -89,7 +89,19 @@ acceptance:
 .PHONY: production
 production:
 	@$(MAKE) deploy ENV=prod
+	@if [ -f "$(ENV_ROOT)/.configuration-incomplete" ]; then \
+		echo; \
+		echo "Production configuration is not complete."; \
+		echo "Systemd was not installed."; \
+		echo "Run 'make production' again after configuring $(ENV_ROOT)/.env."; \
+		exit 0; \
+	fi
+	@$(MAKE) validate ENV=prod
 	@$(MAKE) systemd ENV=prod
+
+.PHONY: validate
+validate:
+	$(ENV_VENV)/bin/python scripts/validate_env.py .env.example "$(ENV_ROOT)/.env"
 
 # ------------------------------------------------------------
 # Linting
@@ -179,8 +191,12 @@ deploy: build init-env
 
 .PHONY: systemd
 systemd:
-	scripts/install_systemd.sh
+	@$(MAKE) _systemd ENV=prod
 
+
+.PHONY: _systemd
+_systemd:
+	ENV_FILE=$(ENV_FILE) ENV_VENV=$(ENV_VENV) scripts/install_systemd.sh
 # ------------------------------------------------------------
 # Clean up
 # ------------------------------------------------------------

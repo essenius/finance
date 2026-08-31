@@ -19,17 +19,6 @@ def require_duration(text: str | None, context: str = "") -> timedelta:
     return require(parse_duration(text, context), context)
 
 
-def require_key(cfg: dict, key: str, context: str = "") -> object:
-    """
-    Return cfg[key] if present, otherwise raise a ParseError.
-    This has to be caught in the function it is used in.
-    """
-    if key not in cfg:
-        context = _annotate(context)
-        raise ParseError(f"Missing required field '{key}'{context}")
-    return cfg[key]
-
-
 def validate_required_duration(text: str | None, context: str = "") -> str:
     text = require(text, context)
     require_duration(text, context)

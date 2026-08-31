@@ -5,6 +5,7 @@
 import calendar
 import re
 from datetime import date, datetime, time, timedelta
+from typing import overload
 from zoneinfo import ZoneInfo
 
 from ..common.types import ParseError
@@ -37,6 +38,12 @@ def normalize_db_time(value):
 
 def now_second_precision():
     return datetime.now(tz=UTC).replace(microsecond=0)
+
+
+@overload
+def parse_duration(text: None, context: str | None = None) -> None: ...
+@overload
+def parse_duration(text: str, context: str | None = None) -> timedelta: ...
 
 
 def parse_duration(text: str | None, context: str | None = None) -> timedelta | None:
@@ -131,3 +138,9 @@ def write_timezone(tz: ZoneInfo | None) -> str | None:
         return None
 
     return tz.key
+
+
+def view_utc(d: datetime) -> str:
+    if d.hour == 0 and d.minute == 0 and d.second == 0:
+        return d.strftime("%Y-%m-%d")
+    return d.strftime("%Y-%m-%d %H:%M")

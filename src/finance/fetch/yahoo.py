@@ -38,7 +38,9 @@ class YahooProvider(MarketDataProvider):
         start_timestamp = start.start_timestamp()
         end_timestamp = end.end_timestamp()
         url, params = self._build_url(asset.provider_code, series.interval, start_timestamp, end_timestamp)
-        result = self._safe_call(fn=lambda: self._fetch_impl(url=url, params=params), context="Yahoo fetch")
+        result = self._safe_call(
+            fn=lambda: self._fetch_impl(url=url, params=params), series=series, context="Yahoo fetch"
+        )
 
         if result.ok is False:
             return result
@@ -67,7 +69,7 @@ class YahooProvider(MarketDataProvider):
         Grab the candle values from the input arrays, optimizing the number of fields read.
         Returns a list of series points and list of warnings.
         """
-        candles = []
+        candles: list[SeriesPoint] = []
         invalid_count = 0
         incomplete_count = 0
 
@@ -75,7 +77,7 @@ class YahooProvider(MarketDataProvider):
             if len(arrays["close"]) <= i or arrays["close"][i] is None:
                 invalid_count += 1
                 continue
-            values = {}
+            values: dict[str, float] = {}
             identity = CandleIdentity.from_timestamp(ts, timezone, series.interval_delta())
 
             incomplete = False
@@ -92,13 +94,11 @@ class YahooProvider(MarketDataProvider):
             point = SeriesPoint(series_id=series.require_id(), time=identity.store_label(), **values)
             candles.append(point)
 
-        warnings = []
+        warnings: list[str] = []
         if invalid_count > 0:
             warnings.append(f"Skipped {invalid_count} candles without close value")
         if incomplete_count > 0:
             warnings.append(f"{incomplete_count} incomplete candles")
-        result_count = len(candles)
-        logger.debug(f"Results: {result_count}")
         if len(candles) > 0:
             logger.debug(f" result[0]: {candles[0].time}")
             if len(candles) > 1:
@@ -107,13 +107,13 @@ class YahooProvider(MarketDataProvider):
         return candles, warnings
 
     def _build_url(
-        self, provider_code: str, interval_str: str, start_timestamp: float, end_timestamp: float
-    ) -> tuple[str, dict]:
+        self, provider_code: str, interval_str: str, start_timestamp: int, end_timestamp: int
+    ) -> tuple[str, dict[str, int | str]]:
         encoded = quote(provider_code, safe="")
         params: dict[str, int | str] = {
             "interval": interval_str,
-            "period1": int(start_timestamp),
-            "period2": int(end_timestamp),
+            "period1": start_timestamp,
+            "period2": end_timestamp,
             "includePrePost": "false",
             "events": "div,splits",
         }
@@ -140,9 +140,8 @@ class YahooProvider(MarketDataProvider):
         if arrays_result.payload is None:
             return Success([], arrays_result.warnings)
         timestamps, arrays = arrays_result.payload
+        # remove last element from timestamps and arrays if timestamp not aligned with interval period
         if timestamps != [] and not self._is_aligned(timestamps[-1], series):
-            # remove last element from timestamps and arrays
-            print("Removing last element as not aligned")
             timestamps.pop()
             for key in arrays:
                 if arrays[key] != []:
@@ -169,7 +168,7 @@ class YahooProvider(MarketDataProvider):
             return Failure(reason=f"invalid exchange timezone '{timezone_name}': {e}")
 
         first_trade_timestamp = meta_reader.get(int, "firstTradeDate", default=0)
-        first_trade_date = date_from_timestamp(first_trade_timestamp, timezone)
+        first_available_date = date_from_timestamp(first_trade_timestamp, timezone)
 
         market_open = None
         market_close = None
@@ -188,7 +187,7 @@ class YahooProvider(MarketDataProvider):
                 instrument=meta_reader.get(str, "instrumentType"),
                 exchange=meta_reader.get(str, "exchangeName"),
                 currency=meta_reader.get(str, "currency"),
-                first_trade_date=first_trade_date,
+                first_available_date=first_available_date,
                 timezone=timezone,
                 market_open=market_open,
                 market_close=market_close,

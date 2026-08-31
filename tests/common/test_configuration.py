@@ -4,7 +4,10 @@
 
 from datetime import timedelta
 
+import pytest
+
 from finance.common.configuration import LogConfig, ProviderConfig, SweepConfig, TimescaleConfig
+from finance.common.types import ParseError
 from tests.support.types import AssertError
 
 
@@ -15,6 +18,17 @@ def test_provider_config_defaults():
     assert config.history_limits == {}
     assert config.timeout_delta() == timedelta(seconds=10)
     assert config.api_key == "secret"
+
+
+def test_provider_config_wrong_sweep():
+    with pytest.raises(ParseError) as pe:
+        ProviderConfig.from_config(
+            {
+                "name": "x",
+                "sweep": {"default": 3},
+            }
+        )
+    assert pe.value.args[0] == "value for sweep table entry 'default' must be a section"
 
 
 def test_provider_config_history_limits_and_overlap():

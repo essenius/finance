@@ -8,7 +8,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "finance"
-version = "0.2.43"
+version = "0.2.44"
 description = "Finance tools"
 authors = [{ name = "Rik Essenius" }]
 readme = "README.md"
@@ -43,7 +43,49 @@ dev = [
 #[tool.setuptools.dynamic]
 #version = { attr = "finance.__version__" }
 
-
 [tool.pyright]
 include = ["src", "tests" ]
 typeCheckingMode = "basic"
+
+[tool.ruff]
+# Global settings
+line-length = 120
+indent-width = 4
+target-version = "py312"
+
+exclude = [
+    ".vscode-server",
+    "**/.vscode-server/**",
+]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+skip-magic-trailing-comma = false
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "F",   # pyflakes
+    "W",   # pycodestyle warnings
+    "I",   # isort
+    "N",   # pep8-naming
+    "UP",  # pyupgrade
+    "B",   # bugbear
+    "SIM", # simplify
+    "C4",  # flake8-comprehensions
+    "C90", # mccabe complexity
+    "T2",  # reject print/pprint statements
+]
+ignore = [
+    "E501",  # line length handled by formatter
+]
+
+[tool.ruff.lint.isort]
+combine-as-imports = true
+force-single-line = false
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["T2"]   # allow prints in unit tests
+"ops/**" = ["T2"]     # allow prints in ops scripts
+"scripts/**" = ["T2"] # allow prints in deployment scripts

@@ -5,6 +5,7 @@
 from typing import Literal, overload
 
 import finance
+from finance.common.time_utils import view_utc
 from finance.common.types import AppError
 
 from .common.applogger import AppLogger
@@ -50,10 +51,10 @@ def unwrap[T](result: Result[T], throw: bool = True) -> T | None:
 
 
 class Orchestrator:
-    config: dict
     backend: SeriesBackend
     registry: Registry
     state: State
+    fetcher: FetchController
 
     def __init__(self, backend: SeriesBackend, registry: Registry, state: State, fetcher: FetchController):
         self.backend = backend
@@ -133,8 +134,8 @@ class Orchestrator:
         if batch_first > batch_last:
             batch_first, batch_last = batch_last, batch_first
 
-        logger.debug(
-            f"Retrieved range for {series.name}: {batch_first.isoformat()} - {batch_last.isoformat()}, {len(points)} records."
+        logger.info(
+            f"Retrieved range for {series.name} ({series.id}): {view_utc(batch_first)} - {view_utc(batch_last)}, {len(points)} records."
         )
 
         all_ok = True
@@ -151,7 +152,7 @@ class Orchestrator:
             self.state.update_state(series_id, batch_first, batch_last)
             range = self.state.series_state[series_id]
             logger.debug(
-                f"Range for {series.name} after updating: {require(range.first_point).isoformat()} - {require(range.last_point).isoformat()}"
+                f"Range for {series.name} after updating: {view_utc(require(range.first_point))} - {view_utc(require(range.last_point))}"
             )
         return all_ok
 
@@ -166,14 +167,14 @@ class Orchestrator:
         saved_assets = unwrap(self.backend.get_assets())
         to_persist = self.registry.merge_and_find_new_assets(saved_assets)
         for asset in to_persist:
-            logger.debug(f"Persisting asset {asset.name}")
+            logger.info(f"Persisting asset {asset.name}")
             stored = unwrap(self.backend.store_asset(asset))
             self.registry.register_stored_asset(stored)
 
         saved_series = unwrap(self.backend.get_series())
         reconciled_series = self.registry.reconcile_series(saved_series)
         for series in reconciled_series.to_persist:
-            logger.debug(f"Persisting series {series.name}")
+            logger.info(f"Persisting series {series.name}")
             stored = unwrap(self.backend.store_series(series))
             self.registry.register_stored_series(stored)
 

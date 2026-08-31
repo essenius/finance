@@ -6,7 +6,7 @@ from datetime import timedelta
 
 import pytest
 
-from finance.common.guards import require, require_duration, require_key, validate_required_duration
+from finance.common.guards import require, require_duration, validate_required_duration
 from finance.common.types import ParseError
 
 
@@ -18,18 +18,6 @@ def test_require():
     with pytest.raises(ParseError) as ve:
         require(None)
     assert ve.value.args[0] == "Missing required value"
-
-
-def test_require_key():
-    config = {"x": 1, "y": "z"}
-    assert require_key(config, "x", "X") == 1
-    assert require_key(config, "y", "Y") == "z"
-    with pytest.raises(ParseError) as ve:
-        require_key(config, "z", "Z")
-    assert "Missing required field 'z' in Z" in str(ve)
-    with pytest.raises(ParseError) as ve:
-        require_key({}, "z", "Z")
-    assert "Missing required field 'z' in Z" in str(ve)
 
 
 def test_require_duration():

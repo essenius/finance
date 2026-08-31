@@ -3,28 +3,18 @@
 # File: src/finance/registry/registry.py
 
 from collections.abc import Iterable
-from dataclasses import dataclass, fields, is_dataclass, replace
-from typing import Any, cast
+from dataclasses import dataclass
+
+from finance.common.object_utils import apply_overrides
 
 from ..common.model import Asset, AssetMetadata, Series
 from ..common.types import AppError
-
-
-def apply_overrides[T](base: T, overrides: T) -> T:
-    assert is_dataclass(base) and is_dataclass(overrides)
-
-    values = {field.name: value for field in fields(base) if (value := getattr(overrides, field.name)) is not None}
-
-    # Pyright cannot express the generic relationship between a dataclass instance
-    # and dataclasses.replace(): the argument needs Any, while the return preserves T.
-    return cast(T, replace(cast(Any, base), **values))
 
 
 @dataclass
 class ReconciledSeries:
     final: list[Series]
     to_persist: list[Series]
-    # CO: orphans: list[Series]
 
 
 class Registry:
@@ -80,20 +70,11 @@ class Registry:
             # Not likely to happen often, so using an index cache isn't worth the overhead (other than with name).
             return next((s for s in saved_assets if s.same_semantics(yaml_asset)), None)
 
-        for i, yaml_asset in enumerate(self._yaml_assets):
+        for yaml_asset in self._yaml_assets:
             db_asset = find_existing_asset(yaml_asset)
-            if db_asset is None:
-                # we don't have a record yet, and we need an ID, so mark for persisting
-                # might get overwritten later when the metadata comes in, but that is ok
-                yaml_asset.effective_metadata = yaml_asset.config_metadata
+            if yaml_asset.reconcile_with(db_asset):
                 to_persist.append(yaml_asset)
-                self._yaml_assets[i] = yaml_asset
-            else:
-                # the configured metadata overrides what is in the database (i.e. currently effective)
-                yaml_asset.id = db_asset.id
-                yaml_asset.effective_metadata = apply_overrides(db_asset.effective_metadata, yaml_asset.config_metadata)
-                if yaml_asset.effective_metadata != db_asset.effective_metadata:
-                    to_persist.append(yaml_asset)
+            if db_asset is not None:
                 self.register_stored_asset(yaml_asset)
 
         # CO: orphans = [

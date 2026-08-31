@@ -91,7 +91,7 @@ class SeriesBackend:
         query = """
             SELECT id, name, symbol, provider, provider_code,
               long_name, short_name, instrument, region, exchange, currency, unit,
-              first_trade_date, timezone, week_start, week_end, market_open, market_close
+              first_available_date, timezone, week_start, week_end, market_open, market_close
             FROM asset ORDER BY id;
             """
         result = self._sql_client.execute_read(query, context="get_assets")
@@ -192,7 +192,7 @@ class SeriesBackend:
             meta.exchange,
             meta.currency,
             meta.unit,
-            meta.first_trade_date,
+            meta.first_available_date,
             write_timezone(meta.timezone),
             meta.week_start,
             meta.week_end,
@@ -204,7 +204,7 @@ class SeriesBackend:
             sql_query = """
                     INSERT INTO asset (name, symbol, provider, provider_code,
                         long_name, short_name, instrument, region, exchange, currency, unit,
-                        first_trade_date, timezone, week_start, week_end, market_open, market_close)
+                        first_available_date, timezone, week_start, week_end, market_open, market_close)
                     VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                     RETURNING id;
                     """
@@ -214,7 +214,7 @@ class SeriesBackend:
                 UPDATE asset
                 SET name=%s, symbol=%s, provider=%s, provider_code=%s,
                     long_name=%s, short_name=%s, instrument=%s, region=%s, exchange=%s, currency=%s, unit=%s,
-                    first_trade_date=%s, timezone=%s, week_start=%s, week_end=%s, market_open=%s, market_close=%s
+                    first_available_date=%s, timezone=%s, week_start=%s, week_end=%s, market_open=%s, market_close=%s
                 WHERE id=%s
                 RETURNING id;
             """

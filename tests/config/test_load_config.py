@@ -57,8 +57,8 @@ business:
         name: yahoo
         code: "^GSPC"
       symbol: SPX
-      metadata: 24x7
-      first_trade_date: 2008-09-10
+      templates: 24x7
+      first_available_date: 2008-09-10
       market_open: 9:30:15
       tags:
         instrument: index
@@ -101,7 +101,7 @@ business:
     assert metadata.exchange == "NYSE"
     assert metadata.unit is None
     assert metadata.region is None
-    assert metadata.first_trade_date == date(2008, 9, 10)
+    assert metadata.first_available_date == date(2008, 9, 10)
     assert metadata.week_start == "sun"
     assert metadata.week_end == "sat"
     assert metadata.market_open == time(hour=9, minute=30, second=15)
@@ -155,6 +155,7 @@ def test_load_config_dev_mode(monkeypatch: MonkeyPatch, tmp_path: Path, unwrap: 
 
     cfg = unwrap(result)
     expected_params = {
+        "api_key_required": False,
         "timeout": "10s",
         "history_limits": {},
         "sweep": {},

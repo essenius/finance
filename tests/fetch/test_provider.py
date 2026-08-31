@@ -29,27 +29,31 @@ def test_init_defaults():
     assert now.tzinfo == UTC
 
 
-def test_safe_call_success():
+def test_safe_call_success(make_asset: Creator[Asset], make_series: Creator[Series]):
     p = provider()
+    a = make_asset()
+    s = make_series(a)
 
     def good() -> Result[list[int]]:
         return Success([1, 2, 3])
 
-    result = p._safe_call(good, "context")
+    result = p._safe_call(good, series=s, context="context")
     # is True is required here to narrow the Result union
     assert result.ok is True
     assert result.payload == [1, 2, 3]
 
 
-def test_safe_call_exception():
+def test_safe_call_exception(make_asset: Creator[Asset], make_series: Creator[Series]):
     p = provider()
+    a = make_asset()
+    s = make_series(a)
 
     def bad() -> Result[int]:
         raise ValueError("kaboom")
 
-    result = p._safe_call(bad, "context")
+    result = p._safe_call(bad, series=s, context="fetch")
     assert result.ok is False
-    assert "Exception during context" in result.reason
+    assert "Exception during fetch of eur_usd:dummy (1)" in result.reason
     assert "kaboom" in str(result.error)
 
 

@@ -10,7 +10,7 @@ from datetime import timedelta
 from ..common.guards import require_duration, validate_required_duration
 from ..common.json_utils import JsonObject, JsonReader
 from ..common.time_utils import parse_duration
-from .types import Failure, Result, Success
+from .types import Failure, ParseError, Result, Success
 
 
 @dataclass
@@ -30,6 +30,7 @@ class LogConfig:
 @dataclass(frozen=True)
 class ProviderConfig:
     name: str
+    api_key_required: bool
     timeout: str
     history_limits: dict[timedelta, timedelta | None]
     sweep: dict[timedelta, SweepConfig]
@@ -42,13 +43,17 @@ class ProviderConfig:
     def from_config(cls, config: JsonObject) -> ProviderConfig:
         reader = JsonReader(config)
         name = reader.require(str, "name")
+        api_key_required = reader.get(bool, "api_key_required", default=False)
         raw_history_limits = reader.get_object(["constraints", "history_limits"], allow_missing="yes")
         history_limits: dict[timedelta, timedelta | None] = ProviderConfig._parse_duration_table(raw_history_limits)
         sweep_config = reader.get_object("sweep")
         sweep: dict[timedelta, SweepConfig] = ProviderConfig._parse_sweep_table(sweep_config)
         api_key = reader.get(str, "api_key")
+        if api_key_required and not api_key:
+            raise ParseError(f"Required API key not found in {name.upper()}_API_KEY")
         return cls(
             name=name,
+            api_key_required=api_key_required,
             timeout=validate_required_duration(reader.get(str, "timeout", default="10s"), "timeout"),
             api_key=api_key,
             history_limits=history_limits,
@@ -81,7 +86,7 @@ class ProviderConfig:
 
     @staticmethod
     def _parse_duration_table(config: JsonObject) -> dict[timedelta, timedelta | None]:
-        limits = {}
+        limits: dict[timedelta, timedelta | None] = {}
         for key, limit in config.items():
             limit_key = timedelta(0) if key == "default" else parse_duration(key, "key")
             limit_value = None if limit is None else parse_duration(str(limit), f"theshold of key '{key}'")
@@ -89,11 +94,13 @@ class ProviderConfig:
         return limits
 
     @staticmethod
-    def _parse_sweep_table(config: dict) -> dict[timedelta, SweepConfig]:
-        sweeps = {}
+    def _parse_sweep_table(config: JsonObject) -> dict[timedelta, SweepConfig]:
+        sweeps: dict[timedelta, SweepConfig] = {}
         for key, sweep_config in config.items():
             sweep_key = timedelta(0) if key == "default" else parse_duration(key, "key")
-            sweep = SweepConfig.from_config(sweep_config or {}, f"sweep of key '{key}'")
+            if not isinstance(sweep_config, dict):
+                raise ParseError(f"value for sweep table entry '{key}' must be a section")
+            sweep = SweepConfig.from_config(sweep_config, f"sweep of key '{key}'")
             sweeps[sweep_key] = sweep
         return sweeps
 
@@ -131,7 +138,7 @@ class TimescaleConfig:
     CONNECTION_FIELDS = ("host", "port", "dbname", "user", "password", "sslmode", "sslrootcert")
     MANDATORY_FIELDS = ("host", "db", "user", "password")
 
-    def connect_config(self) -> dict:
+    def connect_config(self) -> dict[str, str]:
         return {field: getattr(self, field) for field in self.CONNECTION_FIELDS}
 
     @classmethod
@@ -152,7 +159,7 @@ class TimescaleConfig:
     @classmethod
     def validate(cls, config: JsonObject) -> Result[None]:
         reader = JsonReader(config)
-        missing = []
+        missing: list[str] = []
         for field in cls.MANDATORY_FIELDS:
             if not reader.get(str, field):
                 missing.append(field)

@@ -12,11 +12,19 @@ charset-normalizer==3.4.7
     # via requests
 idna==3.13
     # via requests
+psycopg[binary]==3.3.4
+    # via finance (pyproject.toml)
+psycopg-binary==3.3.4
+    # via psycopg
+python-dateutil==2.9.0.post0
+    # via finance (pyproject.toml)
 python-dotenv==1.2.2
     # via finance (pyproject.toml)
 pyyaml==6.0.3
     # via finance (pyproject.toml)
 requests==2.33.1
     # via finance (pyproject.toml)
+six==1.17.0
+    # via python-dateutil
 urllib3==2.7.0
     # via requests

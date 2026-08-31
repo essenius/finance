@@ -113,7 +113,7 @@ def make_metadata() -> Creator[AssetMetadata]:
             "currency": "USD",
             "unit": "EUR",
             "timezone": UTC,
-            "first_trade_date": None,
+            "first_available_date": None,
             "market_open": time.min,
             "market_close": time.max,
             "week_start": "mon",

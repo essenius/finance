@@ -181,11 +181,11 @@ def test_register_provider_metadata(make_asset: Creator[Asset], make_metadata):
     registry = Registry(assets=[asset])
     registry.register_stored_asset(asset.with_id(asset_id))
 
-    meta = make_metadata(first_trade_date=date(2020, 1, 1))
+    meta = make_metadata(first_available_date=date(2020, 1, 1))
     to_persist = registry.register_provider_metadata(asset_id, meta)
     assert to_persist is not None
     assert to_persist.effective_metadata is not None
-    assert to_persist.effective_metadata.first_trade_date == date(2020, 1, 1)
+    assert to_persist.effective_metadata.first_available_date == date(2020, 1, 1)
 
     should_be_none = registry.register_provider_metadata(asset_id, meta)
     assert should_be_none is None, "Second registration should not trigger a save"
@@ -214,16 +214,16 @@ def test_register_stored_asset_success(make_asset: Creator[Asset], make_metadata
     registry.register_stored_asset(asset)
     current = registry._assets_by_id[1]
     assert current.effective_metadata is not None
-    assert current.effective_metadata.first_trade_date is None
+    assert current.effective_metadata.first_available_date is None
 
     assert registry._assets_by_id[1] is asset
     assert registry._assets_by_name["SPX"] is asset
 
-    new_meta = make_metadata(first_trade_date=date(2020, 1, 1))
+    new_meta = make_metadata(first_available_date=date(2020, 1, 1))
     asset.effective_metadata = new_meta
     registry.register_stored_asset(asset)
     # current = registry._assets_by_id[1]
-    assert current.effective_metadata.first_trade_date == date(2020, 1, 1)
+    assert current.effective_metadata.first_available_date == date(2020, 1, 1)
 
 
 def test_register_stored_series_requires_id(make_asset: Creator[Asset], make_series: Creator[Series]):

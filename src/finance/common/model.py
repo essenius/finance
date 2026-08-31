@@ -9,6 +9,7 @@ from datetime import date, datetime, time, timedelta
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from finance.common.json_utils import JsonObject, JsonReader
+from finance.common.object_utils import apply_overrides
 
 from ..common.candle_identity import CandleIdentity
 from ..common.configuration import SweepConfig
@@ -68,7 +69,7 @@ class SeriesPoint:
         return result
 
 
-@dataclass(frozen=True)
+@dataclass
 class AssetMetadata:
     short_name: str | None = None
     long_name: str | None = None
@@ -79,7 +80,7 @@ class AssetMetadata:
     unit: str | None = None
 
     timezone: ZoneInfo | None = None
-    first_trade_date: date | None = None
+    first_available_date: date | None = None
     market_open: time | None = None
     market_close: time | None = None
     week_start: str | None = None
@@ -112,7 +113,7 @@ class AssetMetadata:
             currency=reader.get(str, "currency"),
             unit=reader.get(str, "unit"),
             timezone=timezone,
-            first_trade_date=parse_date(reader.get(str, "first_trade_date")),
+            first_available_date=parse_date(reader.get(str, "first_available_date")),
             week_start=week_start,
             week_end=week_end,
             market_open=parse_time(reader.get(str, "market_open")),
@@ -186,6 +187,26 @@ class Asset:
     def same_semantics(self, other: Asset) -> bool:
         """check if two assets are semantically the same (e.g. indicating a rename)"""
         return self.provider == other.provider and self.provider_code == other.provider_code
+
+    def reconcile_with(self, current: Asset | None) -> bool:
+        # The configured metadata overrides what is in the database (i.e. currently effective)
+        # so if there is anything in the config diffferent from current, we need to save.
+
+        if current is not None:
+            self.id = current.id
+            needs_save = (
+                self.name != current.name
+                or self.symbol != current.symbol
+                or self.provider != current.provider
+                or self.provider_code != current.provider_code
+            )
+            self.effective_metadata = apply_overrides(current.effective_metadata, self.config_metadata)
+            return needs_save or self.effective_metadata != current.effective_metadata
+
+        # We don't have a record yet, so we must save (we need an ID). Move the current config to effective as default
+
+        self.effective_metadata = self.config_metadata
+        return True
 
     def with_id(self, new_id: int) -> Asset:
         return replace(self, id=new_id)

@@ -13,7 +13,7 @@ from .provider import MarketDataProvider
 
 BASE_URL = "https://api.stlouisfed.org/fred/series/observations"
 
-# check out https://api.stlouisfed.org/fred/series/search?search_text=gold&api_key=...&file_type=json
+# check out https://api.stlouisfed.org/fred/series/search?search_text=gold&api_key=...&file_type=json for a list of series
 
 
 class FredProvider(MarketDataProvider):
@@ -37,13 +37,13 @@ class FredProvider(MarketDataProvider):
             "observation_end": end_date,
         }
 
-        return self._safe_call(fn=lambda: self._fetch(series, params), context="FRED fetch")
+        return self._safe_call(fn=lambda: self._fetch(series, params), series=series, context="FRED fetch")
 
     # ----------------
     # Private methods
     # ----------------
 
-    def _fetch(self, series: Series, params: dict) -> FetchResult:
+    def _fetch(self, series: Series, params: dict[str, str]) -> FetchResult:
 
         response = self.session.get(BASE_URL, params=params, timeout=self.provider_config.timeout_delta().seconds)
         response.raise_for_status()
@@ -54,6 +54,7 @@ class FredProvider(MarketDataProvider):
             observations = reader.get_array("observations", allow_missing="no")
 
             points: list[SeriesPoint] = []
+            series_id = series.require_id()
 
             for observation in observations:
                 observation = reader.ensure_type(observation, dict, "observation is no object")
@@ -73,11 +74,9 @@ class FredProvider(MarketDataProvider):
                     continue
 
                 value = float(value_str)
-                series_id = series.require_id()
                 points.append(SeriesPoint(series_id=series_id, time=time, close=value))
 
-                result = FetchData(series_id=series_id, points=points, metadata=None)
-
+            result = FetchData(series_id=series_id, points=points, metadata=None)
             return Success(result)
         except ParseError as ve:
             return Failure(str(ve))

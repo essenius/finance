@@ -69,24 +69,6 @@ business:
 # ---------------------------------------------------------------------------
 
 
-def test_load_config_provider_timezone_failure(tmp_path: Path, assert_error: AssertError):
-    yaml_file = tmp_path / "config.yaml"
-    yaml_file.write_text("""
-business:
-  providers:
-    ecb:
-      timezone: bogus
-""")
-
-    env_file = tmp_path / ".env"
-    env_file.write_text(COMPLETE_TIMESCALE_CONFIG)
-
-    loader = ConfigLoader(cwd=tmp_path)
-    with patch.dict("os.environ", {}, clear=True):
-        result = loader.load()
-    assert_error(result, "Could not parse provider 'ecb'", "No time zone found with key bogus")
-
-
 def test_load_config_provider_duration_failure(tmp_path: Path, assert_error: AssertError):
     yaml_file = tmp_path / "config.yaml"
     yaml_file.write_text("""

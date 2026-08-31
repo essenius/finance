@@ -6,8 +6,12 @@
 Description=Run Finance Data Fetcher periodically
 
 [Timer]
-OnBootSec=2min
-OnUnitActiveSec=10min
+# every two hours Monday to Friday
+OnCalendar=Mon..Fri *-*-* 00/2:00:00
+# once at noon on weekend days
+OnCalendar=Sat,Sun *-*-* 12:00:00
+# be friendly to the providers by randomizing a bit
+RandomizedDelaySec=15min
 Unit=finance-fetch.service
 
 [Install]

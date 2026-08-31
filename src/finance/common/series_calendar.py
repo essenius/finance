@@ -33,7 +33,7 @@ class SeriesCalendar:
     week_end: int
     interval: timedelta
     publication_offset: timedelta | None = None
-    first_trade_date: date | None = None
+    first_available_date: date | None = None
 
     # _offset: timedelta | None = None
 
@@ -49,13 +49,13 @@ class SeriesCalendar:
             week_end=default_if_none(parse_weekday(meta.week_end), FRIDAY),
             interval=series.interval_delta(),
             publication_offset=parse_duration(series.publication_offset, f"publication offset for {series.name}"),
-            first_trade_date=meta.first_trade_date,
+            first_available_date=meta.first_available_date,
         )
 
     def first_trade_time(self) -> datetime | None:
-        if self.first_trade_date is None:
+        if self.first_available_date is None:
             return None
-        return datetime.combine(self.first_trade_date, time.min, self.timezone)
+        return datetime.combine(self.first_available_date, time.min, self.timezone)
 
     def last_identity_before(self, moment_utc: datetime) -> CandleIdentity:
         return self.snap_back_identity(moment_utc - ONE_MICROSECOND)

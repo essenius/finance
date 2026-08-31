@@ -281,7 +281,7 @@ def test_get_assets_returns_asset_list(make_backend: Creator[FakeBackend]):
         SimpleNamespace(name="currency"),
         SimpleNamespace(name="unit"),
         SimpleNamespace(name="timezone"),
-        SimpleNamespace(name="first_trade_date"),
+        SimpleNamespace(name="first_available_date"),
         SimpleNamespace(name="week_start"),
         SimpleNamespace(name="week_end"),
         SimpleNamespace(name="market_open"),

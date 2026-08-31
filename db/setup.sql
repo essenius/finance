@@ -2,12 +2,12 @@
 -- Licensed under the Apache License, Version 2.0. See the LICENSE file for details.
 -- File: db/setup.sql
 
--- run with psql -h localhost -p 5433 -U postgres -f db/setup.sql
+-- run with psql -h localhost -p 5432 -U postgres -f db/setup.sql
 -- set credentials in ~/.pgpass: localhost:5432:*:postgres:password:sslmode=verify-all
 
 -- Create database if not exists (Postgres doesn't have CREATE DATABASE IF NOT EXISTS)
 
-\set dbname test
+\set dbname finance
 
 CREATE EXTENSION IF NOT EXISTS dblink;
 
@@ -193,7 +193,7 @@ CREATE TABLE IF NOT EXISTS asset (
     -- market calendar 
 
     -- can be empty if before the required interval
-    first_trade_date DATE,
+    first_available_date DATE,
 
     timezone         TEXT,
     week_start       week_day,
@@ -254,6 +254,7 @@ SELECT
     a.provider_code,
     a.symbol,
     a.long_name,
+    a.short_name,
     a.instrument,
     a.region,
     a.exchange,
@@ -264,7 +265,7 @@ SELECT
     a.market_close,
     a.week_start,
     a.week_end,
-    a.first_trade_date,
+    a.first_available_date,
     s.interval,
     s.retention,
     s.retention_period,

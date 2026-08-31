@@ -394,7 +394,7 @@ def test_compute_fetch_range_daily(
 ):
     fake_provider = make_fake_provider(fetch_result=Failure(reason="bad data"))
 
-    meta = make_metadata(first_trade_date=date(2021, 10, 1))
+    meta = make_metadata(first_available_date=date(2021, 10, 1))
     asset = make_asset(effective_metadata=meta)
     series_list = [
         make_series(asset, interval="1d", bootstrap_history="5y", retention=Retention.LONG_LIVED, retention_period=None)
@@ -403,7 +403,7 @@ def test_compute_fetch_range_daily(
     calendar = SeriesCalendar.create(series_list[0], asset.effective_metadata)
     assets = make_assets([asset])
 
-    # Daily series. Set first trade date less than 5 years ago to test it is respected.
+    # Daily series. Set first available date less than 5 years ago to test it is respected.
 
     providers = {"yahoo": fake_provider}
 

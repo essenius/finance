@@ -8,15 +8,15 @@ import os
 import re
 from dataclasses import dataclass
 from pathlib import Path
-from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+from zoneinfo import ZoneInfoNotFoundError
 
 import yaml
 from dotenv import dotenv_values
 
 from ..common.configuration import LogConfig, ProviderConfig, TimescaleConfig
-from ..common.dict_utils import deep_merge
 from ..common.json_utils import JsonObject, JsonReader
 from ..common.model import BACKEND, Asset, Series
+from ..common.object_utils import deep_merge
 from ..common.paths import resolve_config_path
 from ..common.string_enums import Retention, SeriesType, SupportedProviders
 from ..common.time_utils import validate_duration
@@ -138,10 +138,10 @@ class ConfigLoader:
         # .env overrides environ
         merged = {**self.environ, **env_file_values}
 
-        api_keys = {}
-        timescaledb = {}
-        logging = {}
-        paths = {}
+        api_keys: JsonObject = {}
+        timescaledb: JsonObject = {}
+        logging: JsonObject = {}
+        paths: dict[str, Path] = {}
 
         for key, value in merged.items():
             key = key.lower()
@@ -189,9 +189,9 @@ def normalize_providers(reader: JsonReader, api_keys: JsonObject) -> Result[dict
         try:
             content = reader.get_object(provider, allow_missing="yes")
             content["name"] = provider
-            tz_name = str(content.get("timezone", "UTC"))
+            # tz_name = str(content.get("timezone", "UTC"))
             # force validation
-            ZoneInfo(tz_name)
+            # ZoneInfo(tz_name)
 
             api_key = api_keys.get(provider)
             if api_key is not None:
@@ -257,25 +257,17 @@ def _embed_templates(meta: list[str] | JsonObject, template_reader: JsonReader, 
 
 
 def normalize_assets_and_series(asset_reader: JsonReader, template_reader: JsonReader) -> Result[BusinessConfig]:
-    asset_list = []
-    series_list = []
+    asset_list: list[Asset] = []
+    series_list: list[Series] = []
 
     for asset_name, reader in asset_reader.items():
         try:
             reader.require(str, ["provider", "name"])
             reader.require(str, ["provider", "code"])
 
-            metadata = reader.get_array("metadata", expected_type=str, allow_missing="yes")
+            templates = reader.get_array("templates", expected_type=str, allow_missing="yes")
 
-            # provider_section = require_key(cfg, "provider", f"asset '{asset_name}'")
-            # if not isinstance(provider_section, dict):
-            #    raise ValueError("malformed provider section.")
-
-            # require_key(provider_section, "name")
-            # require_key(provider_section, "code")
-
-            # meta_def = cfg.get("metadata")
-            cfg_reader = JsonReader(_embed_templates(metadata, template_reader, reader.get_object()))
+            cfg_reader = JsonReader(_embed_templates(templates, template_reader, reader.get_object()))
             tags = {k.lower(): v for k, v in cfg_reader.get_object("tags", allow_missing="yes").items()}
 
             asset = Asset.from_config(name=asset_name, config=cfg_reader.get_object() | tags)

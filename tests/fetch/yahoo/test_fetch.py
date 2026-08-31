@@ -93,7 +93,7 @@ def test_fetch_success(
                 "result": [
                     {
                         "meta": {"exchangeTimezoneName": "UTC"},
-                        "timestamp": [int(now.start_timestamp())],
+                        "timestamp": [now.start_timestamp()],
                         "indicators": {"quote": [{"close": [10.0]}]},
                     }
                 ],
@@ -156,7 +156,7 @@ def test_fetch_missing_exchange_timezone(
                 "result": [
                     {
                         "meta": meta,
-                        "timestamp": [int(now.start_timestamp())],
+                        "timestamp": [now.start_timestamp()],
                         "indicators": {"quote": [{"close": [10.0]}]},
                     }
                 ],
@@ -187,7 +187,7 @@ def test_fetch_missing_quote(
                 "result": [
                     {
                         "meta": {"exchangeTimezoneName": "UTC"},
-                        "timestamp": [int(now.start_timestamp())],
+                        "timestamp": [now.start_timestamp()],
                         "indicators": {},
                     }
                 ],
@@ -241,7 +241,7 @@ def test_fetch_real_fixture_5m_eliminates_last_and_fills_metadata(
     assert metadata.exchange == "CMX"
     assert metadata.currency == "USD"
     assert metadata.unit is None
-    assert metadata.first_trade_date == date(year=2000, month=8, day=30)
+    assert metadata.first_available_date == date(year=2000, month=8, day=30)
     assert metadata.timezone is not None
     assert metadata.timezone.key == "America/New_York"
     assert metadata.market_open == time(hour=0)

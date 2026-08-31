@@ -23,5 +23,5 @@ require_env() {
 
 USER="$(require_env TIMESCALEDB_USER)"
 PASS="$(require_env TIMESCALEDB_PASSWORD)"
-DB=test
+DB=finance
 CONTAINER=timescaledb15

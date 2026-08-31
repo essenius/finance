@@ -12,23 +12,26 @@ from tests.support.types import AssertError
 
 
 def test_normalize_providers_basic(unwrap: Unwrap[dict[str, ProviderConfig]]):
-    ecb = {
+    ecb: JsonObject = {
         "timeout": "20s",
         "nonsense": "ignored",
         "constraints": {"history_limits": {"default": "60d", "1d": None}},
         "overlap": {"default": "0"},
     }
 
-    fred = {}
+    fred: JsonObject = {"api_key_required": True, "api_key": "secret"}
 
     providers = unwrap(normalize_providers(JsonReader({"ecb": ecb, "fred": fred, "bogus": "ignored"}), {}))
 
     default_params = {"timeout": "10s", "history_limits": {}, "sweep": {}}
 
-    assert providers["yahoo"] == ProviderConfig(name="yahoo", **default_params), "Yahoo"
-    assert providers["fred"] == ProviderConfig(name="fred", **default_params), "FRED"
+    assert providers["yahoo"] == ProviderConfig(name="yahoo", api_key_required=False, **default_params), "Yahoo"
+    assert providers["fred"] == ProviderConfig(
+        name="fred", api_key_required=True, api_key="secret", **default_params
+    ), "FRED"
     assert providers["ecb"] == ProviderConfig(
         name="ecb",
+        api_key_required=False,
         timeout="20s",
         api_key=None,
         history_limits={timedelta(0): timedelta(days=60), timedelta(days=1): None},
@@ -40,3 +43,9 @@ def test_normalize_providers_wrong_timeout(assert_error: AssertError):
     fred: JsonObject = {"timeout": "bogus"}
     providers = normalize_providers(JsonReader({"fred": fred}), {})
     assert_error(providers, "Could not parse provider 'fred'", "Invalid duration 'bogus' in timeout")
+
+
+def test_normalize_providers_no_required_api_key(assert_error: AssertError):
+    fred: JsonObject = {"api_key_required": True}
+    providers = normalize_providers(JsonReader({"fred": fred}), {})
+    assert_error(providers, "Could not parse provider 'fred'", "Required API key not found in FRED_API_KEY")

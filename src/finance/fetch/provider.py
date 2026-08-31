@@ -66,8 +66,8 @@ class MarketDataProvider:
         """
         return Failure(reason="fetch not implemented")
 
-    def _safe_call[T](self, fn: Callable[[], Result[T]], context: str) -> Result[T]:
+    def _safe_call[T](self, fn: Callable[[], Result[T]], *, series: Series, context: str) -> Result[T]:
         try:
             return fn()
         except Exception as exc:
-            return Failure(reason=f"Exception during {context}", error=exc)
+            return Failure(reason=f"Exception during {context} of {series.name} ({series.id})", error=str(exc))

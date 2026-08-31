@@ -29,14 +29,14 @@ class EcbProvider(MarketDataProvider):
         params = params | {"format": "jsondata", "detail": "dataonly"}
 
         return self._safe_call(
-            fn=lambda: self._fetch(series, asset.provider_code, params), context=f"ECB fetch of {series.name}"
+            fn=lambda: self._fetch(series, asset.provider_code, params), series=series, context="ECB fetch"
         )
 
     # ----------------
     # Private methods
     # ----------------
 
-    def _fetch(self, series: Series, provider_code: str, params: dict) -> FetchResult:
+    def _fetch(self, series: Series, provider_code: str, params: dict[str, str]) -> FetchResult:
         """provider_code: e.g. 'USD_EUR'"""
 
         url = self._make_url(provider_code)

@@ -7,6 +7,8 @@ from __future__ import annotations
 from collections.abc import Callable
 from datetime import datetime
 
+from finance.common.applogger import AppLogger
+
 from ..common.model import BACKEND, Asset, Series, SeriesPoint, SeriesState
 from ..common.time_utils import write_time, write_timezone
 from ..common.types import Failure, Result, Success
@@ -20,6 +22,8 @@ from .timescale_mapper import (
 from .timescale_sql import TimescaleConfig, TimescaleSqlClient
 
 type SqlClientFactory = Callable[[TimescaleConfig], BackendProtocol]
+
+logger = AppLogger("backend")
 
 
 class SeriesBackend:
@@ -53,6 +57,7 @@ class SeriesBackend:
                 error=f"verify-ca requires path in {BACKEND.upper()}_SSL_ROOT_CERT in .env or ssl_root_cert in yaml",
             )
 
+        logger.debug(f"user: {config.user}, port: {config.port}, db: {config.dbname}")
         backend = cls(config, sql_factory(config), now)
         refresh_result = backend.refresh_short_lived_series_ids()
         if refresh_result.ok is False:

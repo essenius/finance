@@ -37,6 +37,10 @@ class YahooProvider(MarketDataProvider):
 
         start_timestamp = start.start_timestamp()
         end_timestamp = end.end_timestamp()
+        # quirk in Yahoo: you don't get anything if both start and end are in the same day
+        # TODO: issue here is that this doesn't work on weekends. The timestamp must be in the previous trading day.
+        if series.is_daily() and start.value.date() == end.value.date():
+            start_timestamp -= 1
         url, params = self._build_url(asset.provider_code, series.interval, start_timestamp, end_timestamp)
         result = self._safe_call(
             fn=lambda: self._fetch_impl(url=url, params=params), series=series, context="Yahoo fetch"
@@ -142,7 +146,8 @@ class YahooProvider(MarketDataProvider):
         timestamps, arrays = arrays_result.payload
         # remove last element from timestamps and arrays if timestamp not aligned with interval period
         if timestamps != [] and not self._is_aligned(timestamps[-1], series):
-            timestamps.pop()
+            popped = timestamps.pop()
+            logger.debug(f"Removed last candle as timestamp {datetime.fromtimestamp(popped).astimezone(UTC)} not aligned")
             for key in arrays:
                 if arrays[key] != []:
                     arrays[key].pop()
@@ -205,7 +210,8 @@ class YahooProvider(MarketDataProvider):
         return self._parse_result(reader)
 
     def _is_aligned(self, ts: float, series: Series) -> bool:
-        # Yahoo's last candle time isn't aligned, it's the last data so far.
+        # Yahoo's last candle time often isn't aligned, it's the last data so far.
+        # for daily series we made sure the candle is complete.
         if series.is_daily():
             return True
         seconds = int(series.interval_delta().total_seconds())

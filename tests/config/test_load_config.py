@@ -109,8 +109,7 @@ business:
     # series
     assert len(app_config.series) == 1
     series: Series = app_config.series[0]
-    assert series.asset_id is None
-    assert series.asset_name == "spx"
+    assert series.asset is asset
     assert series.bootstrap_history == "10y"
     assert series.bootstrap_history_delta() == timedelta(days=3652.5)
     assert series.interval == "1d"

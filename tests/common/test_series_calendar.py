@@ -5,7 +5,8 @@
 from datetime import date, datetime, time, timedelta
 from zoneinfo import ZoneInfo
 
-from finance.common.model import Asset, AssetMetadata, Series
+from finance.common.asset_metadata import AssetMetadata
+from finance.common.model import Asset, Series
 from finance.common.series_calendar import SeriesCalendar
 from finance.common.time_utils import UTC
 from tests.support.types import Creator
@@ -39,7 +40,7 @@ def test_from_asset_for_series(
     asset = make_asset(config_metadata=metadata)
     series = make_series(asset, publication_offset="14h")
 
-    calendar = SeriesCalendar.create(series, metadata)
+    calendar = SeriesCalendar.create(series.interval_delta(), series.publication_offset_delta(), metadata)
     assert calendar.timezone.key == "America/Chicago"
     assert calendar.market_open == time.min
     assert calendar.market_close == time.max

@@ -2,10 +2,13 @@
 # Licensed under the Apache License, Version 2.0. See the LICENSE file for details.
 # File: src/finance/timeseries/timescale_mapper.py
 
+from collections.abc import Callable
 from zoneinfo import ZoneInfo
 
-from ..common.model import Asset, AssetMetadata, Series, SeriesState
-from ..common.string_enums import Retention, SeriesType
+from finance.common.asset_metadata import AssetMetadata
+from finance.common.json_utils import JsonObject
+
+from ..common.model import Asset, Series, SeriesState
 from ..common.time_utils import parse_time
 
 
@@ -33,23 +36,30 @@ def asset_from_row(row: tuple, columns: dict[str, int]) -> Asset:
         provider=row[columns["provider"]],
         provider_code=row[columns["provider_code"]],
         effective_metadata=meta,
+        config_metadata=meta,
     )
 
 
-def series_from_row(row: tuple, columns: dict[str, int]) -> Series:
-    return Series(
+def series_from_row(row: tuple, columns: dict[str, int], get_asset: Callable[[int], Asset]) -> Series:
+    asset = get_asset(row[columns["asset_id"]])
+    config: JsonObject = {}
+    for field, index in columns.items():
+        config[field] = row[index]
+    return Series.create(asset, code=row[columns["code"]], config=config)
+    """return Series(
+        asset=asset,
+        calendar=SeriesCalendar.create(),
         id=row[columns["id"]],
         code=row[columns["code"]],
         asset_id=row[columns["asset_id"]],
         asset_name=row[columns["asset_name"]],
-        name=row[columns["name"]],
         interval=row[columns["interval"]],
         series_type=SeriesType.require(row[columns["series_type"]]),
         retention=Retention.require(row[columns["retention"]]),
         retention_period=row[columns["retention_period"]],
         bootstrap_history=row[columns["bootstrap_history"]],
         publication_offset=row[columns["publication_offset"]],
-    )
+    )"""
 
 
 def series_state_from_range_rows(rows: list[tuple]) -> dict[int, SeriesState]:

@@ -7,10 +7,11 @@ from urllib.parse import quote
 from zoneinfo import ZoneInfo
 
 from ..common.applogger import AppLogger
+from ..common.asset_metadata import AssetMetadata
 from ..common.candle_identity import CandleIdentity
 from ..common.guards import require
 from ..common.json_utils import JsonObject, JsonReader
-from ..common.model import Asset, AssetMetadata, FetchData, FetchResult, Series, SeriesPoint, SeriesPointsResult
+from ..common.model import Asset, FetchData, FetchResult, Series, SeriesPoint, SeriesPointsResult
 from ..common.string_enums import Candle
 from ..common.time_utils import UTC
 from ..common.types import Failure, ParseError, Result, Success
@@ -59,7 +60,9 @@ class YahooProvider(MarketDataProvider):
         points_result = self._extract_candles(series, reader, require(metadata.timezone, "metadata timezone"))
         if points_result.ok is False:
             return fetch_failure(error=points_result.reason)
-        result = FetchData(series_id=series.require_id(), points=points_result.payload, metadata=metadata)
+        result = FetchData(
+            series_id=series.require_id(), series=series, points=points_result.payload, metadata=metadata
+        )
         return Success(result)
 
     # ----------------
@@ -147,7 +150,9 @@ class YahooProvider(MarketDataProvider):
         # remove last element from timestamps and arrays if timestamp not aligned with interval period
         if timestamps != [] and not self._is_aligned(timestamps[-1], series):
             popped = timestamps.pop()
-            logger.debug(f"Removed last candle as timestamp {datetime.fromtimestamp(popped).astimezone(UTC)} not aligned")
+            logger.debug(
+                f"Removed last candle as timestamp {datetime.fromtimestamp(popped).astimezone(UTC)} not aligned"
+            )
             for key in arrays:
                 if arrays[key] != []:
                     arrays[key].pop()

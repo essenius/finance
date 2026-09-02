@@ -10,7 +10,7 @@ from finance.common.guards import require
 from ..common.applogger import AppLogger
 from ..common.candle_identity import CandleIdentity
 from ..common.configuration import ProviderConfig
-from ..common.model import Asset, FetchResult, Series, SeriesState
+from ..common.model import FetchResult, Series, SeriesState
 from ..common.series_calendar import SeriesCalendar
 from ..common.string_enums import SupportedProviders
 from ..common.time_utils import now_second_precision
@@ -44,33 +44,23 @@ def create_providers(providers_config: dict[str, ProviderConfig]) -> dict[str, M
 class FetchController:
     def __init__(
         self,
-        get_asset_by_id: Callable[[int], Asset | None],
         get_provider: Callable[[str], MarketDataProvider | None],
         **kwargs,
     ):
-        self.get_asset_by_id = get_asset_by_id
         self.get_provider = get_provider
         self.now = kwargs.pop("now_provider", now_second_precision)
 
     def fetch_incrementally(self, series_list: Iterable[Series], state: State) -> Iterable[FetchResult]:
 
         for series in series_list:
-            series_id, asset_id = series.require_ids()
+            series_id = series.require_id()
             state_entry = state.get_series_state(series_id)
-            asset = self.get_asset_by_id(asset_id)
-            if asset is None:
-                yield Failure(
-                    reason=f"Could not find asset {series.asset_id} ({series.asset_name})",
-                    error=f"Skipped series '{series.name}'",
-                )
-                continue
+            asset = series.asset
             provider = self.get_provider(asset.provider)
             if not provider:
                 yield Failure(reason=f"no provider '{asset.provider}'", error=f"Skipped series '{series.name}'")
                 continue
-            metadata = require(asset.effective_metadata)
-            calendar = SeriesCalendar.create(series, metadata)
-            range = self._get_fetch_range(series=series, provider=provider, state=state_entry, calendar=calendar)
+            range = self._get_fetch_range(series=series, provider=provider, state=state_entry)
             if range is None:
                 continue
             start, end, is_incremental = range
@@ -84,18 +74,15 @@ class FetchController:
     # ----------------
 
     def _get_fetch_range(
-        self,
-        series: Series,
-        provider: MarketDataProvider,
-        state: SeriesState,
-        calendar: SeriesCalendar,
+        self, series: Series, provider: MarketDataProvider, state: SeriesState
     ) -> tuple[CandleIdentity, CandleIdentity, bool] | None:
         """
         Unified fetch decision: if fetch needed → return (start, end, is_incremental), else None
         """
 
         now = self.now()
-        first_req, last_req = self._get_required_range(series, calendar, now)
+        calendar = series.calendar
+        first_req, last_req = self._get_required_range(series, now)
 
         # edge case. e.g. when retention horizon lands in a weekend
         if first_req > last_req:
@@ -143,9 +130,8 @@ class FetchController:
         return None
 
     @staticmethod
-    def _get_required_range(
-        series: Series, calendar: SeriesCalendar, now: datetime
-    ) -> tuple[CandleIdentity, CandleIdentity]:
+    def _get_required_range(series: Series, now: datetime) -> tuple[CandleIdentity, CandleIdentity]:
+        calendar = series.calendar
         horizon = series.bootstrap_history_delta()
         retention_delta = series.retention_delta()
         if retention_delta is not None:

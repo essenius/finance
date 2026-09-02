@@ -38,7 +38,9 @@ def test_extract_candles_valid_output_structure(
 
     now = fake_now()
     asset = make_asset()
-    series = make_series(asset, retention=Retention.LONG_LIVED, series_type=SeriesType.CANDLE, interval="1d")
+    series = make_series(
+        asset, retention=Retention.LONG_LIVED.value, series_type=SeriesType.CANDLE.value, interval="1d"
+    )
     reader = JsonReader(
         {
             "timestamp": [int(now.timestamp())],
@@ -96,7 +98,7 @@ def test_extract_candles_skips_invalid(
     )
 
     asset = make_asset()
-    series = make_series(asset, series_type=SeriesType.CANDLE)
+    series = make_series(asset, series_type=SeriesType.CANDLE.value)
 
     fake = yahoo_provider()
     candles = fake.provider._extract_candles(series, reader)
@@ -133,7 +135,7 @@ def test_extract_candles_signals_incomplete(
     )
 
     asset = make_asset()
-    series = make_series(asset, series_type=SeriesType.CANDLE)
+    series = make_series(asset, series_type=SeriesType.CANDLE.value)
     fake = yahoo_provider()
     candles = fake.provider._extract_candles(series, reader)
     assert_warning(candles, "1 incomplete candles")
@@ -154,7 +156,7 @@ def test_extract_candles_handles_missing_timestamp(
     reader = JsonReader({"timestamp": [], "indicators": {"quote": []}})
 
     asset = make_asset()
-    series = make_series(asset, series_type=SeriesType.VALUE)
+    series = make_series(asset, series_type=SeriesType.VALUE.value)
     fake = yahoo_provider()
     candles = fake.provider._extract_candles(series, reader)
     assert candles.ok is True
@@ -173,6 +175,6 @@ def test_extract_candles_empty_result(
     reader = JsonReader({"timestamp": [1], "indicators": {"quote": [{}]}})
     asset = make_asset()
     fake = yahoo_provider()
-    series = make_series(asset, series_type=SeriesType.VALUE)
+    series = make_series(asset, series_type=SeriesType.VALUE.value)
     candles = unwrap(fake.provider._extract_candles(series, reader))
     assert candles == []

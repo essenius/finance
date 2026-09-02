@@ -5,9 +5,10 @@
 from collections.abc import Iterable
 from dataclasses import dataclass
 
+from finance.common.asset_metadata import AssetMetadata
 from finance.common.object_utils import apply_overrides
 
-from ..common.model import Asset, AssetMetadata, Series
+from ..common.model import Asset, Series
 from ..common.types import AppError
 
 
@@ -111,9 +112,9 @@ class Registry:
         for yaml_series in self._yaml_series:
             # get the asset id. Yaml doesn't know about ids
             # note this requires assets to have been reconciled already.
-            if yaml_series.asset_id is None:
-                asset = self.get_asset_by_name(yaml_series.asset_name)
-                yaml_series.asset_id = asset.id
+            # CO: if yaml_series.asset.id is None:
+            # CO:     asset = self.get_asset_by_name(yaml_series.asset_name)
+            # CO:     yaml_series.asset_id = asset.id
             db_series = find_existing_series(yaml_series)
             if db_series is None:
                 to_persist.append(yaml_series)
@@ -134,21 +135,17 @@ class Registry:
     # Registration
     # ------------------------------------------------------------
 
-    def register_provider_metadata(self, asset_id: int, metadata: AssetMetadata) -> Asset | None:
+    def register_provider_metadata(self, asset: Asset, metadata: AssetMetadata) -> Asset | None:
         """
         Register metadata that the provider returned. Returns the asset if it needs to be stored.
         """
-        yaml_asset = self._assets_by_id.get(asset_id)
 
-        if yaml_asset is None:
-            raise AppError(f"Cannot register provider metadata for unknown asset id {asset_id}")
+        asset.provider_metadata = metadata
 
-        yaml_asset.provider_metadata = metadata
-
-        merged_metadata = apply_overrides(metadata, yaml_asset.config_metadata)
-        if merged_metadata != yaml_asset.effective_metadata:
-            yaml_asset.effective_metadata = merged_metadata
-            return yaml_asset
+        merged_metadata = apply_overrides(metadata, asset.config_metadata)
+        if merged_metadata != asset.effective_metadata:
+            asset.effective_metadata = merged_metadata
+            return asset
         return None
 
     def register_stored_asset(self, asset: Asset) -> None:

@@ -109,10 +109,10 @@ class SeriesBackend:
 
         return Success([asset_from_row(row, columns) for row in rows])
 
-    def get_series(self) -> Result[list[Series]]:
+    def get_series(self, get_asset: Callable[[int], Asset]) -> Result[list[Series]]:
         query = """
-            SELECT s.id, s.code, s.asset_id, a.name as asset_name, a.name || ':' || s.code AS name,
-                s.interval, s.series_type, s.retention, s.retention_period, s.bootstrap_history, s.publication_offset
+            SELECT s.id, s.code, s.asset_id, a.name as asset_name, s.interval, s.series_type,
+            s.retention, s.retention_period, s.bootstrap_history, s.publication_offset
             FROM series s
             JOIN asset a ON s.asset_id = a.id
             ORDER BY s.id;
@@ -125,7 +125,7 @@ class SeriesBackend:
         rows = payload["rows"]
         columns = payload["columns"]
 
-        return Success([series_from_row(row, columns) for row in rows])
+        return Success([series_from_row(row, columns, get_asset) for row in rows])
 
     def get_series_states(self) -> Result[dict[int, SeriesState]]:
         # 1. Load cold/hot ranges
@@ -231,12 +231,12 @@ class SeriesBackend:
         return Success(asset if asset.id is not None else asset.with_id(result.payload))
 
     def store_series(self, series: Series) -> Result[Series]:
-        if series.asset_id is None:
-            return Failure(reason="Store series failed", error="asset_id was not set")
+        if series.asset.id is None:
+            return Failure(reason="store series operation failed", error="asset.id was not set")
 
         base_fields = (
             series.code,
-            series.asset_id,
+            series.asset.id,
             series.interval,
             series.series_type,
             series.retention,

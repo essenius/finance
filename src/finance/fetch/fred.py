@@ -76,7 +76,7 @@ class FredProvider(MarketDataProvider):
                 value = float(value_str)
                 points.append(SeriesPoint(series_id=series_id, time=time, close=value))
 
-            result = FetchData(series_id=series_id, points=points, metadata=None)
+            result = FetchData(series_id=series_id, series=series, points=points, metadata=None)
             return Success(result)
         except ParseError as ve:
             return Failure(str(ve))

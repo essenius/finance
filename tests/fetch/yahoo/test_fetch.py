@@ -7,9 +7,10 @@ from datetime import date, datetime, time, timedelta
 
 import pytest
 
+from finance.common.asset_metadata import AssetMetadata
 from finance.common.candle_identity import CandleIdentity
 from finance.common.json_utils import JsonObject
-from finance.common.model import Asset, AssetMetadata, FetchData, Series, SeriesPoint
+from finance.common.model import Asset, FetchData, Series, SeriesPoint
 from finance.common.string_enums import Retention, SeriesType
 from finance.common.time_utils import UTC
 from finance.common.types import Unwrap
@@ -102,7 +103,9 @@ def test_fetch_success(
         },
     )
     asset = make_asset(provider_code="AAPL")
-    series = make_series(asset, interval="1h", retention=Retention.SHORT_LIVED, series_type=SeriesType.VALUE)
+    series = make_series(
+        asset, interval="1h", retention=Retention.SHORT_LIVED.value, series_type=SeriesType.VALUE.value
+    )
 
     result = fake.provider.fetch(series, asset, now, now, False)
 
@@ -165,7 +168,9 @@ def test_fetch_missing_exchange_timezone(
         },
     )
     asset = make_asset(name="AAPL")
-    series = make_series(asset, interval="1h", retention=Retention.SHORT_LIVED, series_type=SeriesType.VALUE)
+    series = make_series(
+        asset, interval="1h", retention=Retention.SHORT_LIVED.value, series_type=SeriesType.VALUE.value
+    )
     result = fake.provider.fetch(series, asset, now, now, False)
 
     assert_error(result, "Could not parse series 'AAPL:dummy' in Yahoo fetch result", reason)
@@ -196,7 +201,9 @@ def test_fetch_missing_quote(
         },
     )
     asset = make_asset(name="AAPL")
-    series = make_series(asset, interval="1h", retention=Retention.SHORT_LIVED, series_type=SeriesType.VALUE)
+    series = make_series(
+        asset, interval="1h", retention=Retention.SHORT_LIVED.value, series_type=SeriesType.VALUE.value
+    )
     result = fake.provider.fetch(series, asset, now, now, False)
 
     assert_error(

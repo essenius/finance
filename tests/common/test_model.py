@@ -6,8 +6,9 @@ from datetime import date, datetime, time, timedelta
 
 import pytest
 
+from finance.common.asset_metadata import AssetMetadata
 from finance.common.json_utils import JsonObject
-from finance.common.model import Asset, AssetMetadata, Series, SeriesPoint, SeriesState
+from finance.common.model import Asset, Series, SeriesPoint, SeriesState
 from finance.common.string_enums import Retention, SeriesType
 from finance.common.types import ParseError
 from tests.support.types import Creator, Factory
@@ -49,7 +50,10 @@ def test_asset_create_with_id_differs():
     )
     assert asset.config_metadata == meta
 
-    assert f"{asset}" == "Asset(id=None, name=spx, symbol=SPX, provider_code=^SPX, metadata=None)"
+    assert (
+        f"{asset}"
+        == "Asset(id=None, name=spx, symbol=SPX, provider_code=^SPX, metadata=AssetMetadata(short=spx, currency=None, timezone=None))"
+    )
 
     asset.effective_metadata = asset.config_metadata
 
@@ -91,8 +95,7 @@ def test_series_create_with_id_differs(make_asset: Creator[Asset]):
     assert series.id is None
     assert series.code == "dummy"
     assert series.name == "spx:dummy"
-    assert series.asset_name == "spx"
-    assert series.asset_id == 3
+    assert series.asset is asset
     assert series.retention == Retention.LONG_LIVED
     assert series.series_type == SeriesType.CANDLE
     assert series.interval == "1d"
@@ -106,7 +109,7 @@ def test_series_create_with_id_differs(make_asset: Creator[Asset]):
     series2 = series.with_id(10)
     assert (
         f"{series2}"
-        == "Series(id=10, name=spx:dummy, asset_id=3, retention=long_lived, series_type=candle, interval=1d)"
+        == "Series(id=10, name=spx:dummy, asset=spx, retention=long_lived, series_type=candle, interval=1d)"
     )
 
     # differs from only looks at metadata, not at id, name
@@ -130,8 +133,7 @@ def test_series_create_with_defaults_daily(make_asset: Creator[Asset]):
     assert series.id is None
     assert series.code == "dummy"
     assert series.name == "spx:dummy"
-    assert series.asset_name == "spx"
-    assert series.asset_id == 3
+    assert series.asset is asset
     assert series.retention == Retention.LONG_LIVED
     assert series.series_type == SeriesType.CANDLE
     assert series.interval == "1d"

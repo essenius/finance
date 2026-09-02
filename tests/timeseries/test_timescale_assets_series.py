@@ -214,7 +214,7 @@ def test_store_series_error_no_asset_id(
     series = make_series(asset=asset, id=None)
 
     result = backend.store_series(series)
-    assert_error(result, "Store series failed", "asset_id was not set")
+    assert_error(result, "store series operation failed", "asset.id was not set")
 
 
 # ------------------------------------------------------------
@@ -320,7 +320,7 @@ def test_get_assets_error(assert_error: AssertError, make_backend: Creator[FakeB
 # ------------------------------------------------------------
 
 
-def test_get_series_returns_series_list(make_backend: Creator[FakeBackend]):
+def test_get_series_returns_series_list(make_backend: Creator[FakeBackend], make_asset):
     backend, connection = make_backend().with_connection()
 
     rows = [
@@ -329,7 +329,6 @@ def test_get_series_returns_series_list(make_backend: Creator[FakeBackend]):
             "intraday",
             1,
             "SPX",
-            "SPX:intraday",
             "1m",
             "value",
             "short_lived",
@@ -342,7 +341,6 @@ def test_get_series_returns_series_list(make_backend: Creator[FakeBackend]):
             "daily",
             1,
             "SPX",
-            "SPX:daily",
             "1d",
             "candle",
             "long_lived",
@@ -359,7 +357,6 @@ def test_get_series_returns_series_list(make_backend: Creator[FakeBackend]):
         SimpleNamespace(name="id"),
         SimpleNamespace(name="code"),
         SimpleNamespace(name="asset_id"),
-        SimpleNamespace(name="asset_name"),
         SimpleNamespace(name="name"),
         SimpleNamespace(name="interval"),
         SimpleNamespace(name="series_type"),
@@ -370,20 +367,30 @@ def test_get_series_returns_series_list(make_backend: Creator[FakeBackend]):
     ]
     connection.cursor.return_value = cursor_cm
 
-    result = backend.get_series()
+    asset = make_asset()
+
+    def get_asset(id: int) -> Asset:
+        return asset
+
+    result = backend.get_series(get_asset)
 
     assert result.ok is True
-    series = result.payload
-    assert len(series) == 2
-    assert series[0].retention == Retention.SHORT_LIVED
-    assert series[1].series_type == SeriesType.CANDLE
-    assert series[1].publication_offset == "1d"
+    series_list = result.payload
+    assert len(series_list) == 2
+    assert series_list[0].retention == Retention.SHORT_LIVED
+    assert series_list[1].series_type == SeriesType.CANDLE
+    assert series_list[1].publication_offset == "1d"
+    assert series_list[0].asset is asset
 
 
 def test_get_series_error(assert_error: AssertError, make_backend: Creator[FakeBackend]):
     backend, connection = make_backend().with_connection()
     connection.cursor.side_effect = psycopg.Error("boom")
-    result = backend.get_series()
+
+    def get_asset(id: int) -> Asset:
+        raise Exception("Not executed")
+
+    result = backend.get_series(get_asset)
     assert_error(result, "get_series operation failed", "boom")
 
 

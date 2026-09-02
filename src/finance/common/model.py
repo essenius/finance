@@ -5,18 +5,18 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
-from datetime import date, datetime, time, timedelta
-from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+from datetime import datetime, timedelta
 
+from finance.common.asset_metadata import AssetMetadata
 from finance.common.json_utils import JsonObject, JsonReader
 from finance.common.object_utils import apply_overrides
+from finance.common.series_calendar import SeriesCalendar
 
 from ..common.candle_identity import CandleIdentity
 from ..common.configuration import SweepConfig
 from ..common.guards import require, require_duration
 from ..common.string_enums import Candle, Retention, SeriesType
-from ..common.time_utils import UTC, parse_date, parse_duration, parse_time, parse_weekday, validate_duration
-from ..common.types import ParseError
+from ..common.time_utils import UTC, parse_duration, validate_duration
 from .types import Result
 
 BACKEND = "timescaledb"
@@ -69,67 +69,13 @@ class SeriesPoint:
         return result
 
 
-@dataclass
-class AssetMetadata:
-    short_name: str | None = None
-    long_name: str | None = None
-    instrument: str | None = None
-    exchange: str | None = None
-    region: str | None = None
-    currency: str | None = None
-    unit: str | None = None
-
-    timezone: ZoneInfo | None = None
-    first_available_date: date | None = None
-    market_open: time | None = None
-    market_close: time | None = None
-    week_start: str | None = None
-    week_end: str | None = None
-
-    @classmethod
-    def from_config(cls, config: JsonObject) -> AssetMetadata:
-        reader = JsonReader(config)
-        raw_timezone = reader.get(str, "timezone")
-        timezone = None
-        if raw_timezone is not None:
-            try:
-                timezone = ZoneInfo(raw_timezone)
-            except ZoneInfoNotFoundError:
-                raise ParseError(f"Cannot understand timezone '{raw_timezone}'.") from None
-
-        week_start = reader.get(str, "week_start")
-        # check and raise error if filled and wrong, but keep string representation
-        parse_weekday(week_start)
-
-        week_end = reader.get(str, "week_end")
-        parse_weekday(week_end)
-
-        return cls(
-            long_name=reader.get(str, "long_name"),
-            short_name=reader.get(str, "short_name"),
-            instrument=reader.get(str, "instrument"),
-            region=reader.get(str, "region"),
-            exchange=reader.get(str, "exchange"),
-            currency=reader.get(str, "currency"),
-            unit=reader.get(str, "unit"),
-            timezone=timezone,
-            first_available_date=parse_date(reader.get(str, "first_available_date")),
-            week_start=week_start,
-            week_end=week_end,
-            market_open=parse_time(reader.get(str, "market_open")),
-            market_close=parse_time(reader.get(str, "market_close")),
-        )
-
-    def __repr__(self):
-        return f"AssetMetadata(short={self.short_name}, currency={self.currency}, timezone={None if self.timezone is None else self.timezone.key})"
-
-
 type SeriesPoints = list[SeriesPoint]
 
 
 @dataclass(frozen=True)
 class FetchData:
     series_id: int
+    series: Series
     points: SeriesPoints
     metadata: AssetMetadata | None = None
 
@@ -148,9 +94,9 @@ class Asset:
     provider_code: str
 
     # metadata
-    config_metadata: AssetMetadata | None = None
+    config_metadata: AssetMetadata
+    effective_metadata: AssetMetadata
     provider_metadata: AssetMetadata | None = None
-    effective_metadata: AssetMetadata | None = None
 
     # assigned by the backend
     id: int | None = None
@@ -170,6 +116,7 @@ class Asset:
             provider=provider_reader.require(str, "name"),
             provider_code=provider_reader.require(str, "code"),
             config_metadata=config_meta,
+            effective_metadata=config_meta,
         )
 
     def differs_from(self, other: Asset) -> bool:
@@ -208,19 +155,20 @@ class Asset:
         self.effective_metadata = self.config_metadata
         return True
 
-    def with_id(self, new_id: int) -> Asset:
+    def require_id(self) -> int:
+        return require(self.id, "asset.id")
+
+    def with_id(self, new_id: int | None) -> Asset:
         return replace(self, id=new_id)
 
 
 @dataclass
 class Series:
-    # identity
-    asset_id: int | None
-    code: str
+    asset: Asset
+    calendar: SeriesCalendar
 
-    # derivative
-    asset_name: str  # taken from asset.name
-    name: str  # = asset_name:code
+    # identity
+    code: str
 
     # meta-data
     interval: str
@@ -233,16 +181,19 @@ class Series:
     # assigned by backend
     id: int | None = None
 
+    @property
+    def name(self) -> str:
+        return f"{self.asset.name}:{self.code}"
+
     @classmethod
     def create(cls, asset: Asset, code: str, config: JsonObject) -> Series:
         """Create a new Series instance. Checks values and can raise ParseError"""
 
         reader = JsonReader(config)
-        name = f"{asset.name}:{code}"
-
-        # the caller must take care of validating this exists
+        # will be empty if filled from yaml config, filled if from database.
+        id = reader.get(int, "id")
         raw_interval = reader.require(str, "interval")
-        interval = require_duration(raw_interval, f"interval for {name}")
+        interval = require_duration(raw_interval, "interval")
         is_intraday = Series.is_intraday_interval(interval)
         raw_retention = reader.get(str, "retention")
         # if no retention was specified, then we use long lived if the interval is a day or more
@@ -255,18 +206,23 @@ class Series:
             "10y" if retention == Retention.LONG_LIVED else "30d"
         )
 
-        publication_offset = validate_duration(reader.get(str, "publication_offset"), "publication offset")
+        raw_publication_offset = reader.get(str, "publication_offset")
+        publication_offset = parse_duration(raw_publication_offset, "publication offset")
+        calendar = SeriesCalendar.create(
+            interval=interval, publication_offset=publication_offset, meta=asset.effective_metadata
+        )
+
         return cls(
-            name=name,
+            id=id,
+            asset=asset,
+            calendar=calendar,
             code=code,
-            asset_id=asset.id,
-            asset_name=asset.name,
             interval=raw_interval,
             series_type=SeriesType.require(reader.get(str, "series_type", default=str(SeriesType.CANDLE))),
             retention=retention,
             retention_period=retention_period,
             bootstrap_history=bootstrap_history,
-            publication_offset=publication_offset,
+            publication_offset=raw_publication_offset,
         )
 
     @staticmethod
@@ -274,7 +230,7 @@ class Series:
         return interval < timedelta(days=1)
 
     def __repr__(self):
-        return f"Series(id={self.id}, name={self.name}, asset_id={self.asset_id}, retention={self.retention}, series_type={self.series_type}, interval={self.interval})"
+        return f"Series(id={self.id}, name={self.name}, asset={self.asset.name}, retention={self.retention}, series_type={self.series_type}, interval={self.interval})"
 
     def bootstrap_history_delta(self) -> timedelta:
         return require_duration(self.bootstrap_history, f"bootstrap history for {self.name}")
@@ -297,12 +253,15 @@ class Series:
     def is_intraday(self):
         return self.is_intraday_interval(self.interval_delta())
 
+    def publication_offset_delta(self) -> timedelta:
+        return require_duration(self.publication_offset, f"publication offset for {self.name}")
+
     def require_id(self) -> int:
         return require(self.id, "series.id")
 
     def require_ids(self) -> tuple[int, int]:
         id = self.require_id()
-        asset_id = require(self.asset_id, "series.asset_id")
+        asset_id = self.asset.require_id()
         return id, asset_id
 
     def retention_delta(self) -> timedelta | None:
@@ -311,7 +270,7 @@ class Series:
     def same_semantics(self, other: Series) -> bool:
         """check if two series are semantically the same (e.g. indicating a rename of the code)"""
         return (
-            self.asset_id == other.asset_id
+            self.asset.same_semantics(other.asset)
             and self.interval == other.interval
             and self.series_type == other.series_type
             and self.retention == other.retention

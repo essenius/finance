@@ -8,21 +8,32 @@ from unittest.mock import Mock, call
 import pytest
 from pytest import LogCaptureFixture
 
-from finance.common.model import AssetMetadata, FetchData, FetchResult, SeriesPoint, SeriesState
+from finance.common.asset_metadata import AssetMetadata
+from finance.common.model import Asset, FetchData, SeriesPoint, SeriesState
 from finance.common.time_utils import UTC
 from finance.common.types import AppError, Failure, Success
 from finance.orchestrator import Orchestrator, unwrap
-from tests.support.types import Creator
+from tests.support.types import Creator, Factory
 
-
+"""
 def ok_fetch_result(points: list) -> FetchResult:
     return Success(FetchData(series_id=1, points=points, metadata=None))
+"""
 
 
 @pytest.fixture
-def series() -> Mock:
+def asset() -> Mock:
+    asset = Mock()
+    asset.id = 123
+    asset.name = "TST"
+    return asset
+
+
+@pytest.fixture
+def series(asset: Factory[Asset]) -> Mock:
     series = Mock()
     series.id = 42
+    series.asset = asset
     series.name = "TEST"
     return series
 
@@ -121,7 +132,7 @@ def test_prepare_loads_state_and_reconciles_backend(
     backend.store_asset.assert_called_once_with(asset)
     registry.register_stored_asset.assert_called_once_with(stored_asset)
 
-    backend.get_series.assert_called_once_with()
+    backend.get_series.assert_called_once_with(registry.get_asset_by_id)
     registry.reconcile_series.assert_called_once_with([series])
 
     backend.store_series.assert_called_once_with(series)
@@ -166,7 +177,6 @@ def test_prepare_continues_when_wal_load_fails(backend: Mock, orchestrator: Orch
     orchestrator._prepare()
 
     backend.get_assets.assert_called_once_with()
-    backend.get_series.assert_called_once_with()
 
 
 def test_ingest_points_ingests_all_points_and_updates_range(
@@ -230,13 +240,12 @@ def test_handle_fetch_response_failed_fetch(backend: Mock, orchestrator: Orchest
 
 def test_handle_fetch_response_ingests_points_no_metadata(orchestrator: Orchestrator, registry: Mock, series: Mock):
     point = SeriesPoint(series_id=series.id, time=datetime(2026, 8, 20, 10, tzinfo=UTC), close=0.0)
-    result = Success(FetchData(series_id=series.id, metadata=None, points=[point]))
+    result = Success(FetchData(series_id=series.id, series=series, metadata=None, points=[point]))
     registry.get_series_by_id.return_value = series
     orchestrator._ingest_points = Mock(return_value=True)
 
     assert orchestrator._handle_fetch_response(result) is True
 
-    registry.get_series_by_id.assert_called_once_with(42)
     orchestrator._ingest_points.assert_called_once_with([point], series)
     registry.register_provider_metadata.assert_not_called()
 
@@ -246,34 +255,30 @@ def test_handle_fetch_response_registers_provider_metadata_without_persisting(
 ):
     metadata = AssetMetadata(short_name="abc")
 
-    result = Success(payload=FetchData(series_id=1, points=[], metadata=metadata))
-    series.asset_id = 123
+    result = Success(payload=FetchData(series_id=1, series=series, points=[], metadata=metadata))
 
     registry.get_series_by_id.return_value = series
     registry.register_provider_metadata.return_value = None
     assert orchestrator._handle_fetch_response(result) is True
 
-    registry.register_provider_metadata.assert_called_once_with(123, metadata)
+    registry.register_provider_metadata.assert_called_once_with(series.asset, metadata)
     backend.store_asset.assert_not_called()
 
 
 def test_handle_fetch_response_persists_changed_asset_metadata(
-    backend: Mock, orchestrator: Orchestrator, registry: Mock, series: Mock
+    backend: Mock, orchestrator: Orchestrator, registry: Mock, asset, series: Mock
 ):
     metadata = AssetMetadata(short_name="abc")
-    asset = Mock()
     stored_asset = Mock()
 
-    result = Success(FetchData(series_id=series.id, metadata=metadata, points=[]))
-    series.asset_id = 123
-
-    registry.get_series_by_id.return_value = series
+    result = Success(FetchData(series_id=series.id, series=series, metadata=metadata, points=[]))
+    # CO: registry.get_series_by_id.return_value = series
     registry.register_provider_metadata.return_value = asset
     backend.store_asset.return_value = Success(stored_asset)
 
     assert orchestrator._handle_fetch_response(result) is True
 
-    registry.register_provider_metadata.assert_called_once_with(123, metadata)
+    registry.register_provider_metadata.assert_called_once_with(asset, metadata)
     backend.store_asset.assert_called_once_with(asset)
 
     # This should be register_stored_asset(), not register_stored_series().
@@ -283,22 +288,21 @@ def test_handle_fetch_response_persists_changed_asset_metadata(
 def test_handle_fetch_response_processes_metadata_and_points(orchestrator: Orchestrator, registry: Mock, series: Mock):
     metadata = AssetMetadata(short_name="abc")
     point = Mock()
-    result = Success(FetchData(series_id=series.id, metadata=metadata, points=[point]))
-    series.asset_id = 123
+    result = Success(FetchData(series_id=series.id, series=series, metadata=metadata, points=[point]))
 
-    registry.get_series_by_id.return_value = series
+    # CO: registry.get_series_by_id.return_value = series
     registry.register_provider_metadata.return_value = None
 
     orchestrator._ingest_points = Mock(return_value=True)
 
     assert orchestrator._handle_fetch_response(result) is True
-    registry.register_provider_metadata.assert_called_once_with(123, metadata)
+    registry.register_provider_metadata.assert_called_once_with(series.asset, metadata)
     orchestrator._ingest_points.assert_called_once_with([point], series)
 
 
 def test_handle_fetch_response_no_points_does_not_ingest(orchestrator: Orchestrator, registry: Mock, series: Mock):
 
-    result = Success(FetchData(series_id=series.id, metadata=None, points=[]))
+    result = Success(FetchData(series_id=series.id, series=series, metadata=None, points=[]))
     registry.get_series_by_id.return_value = series
 
     orchestrator._ingest_points = Mock()

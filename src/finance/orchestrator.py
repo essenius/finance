@@ -111,12 +111,9 @@ class Orchestrator:
             return False
 
         payload = require(payload)
-        series = self.registry.get_series_by_id(payload.series_id)
-
+        series = payload.series
         if payload.metadata is not None:
-            asset_to_save = self.registry.register_provider_metadata(
-                require(series.asset_id, "asset ID"), payload.metadata
-            )
+            asset_to_save = self.registry.register_provider_metadata(series.asset, payload.metadata)
             if asset_to_save is not None:
                 stored = unwrap(self.backend.store_asset(asset_to_save))
                 self.registry.register_stored_asset(stored)
@@ -171,7 +168,7 @@ class Orchestrator:
             stored = unwrap(self.backend.store_asset(asset))
             self.registry.register_stored_asset(stored)
 
-        saved_series = unwrap(self.backend.get_series())
+        saved_series = unwrap(self.backend.get_series(self.registry.get_asset_by_id))
         reconciled_series = self.registry.reconcile_series(saved_series)
         for series in reconciled_series.to_persist:
             logger.info(f"Persisting series {series.name}")

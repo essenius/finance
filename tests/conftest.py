@@ -152,19 +152,16 @@ def make_series() -> Creator[Series]:
         defaults = {
             "id": asset.id,
             "code": "dummy",
-            "asset_id": asset.id,
-            "asset_name": asset.name,
             "interval": "10m",
-            "series_type": SeriesType.VALUE,
-            "retention": Retention.SHORT_LIVED,
+            "series_type": SeriesType.VALUE.value,
+            "retention": Retention.SHORT_LIVED.value,
             "retention_period": "30d",
             "bootstrap_history": "5d",
             "publication_offset": None,
         }
-        params = defaults | overrides
-        params["name"] = f"{asset.name}:{params['code']}"
+        config = defaults | overrides
 
-        return Series(**params)
+        return Series.create(asset=asset, code="dummy", config=config)
 
     return _make
 

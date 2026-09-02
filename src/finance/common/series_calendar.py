@@ -8,9 +8,9 @@ from dataclasses import dataclass, replace
 from datetime import date, datetime, time, timedelta
 from zoneinfo import ZoneInfo
 
+from ..common.asset_metadata import AssetMetadata
 from ..common.candle_identity import CandleIdentity
-from ..common.model import AssetMetadata, Series
-from ..common.time_utils import UTC, parse_duration, parse_weekday, snap_to
+from ..common.time_utils import UTC, parse_weekday, snap_to
 
 ONE_DAY = timedelta(days=1)
 ONE_WEEK = timedelta(weeks=1)
@@ -38,7 +38,7 @@ class SeriesCalendar:
     # _offset: timedelta | None = None
 
     @classmethod
-    def create(cls, series: Series, meta: AssetMetadata) -> SeriesCalendar:
+    def create(cls, interval: timedelta, publication_offset: timedelta | None, meta: AssetMetadata) -> SeriesCalendar:
         return cls(
             # the defaults are primarily useful for the first fetch, when we might not have all metadata yet.
             # it may result in a slightly inaccurate window, which is corrected the next run.
@@ -47,8 +47,8 @@ class SeriesCalendar:
             market_close=default_if_none(meta.market_close, time.max),
             week_start=default_if_none(parse_weekday(meta.week_start), MONDAY),
             week_end=default_if_none(parse_weekday(meta.week_end), FRIDAY),
-            interval=series.interval_delta(),
-            publication_offset=parse_duration(series.publication_offset, f"publication offset for {series.name}"),
+            interval=interval,
+            publication_offset=publication_offset,
             first_available_date=meta.first_available_date,
         )
 

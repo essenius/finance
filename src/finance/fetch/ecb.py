@@ -71,7 +71,7 @@ class EcbProvider(MarketDataProvider):
         # Extract data points
 
         points = self._parse_points(series, observations, date_values)
-        result = FetchData(series_id=series.require_id(), points=points, metadata=None)
+        result = FetchData(series_id=series.require_id(), series=series, points=points, metadata=None)
         return Success(result)
 
     def _make_url(self, provider_code: str) -> str | None:

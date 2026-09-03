@@ -6,7 +6,7 @@ from datetime import datetime
 
 from ..common.candle_identity import CandleIdentity
 from ..common.json_utils import JsonReader
-from ..common.model import Asset, FetchData, FetchResult, Series, SeriesPoint
+from ..common.model import FetchData, FetchResult, Series, SeriesPoint
 from ..common.time_utils import UTC
 from ..common.types import Failure, ParseError, Success
 from .provider import MarketDataProvider
@@ -19,25 +19,23 @@ BASE_URL = "https://api.stlouisfed.org/fred/series/observations"
 class FredProvider(MarketDataProvider):
     """FRED daily economic data provider."""
 
-    def fetch(
-        self, series: Series, asset: Asset, start: CandleIdentity, end: CandleIdentity, is_incremental: bool
-    ) -> FetchResult:
-        if not self.provider_config.api_key:
+    def fetch(self, series: Series, start: CandleIdentity, end: CandleIdentity, is_incremental: bool) -> FetchResult:
+        if not self.config.api_key:
             return Failure(reason="FRED requires an API key")
 
         start_date = start.date().strftime("%Y-%m-%d")
         end_date = end.date().strftime("%Y-%m-%d")
 
         params = {
-            "series_id": asset.provider_code,
-            "api_key": self.provider_config.api_key,
+            "series_id": series.asset.provider_code,
+            "api_key": self.config.api_key,
             "file_type": "json",
             "sort_order": "asc",
             "observation_start": start_date,
             "observation_end": end_date,
         }
 
-        return self._safe_call(fn=lambda: self._fetch(series, params), series=series, context="FRED fetch")
+        return self._safe_call(fn=lambda: self._fetch(series, params), series=series)
 
     # ----------------
     # Private methods
@@ -45,7 +43,7 @@ class FredProvider(MarketDataProvider):
 
     def _fetch(self, series: Series, params: dict[str, str]) -> FetchResult:
 
-        response = self.session.get(BASE_URL, params=params, timeout=self.provider_config.timeout_delta().seconds)
+        response = self.session.get(BASE_URL, params=params, timeout=self.config.timeout_delta().seconds)
         response.raise_for_status()
 
         reader = JsonReader(response.json())

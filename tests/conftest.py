@@ -4,7 +4,7 @@
 
 import logging
 from collections.abc import Callable, Iterator
-from datetime import datetime, time
+from datetime import datetime, time, timedelta
 from pathlib import Path
 from unittest.mock import Mock
 
@@ -12,10 +12,12 @@ import pytest
 from pytest import LogCaptureFixture
 
 from finance.common.applogger import JsonFormatter, LogConfig, LogConfigurator
-from finance.common.model import Asset, AssetMetadata, Series
+from finance.common.configuration import SweepConfig
+from finance.common.model import Asset, AssetMetadata, FetchResult, ProviderProtocol, Series
 from finance.common.string_enums import Retention, SeriesType
 from finance.common.time_utils import UTC
 from finance.common.types import Failure, Result, Unwrap
+from finance.config.loader import PROVIDER_REGISTRY
 from finance.state.state import State
 from tests.support.types import AssertError, Creator, Factory, StateContext
 
@@ -101,7 +103,6 @@ def assert_warning() -> Callable[[Result, str | None], object]:
 
 @pytest.fixture
 def make_metadata() -> Creator[AssetMetadata]:
-    # CO: "long_name": f"d_{name}",
 
     def _make(**overrides) -> AssetMetadata:
         defaults = {
@@ -125,13 +126,15 @@ def make_metadata() -> Creator[AssetMetadata]:
 
 
 @pytest.fixture
-def make_asset(make_metadata: Creator[AssetMetadata]) -> Creator[Asset]:
-    def _make(name: str = "eur_usd", **overrides) -> Asset:
+def make_asset(make_metadata: Creator[AssetMetadata], make_provider: Creator[ProviderProtocol]) -> Creator[Asset]:
+    def _make(name: str = "eur_usd", provider: ProviderProtocol | None = None, **overrides) -> Asset:
+        if provider is None:
+            provider = make_provider("yahoo")
         defaults = {
             "id": 1,
             "name": name,
             "symbol": name,
-            "provider": "yahoo",
+            "provider": provider,
             "provider_code": "EURUSD=X",
         }
         meta = overrides.get("config_metadata")
@@ -161,7 +164,42 @@ def make_series() -> Creator[Series]:
         }
         config = defaults | overrides
 
-        return Series.create(asset=asset, code="dummy", config=config)
+        return Series.create(asset=asset, config=config)
+
+    return _make
+
+
+# ---------------------------------------------------------------------------
+# Providers fixtures
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def make_provider() -> Creator[Mock]:
+    def _make(name: str = "dummy", fetch_result: FetchResult | None = None) -> Mock:
+        if fetch_result is None:
+            fetch_result = Failure(reason="default failure")
+
+        fake_provider = Mock(spec=ProviderProtocol)
+        fake_provider.fetch.return_value = fetch_result
+        fake_provider.provider_config = Mock()
+        fake_provider.provider_config.name = name
+        fake_provider.name = name
+        fake_provider.provider_config._get_history_limit.return_value = timedelta(days=60)
+        fake_provider.sweep_config.return_value = SweepConfig(window=timedelta(days=7), cadence=timedelta(days=1))
+        return fake_provider
+
+    return _make
+
+
+@pytest.fixture
+def make_providers(make_provider) -> Creator[dict[str, ProviderProtocol]]:
+
+    def _make(fetch_result: FetchResult | None = None) -> dict[str, ProviderProtocol]:
+        result: dict[str, ProviderProtocol] = {}
+        for key in PROVIDER_REGISTRY:
+            result[key] = make_provider(key, fetch_result=fetch_result)
+        return result
 
     return _make
 

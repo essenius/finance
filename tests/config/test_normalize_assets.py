@@ -5,14 +5,14 @@
 from datetime import timedelta
 
 from finance.common.json_utils import JsonReader
-from finance.common.model import Asset, Series
+from finance.common.model import Asset, ProviderProtocol, Series
 from finance.common.string_enums import Retention, SeriesType
 from finance.common.types import Unwrap
 from finance.config.loader import BusinessConfig, normalize_assets_and_series
-from tests.support.types import AssertError
+from tests.support.types import AssertError, Creator
 
 
-def test_normalize_assets_basic(unwrap: Unwrap[BusinessConfig]):
+def test_normalize_assets_basic(unwrap: Unwrap[BusinessConfig], make_providers: Creator[dict[str, ProviderProtocol]]):
     reader = JsonReader(
         {
             "eurusd": {
@@ -36,10 +36,10 @@ def test_normalize_assets_basic(unwrap: Unwrap[BusinessConfig]):
         }
     )
 
-    business = unwrap(normalize_assets_and_series(reader, JsonReader({})))
+    business = unwrap(normalize_assets_and_series(reader, JsonReader({}), make_providers()))
 
     asset: Asset = business.assets[0]
-    assert asset.provider == "yahoo"
+    assert asset.provider.name == "yahoo"
     assert asset.provider_code == "EURUSD=X"
     assert asset.name == "eurusd"
     assert asset.symbol == "EURUSD"
@@ -57,7 +57,9 @@ def test_normalize_assets_basic(unwrap: Unwrap[BusinessConfig]):
     assert series.retention == Retention.LONG_LIVED
 
 
-def test_normalize_assets_missing_required_field(assert_error: AssertError):
+def test_normalize_assets_missing_required_field(
+    assert_error: AssertError, make_providers: Creator[dict[str, ProviderProtocol]]
+):
     reader = JsonReader(
         {
             "eurusd": {
@@ -67,11 +69,13 @@ def test_normalize_assets_missing_required_field(assert_error: AssertError):
         }
     )
 
-    result = normalize_assets_and_series(reader, JsonReader({}))
+    result = normalize_assets_and_series(reader, JsonReader({}), make_providers())
     assert_error(result, "Could not parse asset 'eurusd'", "['provider', 'name']: Missing required key `provider`")
 
 
-def test_normalize_assets_malformed_provider(assert_error: AssertError):
+def test_normalize_assets_malformed_provider(
+    assert_error: AssertError, make_providers: Creator[dict[str, ProviderProtocol]]
+):
     reader = JsonReader(
         {
             "eurusd": {
@@ -81,13 +85,15 @@ def test_normalize_assets_malformed_provider(assert_error: AssertError):
         }
     )
 
-    result = normalize_assets_and_series(reader, JsonReader({}))
+    result = normalize_assets_and_series(reader, JsonReader({}), make_providers())
     assert_error(
         result, "Could not parse asset 'eurusd'", "['provider', 'name']: type `str` is not a container (level: 1)"
     )
 
 
-def test_normalize_assets_missing_interval(assert_error: AssertError):
+def test_normalize_assets_missing_interval(
+    assert_error: AssertError, make_providers: Creator[dict[str, ProviderProtocol]]
+):
     reader = JsonReader(
         {
             "spx": {
@@ -100,11 +106,13 @@ def test_normalize_assets_missing_interval(assert_error: AssertError):
             }
         }
     )
-    result = normalize_assets_and_series(reader, JsonReader({}))
+    result = normalize_assets_and_series(reader, JsonReader({}), make_providers())
     assert_error(result, "Could not parse asset 'spx'", "['interval']: Missing required key `interval`")
 
 
-def test_normalize_assets_invalid_retention(assert_error: AssertError):
+def test_normalize_assets_invalid_retention(
+    assert_error: AssertError, make_providers: Creator[dict[str, ProviderProtocol]]
+):
     reader = JsonReader(
         {
             "spx": {
@@ -117,13 +125,15 @@ def test_normalize_assets_invalid_retention(assert_error: AssertError):
             }
         }
     )
-    result = normalize_assets_and_series(reader, JsonReader({}))
+    result = normalize_assets_and_series(reader, JsonReader({}), make_providers())
     assert_error(
         result, "Could not parse asset 'spx'", "Invalid Retention: 'bogus'. Allowed: ['short_lived', 'long_lived']"
     )
 
 
-def test_normalize_asset_with_template(unwrap: Unwrap[BusinessConfig]):
+def test_normalize_asset_with_template(
+    unwrap: Unwrap[BusinessConfig], make_providers: Creator[dict[str, ProviderProtocol]]
+):
     reader = JsonReader(
         {
             "spx": {
@@ -137,7 +147,7 @@ def test_normalize_asset_with_template(unwrap: Unwrap[BusinessConfig]):
         }
     )
     template_reader = JsonReader({"template1": {"interval": "1d"}})
-    business: BusinessConfig = unwrap(normalize_assets_and_series(reader, template_reader))
+    business: BusinessConfig = unwrap(normalize_assets_and_series(reader, template_reader, make_providers()))
     assert len(business.assets) == 1
     assert len(business.series) == 1
     series: Series = business.series[0]
@@ -148,7 +158,9 @@ def test_normalize_asset_with_template(unwrap: Unwrap[BusinessConfig]):
     assert series.bootstrap_history == "10y", "default history for >= 1d"
 
 
-def test_normalize_asset_missing_template(assert_error: AssertError):
+def test_normalize_asset_missing_template(
+    assert_error: AssertError, make_providers: Creator[dict[str, ProviderProtocol]]
+):
     reader = JsonReader(
         {
             "spx": {
@@ -161,5 +173,5 @@ def test_normalize_asset_missing_template(assert_error: AssertError):
             }
         }
     )
-    result = normalize_assets_and_series(reader, JsonReader({}))
+    result = normalize_assets_and_series(reader, JsonReader({}), make_providers())
     assert_error(result, "Could not parse asset 'spx'", "['template1']: Missing required key `template1`")

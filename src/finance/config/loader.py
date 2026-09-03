@@ -15,12 +15,16 @@ from dotenv import dotenv_values
 
 from ..common.configuration import LogConfig, ProviderConfig, TimescaleConfig
 from ..common.json_utils import JsonObject, JsonReader
-from ..common.model import BACKEND, Asset, Series
+from ..common.model import BACKEND, Asset, ProviderProtocol, Series
 from ..common.object_utils import deep_merge
 from ..common.paths import resolve_config_path
 from ..common.string_enums import Retention, SeriesType, SupportedProviders
 from ..common.time_utils import validate_duration
 from ..common.types import Failure, ParseError, Result, Success
+from ..fetch.ecb import EcbProvider
+from ..fetch.fred import FredProvider
+from ..fetch.provider import MarketDataProvider
+from ..fetch.yahoo import YahooProvider
 
 # ---------------
 # Helper classes
@@ -47,7 +51,7 @@ class EnvironmentConfig(YamlEnvironmentConfig):
 
 @dataclass
 class BusinessConfig:
-    providers: dict[str, ProviderConfig]
+    providers: dict[str, ProviderProtocol]
     assets: list[Asset]
     series: list[Series]
 
@@ -69,8 +73,6 @@ class AppConfig(BusinessConfig):
 
 
 class ConfigLoader:
-    providers: dict[str, ProviderConfig]
-
     def __init__(self, *, cwd: Path, config_path: Path | None = None, environ=os.environ):
         self.cwd = cwd
         self.env_path = (cwd / ".env").resolve()
@@ -181,11 +183,17 @@ def load_yaml_config(yaml_path: Path) -> Result[JsonReader]:
 # Normalize providers
 # ---------------------------------
 
+PROVIDER_REGISTRY: dict[str, type[MarketDataProvider]] = {
+    SupportedProviders.YAHOO.value: YahooProvider,
+    SupportedProviders.FRED.value: FredProvider,
+    SupportedProviders.ECB.value: EcbProvider,
+}
 
-def normalize_providers(reader: JsonReader, api_keys: JsonObject) -> Result[dict[str, ProviderConfig]]:
 
-    providers: dict[str, ProviderConfig] = {}
-    for provider in SupportedProviders.values():
+def normalize_providers(reader: JsonReader, api_keys: JsonObject) -> Result[dict[str, ProviderProtocol]]:
+
+    providers: dict[str, ProviderProtocol] = {}
+    for provider, provider_class in PROVIDER_REGISTRY.items():
         try:
             content = reader.get_object(provider, allow_missing="yes")
             content["name"] = provider
@@ -200,7 +208,7 @@ def normalize_providers(reader: JsonReader, api_keys: JsonObject) -> Result[dict
         except (ParseError, ZoneInfoNotFoundError) as exc:
             return Failure(reason=f"Could not parse provider '{provider}'", error=exc)
 
-        providers[provider] = config
+        providers[provider] = provider_class(config)
 
     return Success(providers)
 
@@ -256,21 +264,27 @@ def _embed_templates(meta: list[str] | JsonObject, template_reader: JsonReader, 
     return config
 
 
-def normalize_assets_and_series(asset_reader: JsonReader, template_reader: JsonReader) -> Result[BusinessConfig]:
+def normalize_assets_and_series(
+    asset_reader: JsonReader, template_reader: JsonReader, providers: dict[str, ProviderProtocol]
+) -> Result[BusinessConfig]:
     asset_list: list[Asset] = []
     series_list: list[Series] = []
 
     for asset_name, reader in asset_reader.items():
         try:
-            reader.require(str, ["provider", "name"])
-            reader.require(str, ["provider", "code"])
+            # flatten the provider section so we can use the same asset factory for reading from the database
+            provider_name = reader.require(str, ["provider", "name"])
+            code = reader.require(str, ["provider", "code"])
+            id_section = {"name": asset_name, "provider": provider_name, "provider_code": code}
 
             templates = reader.get_array("templates", expected_type=str, allow_missing="yes")
-
             cfg_reader = JsonReader(_embed_templates(templates, template_reader, reader.get_object()))
+
+            # flatten the tags, if any.
             tags = {k.lower(): v for k, v in cfg_reader.get_object("tags", allow_missing="yes").items()}
 
-            asset = Asset.from_config(name=asset_name, config=cfg_reader.get_object() | tags)
+            config = cfg_reader.get_object() | tags | id_section
+            asset = Asset.create(config=config, get_provider=providers.get)
             asset_list.append(asset)
 
             series = cfg_reader.reader_for("series", allow_missing="no")
@@ -281,13 +295,14 @@ def normalize_assets_and_series(asset_reader: JsonReader, template_reader: JsonR
                 meta = input if isinstance(input, dict) else series_def.get_array(expected_type=str)
                 config_reader = JsonReader(_embed_templates(meta, template_reader, {}))
                 config_reader.require(str, "interval")
-                series = Series.create(asset=asset, code=code, config=config_reader.get_object())
+                config = config_reader.get_object() | {"code": code}
+                series = Series.create(asset=asset, config=config)
                 series_list.append(series)
 
         except ParseError as exc:
             return Failure(reason=f"Could not parse asset '{asset_name}'", error=exc.args[0])
 
-    return Success(BusinessConfig(providers={}, assets=asset_list, series=series_list))
+    return Success(BusinessConfig(providers=providers, assets=asset_list, series=series_list))
 
 
 # --------------------------------
@@ -358,11 +373,13 @@ def load_business_config(reader: JsonReader, api_keys: JsonObject) -> Result[Bus
     template_reader = JsonReader(template_result.payload, "template")
 
     asset_reader = reader.reader_for("assets", allow_missing="yes")
-    result = normalize_assets_and_series(asset_reader, template_reader)
+
+    providers = providers_result.payload
+    result = normalize_assets_and_series(asset_reader, template_reader, providers)
     if result.ok is False:
         return result
     business_config = result.payload
-    business_config.providers = providers_result.payload
+    business_config.providers = providers
     # validate composites
     """
     raw_composites = biz_cfg.get("composites", {})

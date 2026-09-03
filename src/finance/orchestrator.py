@@ -5,13 +5,12 @@
 from typing import Literal, overload
 
 import finance
-from finance.common.time_utils import view_utc
-from finance.common.types import AppError
 
 from .common.applogger import AppLogger
 from .common.guards import require
 from .common.model import FetchResult, Series, SeriesPoints
-from .common.types import Result
+from .common.time_utils import view_utc
+from .common.types import AppError, Result
 from .fetch.controller import FetchController
 from .registry.registry import Registry
 from .state.state import State

@@ -8,7 +8,7 @@ import pytest
 
 from finance.common.asset_metadata import AssetMetadata
 from finance.common.json_utils import JsonObject
-from finance.common.model import Asset, Series, SeriesPoint, SeriesState
+from finance.common.model import Asset, ProviderProtocol, Series, SeriesPoint, SeriesState
 from finance.common.string_enums import Retention, SeriesType
 from finance.common.types import ParseError
 from tests.support.types import Creator, Factory
@@ -24,13 +24,20 @@ def test_seriespoint_from_to_dict(fixed_now: Factory[datetime]):
     assert f"{result1}" == "SeriesPoint(id=1, time=2025-06-15T15:06:40+00:00, open=10, high=14, low=8, close=12)"
 
 
-def test_asset_create_with_id_differs():
-    config = {"symbol": "SPX", "provider": {"name": "yahoo", "code": "^SPX"}, "short_name": "spx"}
-    asset = Asset.from_config(name="spx", config=config)
+def test_asset_create_with_id_differs(make_providers: Creator[dict[str, ProviderProtocol]]):
+    providers = make_providers()
+    config: JsonObject = {
+        "name": "spx",
+        "symbol": "SPX",
+        "provider": "yahoo",
+        "provider_code": "^SPX",
+        "short_name": "spx",
+    }
+    asset = Asset.create(config=config, get_provider=providers.get)
     assert asset.id is None
     assert asset.name == "spx"
     assert asset.symbol == "SPX"
-    assert asset.provider == "yahoo"
+    assert asset.provider.name == "yahoo"
     assert asset.provider_code == "^SPX"
 
     meta = AssetMetadata(
@@ -70,28 +77,35 @@ def test_asset_create_with_id_differs():
     assert not asset.differs_from(asset2)
 
     config |= {"region": "Europe"}
-    asset3 = Asset.from_config(name="spx", config=config)
+    asset3 = Asset.create(config=config, get_provider=make_providers().get)
     assert asset.differs_from(asset3)
 
 
-def test_asset_create_with_wrong_timezone():
+def test_asset_create_with_wrong_timezone(make_providers: Creator[dict[str, ProviderProtocol]]):
 
-    config = {"symbol": "SPX", "provider": {"name": "yahoo", "code": "^SPX"}, "timezone": "bogus"}
+    config: JsonObject = {
+        "name": "spx",
+        "symbol": "SPX",
+        "provider": "yahoo",
+        "provider_code": "^SPX",
+        "timezone": "bogus",
+    }
     with pytest.raises(ParseError) as ve:
-        Asset.from_config(name="spx", config=config)
+        Asset.create(config=config, get_provider=make_providers().get)
     assert "Cannot understand timezone 'bogus'" in str(ve.value)
 
 
 def test_series_create_with_id_differs(make_asset: Creator[Asset]):
     asset = make_asset(name="spx", id=3)
     config: JsonObject = {
+        "code": "dummy",
         "symbol": "SPX",
         "series_type": "candle",
         "interval": "1d",
         "bootstrap_history": "10y",
         "retention": "long_lived",
     }
-    series = Series.create(asset=asset, code="dummy", config=config)
+    series = Series.create(asset=asset, config=config)
     assert series.id is None
     assert series.code == "dummy"
     assert series.name == "spx:dummy"
@@ -115,8 +129,8 @@ def test_series_create_with_id_differs(make_asset: Creator[Asset]):
     # differs from only looks at metadata, not at id, name
     assert not series.differs_from(series2)
 
-    config |= {"bootstrap_history": "5y", "publication_offset": "16h"}
-    series3 = Series.create(asset, code="dummy", config=config)
+    config |= {"code": "dummy", "bootstrap_history": "5y", "publication_offset": "16h"}
+    series3 = Series.create(asset, config=config)
     assert series.differs_from(series3)
     assert series3.bootstrap_history == "5y"
     assert series3.publication_offset == "16h"
@@ -125,11 +139,12 @@ def test_series_create_with_id_differs(make_asset: Creator[Asset]):
 def test_series_create_with_defaults_daily(make_asset: Creator[Asset]):
     asset = make_asset(name="spx", id=3)
     config: JsonObject = {
+        "code": "dummy",
         "symbol": "SPX",
         "interval": "1d",
     }
 
-    series = Series.create(asset=asset, code="dummy", config=config)
+    series = Series.create(asset=asset, config=config)
     assert series.id is None
     assert series.code == "dummy"
     assert series.name == "spx:dummy"

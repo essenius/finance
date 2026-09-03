@@ -9,7 +9,7 @@ import sys
 import traceback
 from typing import Any
 
-from finance.common.configuration import LogConfig
+from ..common.configuration import LogConfig
 
 RESERVED_LOG_KEYS = (
     "args",

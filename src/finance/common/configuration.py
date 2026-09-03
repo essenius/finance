@@ -6,6 +6,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import timedelta
+from typing import Any
 
 from ..common.guards import require_duration, validate_required_duration
 from ..common.json_utils import JsonObject, JsonReader
@@ -138,7 +139,7 @@ class TimescaleConfig:
     CONNECTION_FIELDS = ("host", "port", "dbname", "user", "password", "sslmode", "sslrootcert")
     MANDATORY_FIELDS = ("host", "db", "user", "password")
 
-    def connect_config(self) -> dict[str, str]:
+    def connect_config(self) -> dict[str, Any]:
         return {field: getattr(self, field) for field in self.CONNECTION_FIELDS}
 
     @classmethod

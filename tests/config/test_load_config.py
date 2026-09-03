@@ -82,8 +82,8 @@ business:
     app_config: AppConfig = unwrap(result)
 
     # providers
-    assert app_config.providers["yahoo"].timeout == "10s"
-    assert app_config.providers["fred"].api_key == "123abc"
+    assert app_config.providers["yahoo"].config.timeout == "10s"
+    assert app_config.providers["fred"].config.api_key == "123abc"
 
     # assets
     assert len(app_config.assets) == 1
@@ -91,7 +91,7 @@ business:
     assert asset.provider_code == "^GSPC"
     assert asset.name == "spx"
     assert asset.symbol == "SPX"
-    assert asset.provider == "yahoo"
+    assert asset.provider.name == "yahoo"
     assert asset.id is None
 
     metadata = asset.config_metadata
@@ -159,11 +159,10 @@ def test_load_config_dev_mode(monkeypatch: MonkeyPatch, tmp_path: Path, unwrap: 
         "history_limits": {},
         "sweep": {},
     }
-    assert cfg.providers == {
-        "yahoo": ProviderConfig(name="yahoo", **expected_params),
-        "ecb": ProviderConfig(name="ecb", **expected_params),
-        "fred": ProviderConfig(name="fred", **expected_params),
-    }
+
+    assert cfg.providers["yahoo"].config == ProviderConfig(name="yahoo", **expected_params)
+    assert cfg.providers["ecb"].config == ProviderConfig(name="ecb", **expected_params)
+    assert cfg.providers["fred"].config == ProviderConfig(name="fred", **expected_params)
 
 
 def test_load_config_resolves_paths(tmp_path: Path, unwrap: Unwrap[AppConfig]):

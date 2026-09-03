@@ -6,7 +6,7 @@ from datetime import datetime
 
 from ..common.candle_identity import CandleIdentity
 from ..common.json_utils import JsonArray, JsonObject, JsonReader
-from ..common.model import Asset, FetchData, FetchResult, Series, SeriesPoint
+from ..common.model import FetchData, FetchResult, Series, SeriesPoint
 from ..common.time_utils import UTC
 from ..common.types import Failure, ParseError, Success
 from .provider import MarketDataProvider
@@ -19,31 +19,28 @@ BASE_URL = "https://data-api.ecb.europa.eu/service/data"
 class EcbProvider(MarketDataProvider):
     """ECB daily FX provider (no intraday)."""
 
-    def fetch(
-        self, series: Series, asset: Asset, start: CandleIdentity, end: CandleIdentity, is_incremental: bool
-    ) -> FetchResult:
+    def fetch(self, series: Series, start: CandleIdentity, end: CandleIdentity, is_incremental: bool) -> FetchResult:
         start_date = start.date().isoformat()
         end_date = end.date().isoformat()
 
         params = {"updatedAfter": start_date} if is_incremental else {"startPeriod": start_date, "endPeriod": end_date}
         params = params | {"format": "jsondata", "detail": "dataonly"}
 
-        return self._safe_call(
-            fn=lambda: self._fetch(series, asset.provider_code, params), series=series, context="ECB fetch"
-        )
+        return self._safe_call(fn=lambda: self._fetch(series, params), series=series)
 
     # ----------------
     # Private methods
     # ----------------
 
-    def _fetch(self, series: Series, provider_code: str, params: dict[str, str]) -> FetchResult:
+    def _fetch(self, series: Series, params: dict[str, str]) -> FetchResult:
         """provider_code: e.g. 'USD_EUR'"""
 
-        url = self._make_url(provider_code)
+        code = series.asset.provider_code
+        url = self._make_url(code)
         if url is None:
-            return Failure(reason=f"Could not split provider code '{provider_code}' into base_quote for url")
+            return Failure(reason=f"Could not split provider code '{code}' into base_quote for url")
 
-        response = self.session.get(url, params=params, timeout=self.provider_config.timeout_delta().seconds)
+        response = self.session.get(url, params=params, timeout=self.config.timeout_delta().seconds)
         response.raise_for_status()
         reader = JsonReader(response.json())
 

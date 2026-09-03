@@ -7,18 +7,12 @@ from __future__ import annotations
 from collections.abc import Callable
 from datetime import datetime
 
-from finance.common.applogger import AppLogger
-
-from ..common.model import BACKEND, Asset, Series, SeriesPoint, SeriesState
+from ..common.applogger import AppLogger
+from ..common.json_utils import JsonObject, JsonReader
+from ..common.model import BACKEND, Asset, ProviderProtocol, Series, SeriesPoint, SeriesState
 from ..common.time_utils import write_time, write_timezone
-from ..common.types import Failure, Result, Success
+from ..common.types import Failure, ParseError, Result, Success
 from .backend_protocol import BackendProtocol
-from .timescale_mapper import (
-    asset_from_row,
-    series_from_row,
-    series_state_from_range_rows,
-    series_state_merge_sweep_info,
-)
 from .timescale_sql import TimescaleConfig, TimescaleSqlClient
 
 type SqlClientFactory = Callable[[TimescaleConfig], BackendProtocol]
@@ -31,10 +25,12 @@ class SeriesBackend:
         self,
         config: TimescaleConfig,
         sql_client: BackendProtocol,
+        get_provider: Callable[[str], ProviderProtocol | None],
         now: Callable[[], datetime] | None = None,
     ) -> None:
         self._config = config
         self._sql_client = sql_client
+        self._get_provider = get_provider
         self.now = now or datetime.now
         self._pending: list[SeriesPoint] = []
         self._last_flush: datetime | None = None
@@ -48,6 +44,7 @@ class SeriesBackend:
     def from_config(
         cls,
         config: TimescaleConfig,
+        get_provider: Callable[[str], ProviderProtocol | None],
         sql_factory: SqlClientFactory = TimescaleSqlClient,
         now: Callable[[], datetime] | None = None,
     ) -> Result[SeriesBackend]:
@@ -58,7 +55,7 @@ class SeriesBackend:
             )
 
         logger.debug(f"user: {config.user}, port: {config.port}, db: {config.dbname}")
-        backend = cls(config, sql_factory(config), now)
+        backend = cls(config, sql_factory(config), get_provider, now)
         refresh_result = backend.refresh_short_lived_series_ids()
         if refresh_result.ok is False:
             return refresh_result
@@ -94,22 +91,31 @@ class SeriesBackend:
 
     def get_assets(self) -> Result[list[Asset]]:
         query = """
-            SELECT id, name, symbol, provider, provider_code,
-              long_name, short_name, instrument, region, exchange, currency, unit,
-              first_available_date, timezone, week_start, week_end, market_open, market_close
+            SELECT id, name, symbol, provider, provider_code, long_name, short_name,
+              instrument, region, exchange, currency, unit, first_available_date::text,
+              timezone, week_start, week_end, market_open::text, market_close::text
             FROM asset ORDER BY id;
             """
         result = self._sql_client.execute_read(query, context="get_assets")
         if result.ok is False:
             return result
+        asset_name = "None"
+        try:
+            payload = result.payload
+            rows = payload["rows"]
+            columns = payload["columns"]
 
-        payload = result.payload
-        rows = payload["rows"]
-        columns = payload["columns"]
+            assets: list[Asset] = []
+            for row in rows:
+                config = self._table_to_json(row, columns)
+                asset_name = config.get("name", "None")
+                asset = Asset.create(config=config, get_provider=self._get_provider)
+                assets.append(asset)
+            return Success(assets)
+        except ParseError as pe:
+            return Failure(f"get_assets could not load asset '{asset_name}'", str(pe))
 
-        return Success([asset_from_row(row, columns) for row in rows])
-
-    def get_series(self, get_asset: Callable[[int], Asset]) -> Result[list[Series]]:
+    def get_series(self, get_asset: Callable[[int], Asset | None]) -> Result[list[Series]]:
         query = """
             SELECT s.id, s.code, s.asset_id, a.name as asset_name, s.interval, s.series_type,
             s.retention, s.retention_period, s.bootstrap_history, s.publication_offset
@@ -121,11 +127,25 @@ class SeriesBackend:
         if result.ok is False:
             return result
 
-        payload = result.payload
-        rows = payload["rows"]
-        columns = payload["columns"]
+        try:
+            payload = result.payload
+            rows = payload["rows"]
+            columns = payload["columns"]
+            series_id: int | None = None
+            series_list: list[Series] = []
+            for row in rows:
+                reader = JsonReader(self._table_to_json(row, columns))
+                series_id = reader.require(int, "id")
+                asset_id = reader.require(int, "asset_id")
+                asset = get_asset(asset_id)
+                if asset is None:
+                    raise ParseError(f"could not find asset with ID '{asset_id}'")
+                series = Series.create(asset=asset, config=reader.get_object())
+                series_list.append(series)
+            return Success(series_list)
 
-        return Success([series_from_row(row, columns, get_asset) for row in rows])
+        except ParseError as pe:
+            return Failure(reason=f"get_series could not load series with ID '{series_id}'", error=str(pe))
 
     def get_series_states(self) -> Result[dict[int, SeriesState]]:
         # 1. Load cold/hot ranges
@@ -144,9 +164,14 @@ class SeriesBackend:
             return hot
 
         # Merge cold + hot
-        state = series_state_from_range_rows(cold.payload["rows"] + hot.payload["rows"])
 
-        # 2. Load sweep info
+        state: dict[int, SeriesState] = {}
+        for row in cold.payload["rows"] + hot.payload["rows"]:
+            series_id = int(row[0])
+            state[series_id] = SeriesState(first_point=row[1], last_point=row[2], needs_save=False)
+
+        # Load sweep info
+
         sweep = self._sql_client.execute_read(
             "SELECT series_id, next_sweep, sweep_start FROM series_state;", context="get_series_states_sweep_info"
         )
@@ -154,9 +179,17 @@ class SeriesBackend:
             return sweep
 
         # Merge sweep info
-        merged = series_state_merge_sweep_info(state, sweep.payload["rows"])
 
-        return Success(merged)
+        for row in sweep.payload["rows"]:
+            series_id = row[0]
+            if series_id not in state:
+                state[series_id] = SeriesState(next_sweep=row[1], sweep_start=row[2], needs_save=False)
+            else:
+                state[series_id].next_sweep = row[1]
+                state[series_id].sweep_start = row[2]
+                state[series_id].needs_save = False
+
+        return Success(state)
 
     def refresh_short_lived_series_ids(self) -> Result[None]:
         query = "SELECT id FROM series WHERE retention = 'short_lived';"
@@ -188,7 +221,7 @@ class SeriesBackend:
         base_fields = (
             asset.name,
             asset.symbol,
-            asset.provider,
+            asset.provider.name,
             asset.provider_code,
             meta.long_name,
             meta.short_name,
@@ -315,3 +348,9 @@ class SeriesBackend:
 
         age = now - self._last_flush
         return age >= self._config.max_batch_age
+
+    def _table_to_json(self, row: tuple, columns: dict[str, int]) -> JsonObject:
+        config: JsonObject = {}
+        for field, index in columns.items():
+            config[field] = row[index]
+        return config

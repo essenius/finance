@@ -5,76 +5,41 @@
 from collections.abc import Callable, Iterable
 from datetime import datetime
 
-from finance.common.guards import require
-
 from ..common.applogger import AppLogger
 from ..common.candle_identity import CandleIdentity
-from ..common.configuration import ProviderConfig
+from ..common.guards import require
 from ..common.model import FetchResult, Series, SeriesState
 from ..common.series_calendar import SeriesCalendar
-from ..common.string_enums import SupportedProviders
 from ..common.time_utils import now_second_precision
-from ..common.types import Failure
-from ..fetch.provider import MarketDataProvider
 from ..state.state import State
-from .ecb import EcbProvider
-from .fred import FredProvider
-from .yahoo import YahooProvider
-
-PROVIDER_REGISTRY: dict[
-    SupportedProviders,
-    type[MarketDataProvider],
-] = {
-    SupportedProviders.YAHOO: YahooProvider,
-    SupportedProviders.FRED: FredProvider,
-    SupportedProviders.ECB: EcbProvider,
-}
 
 logger = AppLogger("fetch")
 
 
-def create_providers(providers_config: dict[str, ProviderConfig]) -> dict[str, MarketDataProvider]:
-    result = {
-        name.value: provider_class(provider_config=providers_config[name.value])
-        for name, provider_class in PROVIDER_REGISTRY.items()
-    }
-    return result
-
-
 class FetchController:
-    def __init__(
-        self,
-        get_provider: Callable[[str], MarketDataProvider | None],
-        **kwargs,
-    ):
-        self.get_provider = get_provider
-        self.now = kwargs.pop("now_provider", now_second_precision)
+    def __init__(self, *, now_provider: Callable[[], datetime] = now_second_precision):
+        self.now = now_provider
 
     def fetch_incrementally(self, series_list: Iterable[Series], state: State) -> Iterable[FetchResult]:
 
         for series in series_list:
             series_id = series.require_id()
             state_entry = state.get_series_state(series_id)
-            asset = series.asset
-            provider = self.get_provider(asset.provider)
-            if not provider:
-                yield Failure(reason=f"no provider '{asset.provider}'", error=f"Skipped series '{series.name}'")
-                continue
-            range = self._get_fetch_range(series=series, provider=provider, state=state_entry)
+            range = self._get_fetch_range(series=series, state=state_entry)
             if range is None:
                 continue
             start, end, is_incremental = range
             logger.debug(
                 f"series: {series.name} ({series.id}) Store range: {start.store_label()} - {end.store_label()} Publish range: {start.publish_label()} - {end.publish_label()} {'/I' if is_incremental else ''}"
             )
-            yield provider.fetch(series, asset, start, end, is_incremental)
+            yield series.asset.provider.fetch(series, start=start, end=end, is_incremental=is_incremental)
 
     # ----------------
     # Private methods
     # ----------------
 
     def _get_fetch_range(
-        self, series: Series, provider: MarketDataProvider, state: SeriesState
+        self, series: Series, state: SeriesState
     ) -> tuple[CandleIdentity, CandleIdentity, bool] | None:
         """
         Unified fetch decision: if fetch needed → return (start, end, is_incremental), else None
@@ -88,7 +53,7 @@ class FetchController:
         if first_req > last_req:
             return None
 
-        sweep_config = provider.provider_config.get_sweep(series.interval_delta())
+        sweep_config = series.asset.provider.sweep_config(series.interval_delta())
 
         # if we have missing history, grab that first
         # This can mean we skip a daily publication (but that will be picked up next run)

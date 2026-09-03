@@ -8,8 +8,7 @@ from dataclasses import dataclass
 from datetime import date, time
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from finance.common.json_utils import JsonObject, JsonReader
-
+from ..common.json_utils import JsonObject, JsonReader
 from ..common.time_utils import parse_date, parse_time, parse_weekday
 from ..common.types import ParseError
 

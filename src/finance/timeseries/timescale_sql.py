@@ -13,11 +13,10 @@ import psycopg
 from psycopg.abc import QueryNoTemplate
 from psycopg.sql import SQL, Identifier
 
-from finance.timeseries.backend_protocol import SqlReadPayload
-
 from ..common.configuration import TimescaleConfig
 from ..common.guards import require
 from ..common.types import Failure, ParseError, Result, Success
+from .backend_protocol import SqlReadPayload
 
 
 class TimescaleSqlClient:

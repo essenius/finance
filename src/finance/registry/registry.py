@@ -5,10 +5,9 @@
 from collections.abc import Iterable
 from dataclasses import dataclass
 
-from finance.common.asset_metadata import AssetMetadata
-from finance.common.object_utils import apply_overrides
-
+from ..common.asset_metadata import AssetMetadata
 from ..common.model import Asset, Series
+from ..common.object_utils import apply_overrides
 from ..common.types import AppError
 
 
@@ -112,9 +111,6 @@ class Registry:
         for yaml_series in self._yaml_series:
             # get the asset id. Yaml doesn't know about ids
             # note this requires assets to have been reconciled already.
-            # CO: if yaml_series.asset.id is None:
-            # CO:     asset = self.get_asset_by_name(yaml_series.asset_name)
-            # CO:     yaml_series.asset_id = asset.id
             db_series = find_existing_series(yaml_series)
             if db_series is None:
                 to_persist.append(yaml_series)

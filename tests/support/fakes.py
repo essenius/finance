@@ -10,8 +10,9 @@ from unittest.mock import AsyncMock, MagicMock
 import requests
 
 from finance.common.json_utils import JsonLike
+from finance.common.model import ProviderProtocol
 from finance.common.time_utils import UTC
-from finance.fetch.provider import MarketDataProvider, ProviderProtocol, ResponseProtocol
+from finance.fetch.provider import MarketDataProvider, ResponseProtocol
 from finance.timeseries.series_backend import SeriesBackend
 from finance.timeseries.timescale_sql import TimescaleSqlClient
 

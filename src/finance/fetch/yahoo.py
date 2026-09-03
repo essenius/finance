@@ -11,7 +11,7 @@ from ..common.asset_metadata import AssetMetadata
 from ..common.candle_identity import CandleIdentity
 from ..common.guards import require
 from ..common.json_utils import JsonObject, JsonReader
-from ..common.model import Asset, FetchData, FetchResult, Series, SeriesPoint, SeriesPointsResult
+from ..common.model import FetchData, FetchResult, Series, SeriesPoint, SeriesPointsResult
 from ..common.string_enums import Candle
 from ..common.time_utils import UTC
 from ..common.types import Failure, ParseError, Result, Success
@@ -29,23 +29,19 @@ class YahooProvider(MarketDataProvider):
     # API
     # ----
 
-    def fetch(
-        self, series: Series, asset: Asset, start: CandleIdentity, end: CandleIdentity, is_incremental: bool
-    ) -> FetchResult:
+    def fetch(self, series: Series, start: CandleIdentity, end: CandleIdentity, is_incremental: bool) -> FetchResult:
 
         def fetch_failure(error: str) -> Failure:
             return Failure(f"Could not parse series '{series.name}' in Yahoo fetch result", error=error)
 
         start_timestamp = start.start_timestamp()
         end_timestamp = end.end_timestamp()
-        # quirk in Yahoo: you don't get anything if both start and end are in the same day
-        # TODO: issue here is that this doesn't work on weekends. The timestamp must be in the previous trading day.
+        # quirk in Yahoo: you don't get anything with daily series if both start and end are in the same day
         if series.is_daily() and start.value.date() == end.value.date():
-            start_timestamp -= 1
-        url, params = self._build_url(asset.provider_code, series.interval, start_timestamp, end_timestamp)
-        result = self._safe_call(
-            fn=lambda: self._fetch_impl(url=url, params=params), series=series, context="Yahoo fetch"
-        )
+            id = series.calendar.last_identity_before(start.value)
+            start_timestamp = id.end_timestamp()
+        url, params = self._build_url(series.asset.provider_code, series.interval, start_timestamp, end_timestamp)
+        result = self._safe_call(fn=lambda: self._fetch_impl(url=url, params=params), series=series)
 
         if result.ok is False:
             return result
@@ -207,9 +203,7 @@ class YahooProvider(MarketDataProvider):
     def _fetch_impl(self, url: str, params: dict[str, int | str]) -> Result[JsonObject]:
         """fetch the response from the provider. Is called from a _safe_call wrapper so can throw"""
         headers = {"User-Agent": "Mozilla/5.0"}
-        response = self.session.get(
-            url, params=params, headers=headers, timeout=self.provider_config.timeout_delta().seconds
-        )
+        response = self.session.get(url, params=params, headers=headers, timeout=self.config.timeout_delta().seconds)
         response.raise_for_status()
         reader = JsonReader(response.json()).reader_for("chart", allow_missing="yes")
         return self._parse_result(reader)

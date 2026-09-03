@@ -9,6 +9,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from finance.common.configuration import TimescaleConfig
+from finance.common.model import ProviderProtocol
 from finance.timeseries.series_backend import SeriesBackend
 from finance.timeseries.timescale_sql import TimescaleSqlClient
 from tests.support.fakes import FakeBackend, FakeClock, FakeSql
@@ -99,13 +100,19 @@ def make_backend_config() -> Creator[TimescaleConfig]:
 
 @pytest.fixture
 def make_backend(
-    make_backend_config: Creator[TimescaleConfig], sql_with_fake_connection: Creator[FakeSql]
+    make_backend_config: Creator[TimescaleConfig],
+    sql_with_fake_connection: Creator[FakeSql],
+    make_providers: Creator[dict[str, ProviderProtocol]],
 ) -> Creator[FakeBackend]:
     def _make(max_batch_size: int = 2, max_batch_age_seconds: int = 2, connected: bool = True, **kwargs) -> FakeBackend:
         config = make_backend_config(max_batch_size=max_batch_size, max_batch_age_seconds=max_batch_age_seconds)
         fake_sql = sql_with_fake_connection(connected=connected, **kwargs)
         clock = FakeClock()
 
-        return FakeBackend(SeriesBackend(config=config, sql_client=fake_sql.client, now=clock), fake_sql, clock)
+        return FakeBackend(
+            SeriesBackend(config=config, sql_client=fake_sql.client, get_provider=make_providers().get, now=clock),
+            fake_sql,
+            clock,
+        )
 
     return _make

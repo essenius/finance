@@ -4,22 +4,36 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
+from typing import Protocol
 
-from finance.common.asset_metadata import AssetMetadata
-from finance.common.json_utils import JsonObject, JsonReader
-from finance.common.object_utils import apply_overrides
-from finance.common.series_calendar import SeriesCalendar
-
+from ..common.asset_metadata import AssetMetadata
 from ..common.candle_identity import CandleIdentity
-from ..common.configuration import SweepConfig
+from ..common.configuration import ProviderConfig, SweepConfig
 from ..common.guards import require, require_duration
+from ..common.json_utils import JsonObject, JsonReader
+from ..common.object_utils import apply_overrides
+from ..common.series_calendar import SeriesCalendar
 from ..common.string_enums import Candle, Retention, SeriesType
 from ..common.time_utils import UTC, parse_duration, validate_duration
-from .types import Result
+from .types import ParseError, Result
 
 BACKEND = "timescaledb"
+
+
+class ProviderProtocol(Protocol):
+    @property
+    def name(self) -> str: ...
+
+    config: ProviderConfig
+
+    def fetch(
+        self, series: Series, start: CandleIdentity, end: CandleIdentity, is_incremental: bool
+    ) -> FetchResult: ...
+
+    def sweep_config(self, interval: timedelta) -> SweepConfig: ...
 
 
 @dataclass(frozen=True)
@@ -90,7 +104,7 @@ class Asset:
     # identity
     name: str
     symbol: str
-    provider: str
+    provider: ProviderProtocol
     provider_code: str
 
     # metadata
@@ -105,16 +119,21 @@ class Asset:
         return f"Asset(id={self.id}, name={self.name}, symbol={self.symbol}, provider_code={self.provider_code}, metadata={self.effective_metadata})"
 
     @classmethod
-    def from_config(cls, name: str, config: JsonObject) -> Asset:
+    def create(cls, config: JsonObject, get_provider: Callable[[str], ProviderProtocol | None]) -> Asset:
+        """Create a new Asset instance. Checks values and can raise ParseError"""
         reader = JsonReader(config)
-        provider_reader = reader.reader_for("provider", allow_missing="no")
+        name = reader.require(str, "name")
         config_meta = AssetMetadata.from_config(config)
+        provider_name = reader.require(str, "provider")
+        provider = get_provider(provider_name)
+        if provider is None:
+            raise ParseError(f"cannot find provider '{provider_name}'")
 
         return cls(
             name=name,
             symbol=reader.get(str, "symbol", default=name.upper()),
-            provider=provider_reader.require(str, "name"),
-            provider_code=provider_reader.require(str, "code"),
+            provider=provider,
+            provider_code=reader.require(str, "provider_code"),
             config_metadata=config_meta,
             effective_metadata=config_meta,
         )
@@ -133,7 +152,7 @@ class Asset:
 
     def same_semantics(self, other: Asset) -> bool:
         """check if two assets are semantically the same (e.g. indicating a rename)"""
-        return self.provider == other.provider and self.provider_code == other.provider_code
+        return self.provider is other.provider and self.provider_code == other.provider_code
 
     def reconcile_with(self, current: Asset | None) -> bool:
         # The configured metadata overrides what is in the database (i.e. currently effective)
@@ -144,7 +163,7 @@ class Asset:
             needs_save = (
                 self.name != current.name
                 or self.symbol != current.symbol
-                or self.provider != current.provider
+                or self.provider is not current.provider
                 or self.provider_code != current.provider_code
             )
             self.effective_metadata = apply_overrides(current.effective_metadata, self.config_metadata)
@@ -154,9 +173,6 @@ class Asset:
 
         self.effective_metadata = self.config_metadata
         return True
-
-    def require_id(self) -> int:
-        return require(self.id, "asset.id")
 
     def with_id(self, new_id: int | None) -> Asset:
         return replace(self, id=new_id)
@@ -186,7 +202,7 @@ class Series:
         return f"{self.asset.name}:{self.code}"
 
     @classmethod
-    def create(cls, asset: Asset, code: str, config: JsonObject) -> Series:
+    def create(cls, asset: Asset, config: JsonObject) -> Series:
         """Create a new Series instance. Checks values and can raise ParseError"""
 
         reader = JsonReader(config)
@@ -216,7 +232,7 @@ class Series:
             id=id,
             asset=asset,
             calendar=calendar,
-            code=code,
+            code=reader.require(str, "code"),
             interval=raw_interval,
             series_type=SeriesType.require(reader.get(str, "series_type", default=str(SeriesType.CANDLE))),
             retention=retention,
@@ -258,11 +274,6 @@ class Series:
 
     def require_id(self) -> int:
         return require(self.id, "series.id")
-
-    def require_ids(self) -> tuple[int, int]:
-        id = self.require_id()
-        asset_id = self.asset.require_id()
-        return id, asset_id
 
     def retention_delta(self) -> timedelta | None:
         return parse_duration(self.retention_period, f"retention period for {self.name}")

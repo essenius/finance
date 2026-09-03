@@ -15,11 +15,6 @@ from finance.common.types import AppError, Failure, Success
 from finance.orchestrator import Orchestrator, unwrap
 from tests.support.types import Creator, Factory
 
-"""
-def ok_fetch_result(points: list) -> FetchResult:
-    return Success(FetchData(series_id=1, points=points, metadata=None))
-"""
-
 
 @pytest.fixture
 def asset() -> Mock:
@@ -272,7 +267,6 @@ def test_handle_fetch_response_persists_changed_asset_metadata(
     stored_asset = Mock()
 
     result = Success(FetchData(series_id=series.id, series=series, metadata=metadata, points=[]))
-    # CO: registry.get_series_by_id.return_value = series
     registry.register_provider_metadata.return_value = asset
     backend.store_asset.return_value = Success(stored_asset)
 
@@ -290,7 +284,6 @@ def test_handle_fetch_response_processes_metadata_and_points(orchestrator: Orche
     point = Mock()
     result = Success(FetchData(series_id=series.id, series=series, metadata=metadata, points=[point]))
 
-    # CO: registry.get_series_by_id.return_value = series
     registry.register_provider_metadata.return_value = None
 
     orchestrator._ingest_points = Mock(return_value=True)

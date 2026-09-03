@@ -6,12 +6,13 @@ from datetime import timedelta
 
 from finance.common.configuration import ProviderConfig
 from finance.common.json_utils import JsonObject, JsonReader
+from finance.common.model import ProviderProtocol
 from finance.common.types import Unwrap
 from finance.config.loader import normalize_providers
 from tests.support.types import AssertError
 
 
-def test_normalize_providers_basic(unwrap: Unwrap[dict[str, ProviderConfig]]):
+def test_normalize_providers_basic(unwrap: Unwrap[dict[str, ProviderProtocol]]):
     ecb: JsonObject = {
         "timeout": "20s",
         "nonsense": "ignored",
@@ -25,11 +26,11 @@ def test_normalize_providers_basic(unwrap: Unwrap[dict[str, ProviderConfig]]):
 
     default_params = {"timeout": "10s", "history_limits": {}, "sweep": {}}
 
-    assert providers["yahoo"] == ProviderConfig(name="yahoo", api_key_required=False, **default_params), "Yahoo"
-    assert providers["fred"] == ProviderConfig(
+    assert providers["yahoo"].config == ProviderConfig(name="yahoo", api_key_required=False, **default_params), "Yahoo"
+    assert providers["fred"].config == ProviderConfig(
         name="fred", api_key_required=True, api_key="secret", **default_params
     ), "FRED"
-    assert providers["ecb"] == ProviderConfig(
+    assert providers["ecb"].config == ProviderConfig(
         name="ecb",
         api_key_required=False,
         timeout="20s",

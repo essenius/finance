@@ -5,7 +5,7 @@
 from datetime import datetime, timedelta
 
 from finance.common.configuration import TimescaleConfig
-from finance.common.model import Asset, SeriesPoint, SeriesState
+from finance.common.model import Asset, ProviderProtocol, SeriesPoint, SeriesState
 from finance.common.types import Failure, Result, Success, Unwrap
 from finance.timeseries.backend_protocol import SqlReadPayload
 from finance.timeseries.series_backend import SeriesBackend
@@ -14,6 +14,9 @@ from tests.support.types import AssertError, Creator, Factory
 
 class FakeConnection:
     closed: bool = False
+
+
+fake_providers: dict[str, ProviderProtocol] = {}
 
 
 class SqlFakeOk:
@@ -111,7 +114,7 @@ class SqlFakeFail:
 def test_from_config_failure_cert(make_timescale_config: Creator[TimescaleConfig], assert_error: AssertError):
     config = make_timescale_config(ssl_mode="verify-ca")
 
-    result = SeriesBackend.from_config(config=config, sql_factory=SqlFakeOkFactory())
+    result = SeriesBackend.from_config(config=config, get_provider=fake_providers.get, sql_factory=SqlFakeOkFactory())
 
     # with make_backend_context(config) as result:
     assert_error(
@@ -138,7 +141,7 @@ def test_from_config_success_no_defaults(
     )
 
     sql_factory = SqlFakeOkFactory()
-    backend = unwrap(SeriesBackend.from_config(config=config, sql_factory=sql_factory))
+    backend = unwrap(SeriesBackend.from_config(config=config, get_provider=fake_providers.get, sql_factory=sql_factory))
 
     timescale_config = backend._config
     assert timescale_config.host == "myhost"
@@ -171,7 +174,9 @@ def test_from_config_success_no_defaults(
 def test_from_config_success_defaults(make_timescale_config: Creator[TimescaleConfig], unwrap: Unwrap[SeriesBackend]):
 
     backend: SeriesBackend = unwrap(
-        SeriesBackend.from_config(config=make_timescale_config(), sql_factory=SqlFakeOkFactory())
+        SeriesBackend.from_config(
+            config=make_timescale_config(), get_provider=fake_providers.get, sql_factory=SqlFakeOkFactory()
+        )
     )
 
     timescale_config = backend._config
@@ -191,7 +196,9 @@ def test_from_config_success_defaults(make_timescale_config: Creator[TimescaleCo
 
 def test_from_config_sql_failure(assert_error: AssertError, make_timescale_config: Creator[TimescaleConfig]):
 
-    result = SeriesBackend.from_config(config=make_timescale_config(), sql_factory=SqlFakeFail)
+    result = SeriesBackend.from_config(
+        config=make_timescale_config(), get_provider=fake_providers.get, sql_factory=SqlFakeFail
+    )
     assert_error(result, "load_short_lived_series_ids operation failed", "Boom!")
 
 
@@ -204,7 +211,11 @@ def test_flush_without_connection_and_exception(
     # force an immediate flush after adding via the batch size
 
     backend: SeriesBackend = unwrap(
-        SeriesBackend.from_config(config=make_timescale_config(max_batch_size=1), sql_factory=SqlFakeOkFactory())
+        SeriesBackend.from_config(
+            config=make_timescale_config(max_batch_size=1),
+            get_provider=fake_providers.get,
+            sql_factory=SqlFakeOkFactory(),
+        )
     )
     backend._sql_client.close_connection()
     now = fixed_now()
@@ -220,7 +231,9 @@ def test_add_writes_two_entries(
 
     sql_factory = SqlFakeOkFactory()
     backend: SeriesBackend = unwrap(
-        SeriesBackend.from_config(config=make_timescale_config(max_batch_size=2), sql_factory=sql_factory)
+        SeriesBackend.from_config(
+            config=make_timescale_config(max_batch_size=2), get_provider=fake_providers.get, sql_factory=sql_factory
+        )
     )
     now = fixed_now()
     next = now + timedelta(seconds=1)
@@ -244,7 +257,11 @@ def test_close_writes(
 ):
 
     sql_factory = SqlFakeOkFactory()
-    backend = unwrap(SeriesBackend.from_config(config=make_timescale_config(max_batch_size=2), sql_factory=sql_factory))
+    backend = unwrap(
+        SeriesBackend.from_config(
+            config=make_timescale_config(max_batch_size=2), get_provider=fake_providers.get, sql_factory=sql_factory
+        )
+    )
 
     now = fixed_now()
     entry1 = SeriesPoint(series_id=1, time=now, close=1)
@@ -264,7 +281,11 @@ def test_flush_writes_when_batch_too_old(
 ):
     sql_factory = SqlFakeOkFactory()
     backend: SeriesBackend = unwrap(
-        SeriesBackend.from_config(config=make_timescale_config(max_batch_age_seconds=0), sql_factory=sql_factory)
+        SeriesBackend.from_config(
+            config=make_timescale_config(max_batch_age_seconds=0),
+            get_provider=fake_providers.get,
+            sql_factory=sql_factory,
+        )
     )
 
     now = fixed_now()
@@ -286,7 +307,11 @@ def test_get_series_states_loads_min_max(
 
     sql_factory = SqlFakeOkFactory()
 
-    backend: SeriesBackend = unwrap(SeriesBackend.from_config(config=make_timescale_config(), sql_factory=sql_factory))
+    backend: SeriesBackend = unwrap(
+        SeriesBackend.from_config(
+            config=make_timescale_config(), get_provider=fake_providers.get, sql_factory=sql_factory
+        )
+    )
 
     now = fixed_now()
     # Two series in cold table
@@ -359,7 +384,9 @@ def test_get_series_states_cold_error(
 ):
 
     backend: SeriesBackend = unwrap(
-        SeriesBackend.from_config(config=make_timescale_config(), sql_factory=SqlFakeOkFactory())
+        SeriesBackend.from_config(
+            config=make_timescale_config(), get_provider=fake_providers.get, sql_factory=SqlFakeOkFactory()
+        )
     )
 
     backend._sql_client.close_connection()
@@ -372,7 +399,11 @@ def test_get_series_states_hot_error(
 ):
 
     sql_factory = SqlFakeOkFactory()
-    backend: SeriesBackend = unwrap(SeriesBackend.from_config(config=make_timescale_config(), sql_factory=sql_factory))
+    backend: SeriesBackend = unwrap(
+        SeriesBackend.from_config(
+            config=make_timescale_config(), get_provider=fake_providers.get, sql_factory=sql_factory
+        )
+    )
 
     sql = sql_factory.instance
     sql.error_in = 2
@@ -387,7 +418,11 @@ def test_get_series_states_sweep_error(
 ):
 
     sql_factory = SqlFakeOkFactory()
-    backend: SeriesBackend = unwrap(SeriesBackend.from_config(config=make_timescale_config(), sql_factory=sql_factory))
+    backend: SeriesBackend = unwrap(
+        SeriesBackend.from_config(
+            config=make_timescale_config(), get_provider=fake_providers.get, sql_factory=sql_factory
+        )
+    )
 
     sql = sql_factory.instance
     sql.error_in = 3
@@ -404,7 +439,9 @@ def test_store_asset_no_effective_metadata(
     make_timescale_config: Creator[TimescaleConfig],
 ):
     backend: SeriesBackend = unwrap(
-        SeriesBackend.from_config(config=make_timescale_config(), sql_factory=SqlFakeOkFactory())
+        SeriesBackend.from_config(
+            config=make_timescale_config(), get_provider=fake_providers.get, sql_factory=SqlFakeOkFactory()
+        )
     )
     asset = make_asset(effective_metadata=None)
     result = backend.store_asset(asset)

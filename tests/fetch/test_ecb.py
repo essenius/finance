@@ -41,7 +41,7 @@ def test_ecb_fetch_real_fixture(
     series = make_series(asset)
     start = make_identity(datetime(2026, 5, 8, tzinfo=ZoneInfo("Europe/Berlin")))
     end = make_identity(datetime(2026, 5, 8, 23, 59, 59, tzinfo=ZoneInfo("Europe/Berlin")))
-    result = fake.provider.fetch(series, asset, start=start, end=end, is_incremental=False)
+    result = fake.provider.fetch(series, start=start, end=end, is_incremental=False)
     assert fake.session.url == "https://data-api.ecb.europa.eu/service/data/EXR/D.USD.EUR.SP00.A"
     assert fake.session.params == {
         "format": "jsondata",
@@ -71,7 +71,7 @@ def test_ecb_fetch_ok(
 
     start = make_identity(datetime(2026, 5, 8, tzinfo=ZoneInfo("Europe/Berlin")))
     end = make_identity(datetime(2026, 5, 8, 23, 59, 59, tzinfo=ZoneInfo("Europe/Berlin")))
-    result = fake.provider.fetch(series, asset, start=start, end=end, is_incremental=True)
+    result = fake.provider.fetch(series, start=start, end=end, is_incremental=True)
     assert_fetch_ok(result, time=datetime(2026, 5, 8, 0, 0, 0, tzinfo=UTC), close=1.1761)
     assert fake.session.url == "https://data-api.ecb.europa.eu/service/data/EXR/D.USD.EUR.SP00.A"
     assert fake.session.params == {"format": "jsondata", "updatedAfter": "2026-05-08", "detail": "dataonly"}
@@ -100,7 +100,7 @@ def test_ecb_fetch_wrong_provider_code(
 
     start = make_identity(datetime(2026, 5, 8, tzinfo=ZoneInfo("Europe/Berlin")))
     end = make_identity(datetime(2026, 5, 8, 23, 59, 59, tzinfo=ZoneInfo("Europe/Berlin")))
-    result = fake.provider.fetch(series, asset, start=start, end=end, is_incremental=True)
+    result = fake.provider.fetch(series, start=start, end=end, is_incremental=True)
     assert_error(result, reason=f"Could not split provider code '{provider_code}' into base_quote")
 
 
@@ -117,8 +117,8 @@ def test_ecb_fetch_non_200(
 
     asset = make_asset(provider_code="EUR_USD")
     series = make_series(asset)
-    result = fake.provider.fetch(series, asset, now, now, False)
-    assert_error(result, reason="Exception during ECB fetch of eur_usd:dummy", error="Internal Server Error")
+    result = fake.provider.fetch(series, start=now, end=now, is_incremental=False)
+    assert_error(result, reason="Exception during ecb fetch of eur_usd:dummy", error="Internal Server Error")
 
 
 MALFORMED_CASES = [
@@ -158,7 +158,7 @@ def test_ecb_malformed_json(
 
     asset = make_asset(provider_code="EUR_USD")
     series = make_series(asset)
-    result = fake.provider.fetch(series, asset, now, now, False)
+    result = fake.provider.fetch(series, start=now, end=now, is_incremental=False)
     assert_error(result, reason=f"Could not find ECB {context}", error=expected)
 
 
@@ -209,7 +209,7 @@ def test_ecb_fetch_multiple_points_skip_invalid(
     fake.session.queue(200, fake_json)
     asset = make_asset(provider_code="EUR_USD")
     series = make_series(asset)
-    result = fake.provider.fetch(series, asset, now, now, True)
+    result = fake.provider.fetch(series, start=now, end=now, is_incremental=True)
     fetch_result = unwrap(result)
     points = fetch_result.points
     assert len(points) == 2

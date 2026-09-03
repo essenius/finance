@@ -3,9 +3,11 @@
 # File: tests/registry/test_registry.py
 
 from datetime import date
+from unittest.mock import Mock
 
 import pytest
 
+from finance.common.asset_metadata import AssetMetadata
 from finance.common.model import Asset, Series
 from finance.common.string_enums import Retention
 from finance.common.types import AppError
@@ -43,7 +45,7 @@ def test_merge_and_find_new_assets_empty(make_asset: Creator[Asset]):
     assert result == [asset_yaml]
 
 
-def test_merge_and_find_new_assets_update(make_asset: Creator[Asset], make_metadata):
+def test_merge_and_find_new_assets_update(make_asset: Creator[Asset], make_metadata: Creator[AssetMetadata]):
     meta_x = make_metadata(instrument="x")
     meta_y = make_metadata(instrument="y")
     asset_yaml: Asset = make_asset(name="SPX", config_metadata=meta_x)
@@ -58,12 +60,15 @@ def test_merge_and_find_new_assets_update(make_asset: Creator[Asset], make_metad
     assert updated_asset.effective_metadata == asset_yaml.config_metadata, "effective metadata overridden by config"
 
 
-def test_reconcile_assets_match_provider(make_asset: Creator[Asset], make_metadata):
+def test_reconcile_assets_match_provider(
+    make_asset: Creator[Asset], make_metadata: Creator[AssetMetadata], make_provider: Creator[Mock]
+):
 
     # provider and provider code identical, name different (i.e. likely renamed in yaml)
-    asset_yaml = make_asset(name="RRR", id=None)
+    provider = make_provider()
+    asset_yaml = make_asset(name="RRR", provider=provider, id=None)
     meta = make_metadata(currency="GBP")
-    asset_db = make_asset(name="QQQ", id=2, symbol="x", effective_metadata=meta)
+    asset_db = make_asset(name="QQQ", provider=provider, id=2, symbol="x", effective_metadata=meta)
     registry = Registry(assets=[asset_yaml])
 
     result = registry.merge_and_find_new_assets([asset_db])
@@ -128,28 +133,6 @@ def test_reconcile_series_orphans_ignored(make_asset: Creator[Asset], make_serie
     assert result.final == []
 
 
-# TODO: check if still needed after refactoring
-"""
-def test_reconcile_series_match_asset_resolution(make_asset: Creator[Asset], make_series: Creator[Series]):
-    asset = make_asset(name="SPX", id=None)
-
-    # we make a series with a different code than in the DB (i.e. renamed in yaml)
-    # yaml has no IDs
-    series_yaml = make_series(asset=asset, code="different", id=None)
-
-    registry = Registry(series=[series_yaml])
-    registry._assets_by_name = {"SPX": asset}
-
-    # the matching record in the database
-    db_asset = asset.with_id(2)
-    series_db = make_series(asset=db_asset, id=10)
-
-    result = registry._reconcile_series([series_db])
-    # the two match, so one to persist.
-    assert result.to_persist == [series_yaml.with_id(10)]
-    assert result.final == []
-"""
-
 # ------------------------------------------------------------
 # Reconciliation entry point
 # ------------------------------------------------------------
@@ -177,7 +160,7 @@ def test_reconcile_same(make_asset: Creator[Asset], make_series: Creator[Series]
 # ------------------------------------------------------------
 
 
-def test_register_provider_metadata(make_asset: Creator[Asset], make_metadata):
+def test_register_provider_metadata(make_asset: Creator[Asset], make_metadata: Creator[AssetMetadata]):
     asset: Asset = make_asset()
     yaml_asset = asset.with_id(None)
     registry = Registry(assets=[yaml_asset])
@@ -193,14 +176,6 @@ def test_register_provider_metadata(make_asset: Creator[Asset], make_metadata):
     assert should_be_none is None, "Second registration should not trigger a save"
 
 
-"""def test_register_provider_metadata_requires_asset(make_metadata):
-    registry = Registry()
-    with pytest.raises(AppError) as exc:
-        registry.register_provider_metadata(1, make_metadata())
-    assert str(exc.value) == "Cannot register provider metadata for unknown asset id 1"
-"""
-
-
 def test_register_stored_asset_requires_id(make_asset: Creator[Asset]):
     registry = Registry()
     asset = make_asset(name="SPX", id=None)
@@ -210,7 +185,7 @@ def test_register_stored_asset_requires_id(make_asset: Creator[Asset]):
     assert str(exc.value) == "Cannot register asset without an id"
 
 
-def test_register_stored_asset_success(make_asset: Creator[Asset], make_metadata):
+def test_register_stored_asset_success(make_asset: Creator[Asset], make_metadata: Creator[AssetMetadata]):
     registry = Registry()
     asset: Asset = make_asset(name="SPX", id=1)
 

@@ -74,7 +74,7 @@ def make_identity(label: datetime):
     return CandleIdentity(label, False, timedelta(0))
 
 
-def test_fetch_success(
+def test_fetch_success_intraday(
     make_asset: Creator[Asset],
     make_series: Creator[Series],
     unwrap: Unwrap[FetchData],
@@ -107,13 +107,63 @@ def test_fetch_success(
         asset, interval="1h", retention=Retention.SHORT_LIVED.value, series_type=SeriesType.VALUE.value
     )
 
-    result = fake.provider.fetch(series, asset, now, now, False)
+    result = fake.provider.fetch(series, start=now, end=now, is_incremental=False)
 
     payload = unwrap(result)
     points = payload.points
     assert len(points) == 1, "one result"
     assert points[0].time == datetime(2026, 7, 23, 15, 00, tzinfo=UTC), "datetime is instant"
     assert points[0].close == 10.0, "Close is 10"
+
+
+def test_fetch_one_day_daily_prepends_time(
+    make_asset: Creator[Asset],
+    make_series: Creator[Series],
+    unwrap: Unwrap[FetchData],
+    yahoo_provider: Creator[YahooFakeSession],
+):
+
+    # Monday, so we have a weekend before
+    def fake_now():
+        return datetime(2026, 8, 31, tzinfo=UTC)
+
+    fake = yahoo_provider(now_provider=fake_now)
+
+    now = make_identity(fake_now())
+    fake.session.queue(
+        200,
+        {
+            "chart": {
+                "result": [
+                    {
+                        "meta": {"exchangeTimezoneName": "UTC"},
+                        "timestamp": [],
+                        "indicators": {"quote": []},
+                    }
+                ],
+                "error": None,
+            }
+        },
+    )
+    asset = make_asset(provider_code="AAPL")
+    series = make_series(asset, interval="1d", retention=Retention.LONG_LIVED.value, series_type=SeriesType.VALUE.value)
+
+    # last second of previous working day prepended if we have one day (workaround for the Yahoo quirk)
+    result = fake.provider.fetch(series, start=now, end=now, is_incremental=False)
+    assert fake.session.params is not None
+    assert datetime.fromtimestamp(fake.session.params["period1"]).astimezone(UTC) == datetime(
+        2026, 8, 28, 23, 59, 59, tzinfo=UTC
+    )
+    assert datetime.fromtimestamp(fake.session.params["period2"]).astimezone(UTC) == datetime(2026, 8, 31, tzinfo=UTC)
+    payload = unwrap(result)
+    assert payload.points == []
+
+    # nothing prepended if we have more than one day
+    thursday = make_identity(datetime(2026, 8, 27, tzinfo=UTC))
+    result = fake.provider.fetch(series, start=thursday, end=now, is_incremental=False)
+    assert fake.session.params is not None
+    assert datetime.fromtimestamp(fake.session.params["period1"]).astimezone(UTC) == datetime(2026, 8, 27, tzinfo=UTC)
+    assert datetime.fromtimestamp(fake.session.params["period2"]).astimezone(UTC) == datetime(2026, 8, 31, tzinfo=UTC)
 
 
 def test_impl_http_error(
@@ -129,9 +179,9 @@ def test_impl_http_error(
     fake = yahoo_provider()
     fake.session.queue_error(Exception("boom"))
 
-    result = fake.provider.fetch(series, asset, now, now, False)
+    result = fake.provider.fetch(series, start=now, end=now, is_incremental=False)
 
-    assert_error(result, "Exception during Yahoo fetch", "boom")
+    assert_error(result, "Exception during yahoo fetch", "boom")
 
 
 @pytest.mark.parametrize(
@@ -171,7 +221,7 @@ def test_fetch_missing_exchange_timezone(
     series = make_series(
         asset, interval="1h", retention=Retention.SHORT_LIVED.value, series_type=SeriesType.VALUE.value
     )
-    result = fake.provider.fetch(series, asset, now, now, False)
+    result = fake.provider.fetch(series, start=now, end=now, is_incremental=False)
 
     assert_error(result, "Could not parse series 'AAPL:dummy' in Yahoo fetch result", reason)
 
@@ -204,7 +254,7 @@ def test_fetch_missing_quote(
     series = make_series(
         asset, interval="1h", retention=Retention.SHORT_LIVED.value, series_type=SeriesType.VALUE.value
     )
-    result = fake.provider.fetch(series, asset, now, now, False)
+    result = fake.provider.fetch(series, start=now, end=now, is_incremental=False)
 
     assert_error(
         result,
@@ -232,7 +282,7 @@ def test_fetch_real_fixture_5m_eliminates_last_and_fills_metadata(
     start = make_identity(datetime(2026, 8, 11, 10, 30, tzinfo=UTC))
     end = make_identity(datetime(2026, 8, 11, 12, tzinfo=UTC))
 
-    result = fake.provider.fetch(series, asset, start=start, end=end, is_incremental=False)
+    result = fake.provider.fetch(series, start=start, end=end, is_incremental=False)
 
     fetch_result = unwrap(result)
     points = fetch_result.points

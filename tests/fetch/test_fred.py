@@ -42,7 +42,7 @@ def test_fred_fetch_normal_with_skipped(
     )
     asset = make_asset(provider_code="T10YIE")
     # now is ignored
-    result = fake.provider.fetch(make_series(asset), asset, NOW, NOW, True)
+    result = fake.provider.fetch(make_series(asset), start=NOW, end=NOW, is_incremental=True)
     # no change in date as the date is a label, not a timestamp
     assert_fetch_ok(result, datetime(2024, 5, 9, 0, 0, 0, tzinfo=UTC), 2.34)
     assert result.ok is True
@@ -85,7 +85,7 @@ def test_fred_malformed_cases(
         fake.session.queue(200, json_data)
 
     asset = make_asset(provider_code="T10YIE")
-    result = fake.provider.fetch(make_series(asset), asset, NOW, NOW, True)
+    result = fake.provider.fetch(make_series(asset), start=NOW, end=NOW, is_incremental=True)
     assert_error(result, expected_error, None)
 
 
@@ -99,9 +99,9 @@ def test_fred_fetch_network_error(
     fake.session.queue_error(Exception("Boom!"))
 
     asset = make_asset(provider_code="T10YIE")
-    result = fake.provider.fetch(make_series(asset), asset, NOW, NOW, True)
+    result = fake.provider.fetch(make_series(asset), start=NOW, end=NOW, is_incremental=True)
 
-    assert_error(result, "Exception during FRED fetch", "Boom!")
+    assert_error(result, "Exception during fred fetch", "Boom!")
 
 
 def test_fred_status_code_not_200(
@@ -113,5 +113,5 @@ def test_fred_status_code_not_200(
     fake = fred_provider()
     fake.session.queue(500, {}, "status 500")
     asset = make_asset(provider_code="T10YIE")
-    result = fake.provider.fetch(make_series(asset), asset, NOW, NOW, True)
-    assert_error(result, "Exception during FRED fetch", "status 500")
+    result = fake.provider.fetch(make_series(asset), start=NOW, end=NOW, is_incremental=True)
+    assert_error(result, "Exception during fred fetch", "status 500")

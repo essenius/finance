@@ -2,18 +2,16 @@
 # Licensed under the Apache License, Version 2.0. See the LICENSE file for details.
 # File: tests/test_main_run.py
 
-from collections.abc import Iterable, Iterator
+from collections.abc import Iterator
 from pathlib import Path
-from unittest.mock import MagicMock, Mock
+from unittest.mock import Mock
 
 from pytest import LogCaptureFixture
 
-from finance.common.configuration import LogConfig, ProviderConfig, TimescaleConfig
-from finance.common.model import FetchData, FetchResult, SeriesPoint
-from finance.common.types import Failure, Result, Success
+from finance.common.configuration import LogConfig, TimescaleConfig
+from finance.common.types import AppError, Failure, Result, Success
 from finance.config.loader import AppConfig
 from finance.fetch.controller import FetchController
-from finance.fetch.provider import MarketDataProvider
 from finance.main import run
 from finance.orchestrator import Orchestrator
 from finance.registry.registry import Registry
@@ -25,30 +23,13 @@ from finance.timeseries.series_backend import SeriesBackend
 # ---------------------------------------------------------------------------
 
 
-def registry_factory():
-    result = MagicMock()
-    result.get_asset_by_id = MagicMock()
-    result.get_asset_by_name = MagicMock()
-    return result
-
-
-class FakeFetchController:
-    def __init__(self, outputs):
-        self.outputs = outputs
-
-    def fetch_incrementally(self, state) -> Iterable[FetchResult]:
-        for id, value, time in self.outputs:
-            fp = SeriesPoint(series_id=id, time=time, close=value)
-            yield Success(FetchData(series_id=id, points=[fp], metadata=None))
-
-
 def make_config() -> AppConfig:
     return AppConfig(
         paths={"wal": Path("wal.jsonl")},
         logging=LogConfig.from_config({}),
         assets=[],
         series=[],
-        providers={},
+        providers=Mock(),
         timescaledb=TimescaleConfig.from_config({"host": "h", "db": "d", "user": "u", "password": "p"}),
     )
 
@@ -82,7 +63,6 @@ def test_run_wires_dependencies_and_returns_orchestrator_result():
     backend = Mock()
     wal = Mock()
     state = Mock()
-    providers = Mock()
     fetcher = Mock()
 
     orchestrator = Mock()
@@ -104,13 +84,7 @@ def test_run_wires_dependencies_and_returns_orchestrator_result():
         assert wal is wal
         return state
 
-    def provider_factory(providers_config: dict[str, ProviderConfig]) -> dict[str, MarketDataProvider]:
-        assert providers_config is config.providers
-        return providers
-
-    def fetch_controller_factory(get_asset, get_provider) -> FetchController:
-        assert get_asset is registry.get_asset_by_id
-        assert get_provider is providers.get
+    def fetch_controller_factory() -> FetchController:
         return fetcher
 
     def orchestrator_factory(*, backend, registry, state, fetcher) -> Orchestrator:
@@ -126,7 +100,6 @@ def test_run_wires_dependencies_and_returns_orchestrator_result():
             registry_factory=registry_factory,
             backend_factory=backend_factory,
             state_factory=state_factory,
-            provider_factory=provider_factory,
             fetch_controller_factory=fetch_controller_factory,
             orchestrator_factory=orchestrator_factory,
             wal_factory=lambda _: wal,
@@ -154,7 +127,7 @@ def test_run_returns_one_when_backend_initialization_fails():
 
 def test_run_returns_two_when_unexpected_exception_occurs(clean_logging: Iterator[None], caplog: LogCaptureFixture):
     def load_config():
-        raise RuntimeError("Boom!")
+        raise AppError("Boom!")
 
     result = run(load_config=load_config)
 

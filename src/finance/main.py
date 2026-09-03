@@ -7,17 +7,14 @@ from collections.abc import Callable, Iterable
 from datetime import datetime
 from pathlib import Path
 
-from finance.common.configuration import ProviderConfig
-
 from .common.applogger import AppLogger, LogConfigurator
 from .common.model import Asset, Series
 from .common.time_utils import now_second_precision
-from .common.types import Result
+from .common.types import AppError, Result
 
 # from .composites.engine import CompositeEngine
 from .config.loader import AppConfig, ConfigLoader
-from .fetch.controller import FetchController, create_providers
-from .fetch.provider import MarketDataProvider
+from .fetch.controller import FetchController
 from .orchestrator import Orchestrator, unwrap
 from .registry.registry import Registry
 from .state.state import State
@@ -46,10 +43,9 @@ def run(
     registry_factory: Callable[[Iterable[Asset], Iterable[Series]], Registry] = Registry,
     sql_factory: Callable[..., BackendProtocol] = TimescaleSqlClient,
     backend_factory: Callable[..., Result[SeriesBackend]] = SeriesBackend.from_config,
-    provider_factory: Callable[[dict[str, ProviderConfig]], dict[str, MarketDataProvider]] = create_providers,
     state_factory: Callable[..., State] = State,
     fetch_controller_factory: Callable[..., FetchController] = FetchController,
-    # composite_engine_builder: Callable[[dict[str, Any], State], Result[CompositeEngine]] = CompositeEngine.build,
+    # CO: composite_engine_builder: Callable[[dict[str, Any], State], Result[CompositeEngine]] = CompositeEngine.build,
     wal_factory: Callable[[Path], JsonlWAL] = JsonlWAL,
     orchestrator_factory: Callable[..., Orchestrator] = Orchestrator,
     now: Callable[[], datetime] | None = None,
@@ -73,7 +69,7 @@ def run(
 
         registry = registry_factory(config.assets, config.series)
 
-        backend_result = backend_factory(config.timescaledb, sql_factory)
+        backend_result = backend_factory(config.timescaledb, config.providers.get, sql_factory)
         if backend_result.ok is False:
             logger.error(reason=backend_result.reason, error=backend_result.error)
             return 1
@@ -82,13 +78,12 @@ def run(
 
         wal = wal_factory(config.paths["wal"])
         state = state_factory(backend=backend, wal=wal)
-        providers = provider_factory(config.providers)
-        fetch_controller = fetch_controller_factory(registry.get_asset_by_id, providers.get)
+        fetch_controller = fetch_controller_factory()
 
         orchestrator = orchestrator_factory(backend=backend, registry=registry, state=state, fetcher=fetch_controller)
         return orchestrator.run()
 
     # catch the unwrap errors
-    except Exception:
+    except AppError:
         logger.exception("Exiting due to error")
         return 2

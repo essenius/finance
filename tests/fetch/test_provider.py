@@ -7,7 +7,7 @@ from datetime import datetime, timedelta
 import requests
 
 from finance.common.candle_identity import CandleIdentity
-from finance.common.configuration import ProviderConfig
+from finance.common.configuration import ProviderConfig, SweepConfig
 from finance.common.model import Asset, Series
 from finance.common.time_utils import UTC
 from finance.common.types import Result, Success
@@ -27,6 +27,7 @@ def test_init_defaults():
     now = p.now()
     assert isinstance(now, datetime)
     assert now.tzinfo == UTC
+    assert p.sweep_config(timedelta(minutes=5)) == SweepConfig.zero()
 
 
 def test_safe_call_success(make_asset: Creator[Asset], make_series: Creator[Series]):
@@ -37,7 +38,7 @@ def test_safe_call_success(make_asset: Creator[Asset], make_series: Creator[Seri
     def good() -> Result[list[int]]:
         return Success([1, 2, 3])
 
-    result = p._safe_call(good, series=s, context="context")
+    result = p._safe_call(good, series=s)
     # is True is required here to narrow the Result union
     assert result.ok is True
     assert result.payload == [1, 2, 3]
@@ -51,21 +52,16 @@ def test_safe_call_exception(make_asset: Creator[Asset], make_series: Creator[Se
     def bad() -> Result[int]:
         raise ValueError("kaboom")
 
-    result = p._safe_call(bad, series=s, context="fetch")
+    result = p._safe_call(bad, series=s)
     assert result.ok is False
-    assert "Exception during fetch of eur_usd:dummy (1)" in result.reason
+    assert "Exception during dummy fetch of eur_usd:dummy (1)" in result.reason
     assert "kaboom" in str(result.error)
-
-
-# -----------
-# Fetch test
-# -----------
 
 
 def test_fetch_not_implemented(make_asset: Creator[Asset], make_series: Creator[Series]):
     name = "eur_usd"
     asset = make_asset(id=1, name=name, provider="yahoo", provider_code="EURUSD=X")
     now = CandleIdentity(datetime(1, 1, 1), False, timedelta(0))
-    result = provider().fetch(make_series(asset), asset, start=now, end=now, is_incremental=False)
+    result = provider().fetch(make_series(asset), start=now, end=now, is_incremental=False)
     assert result.ok is False
     assert result.reason == "fetch not implemented"

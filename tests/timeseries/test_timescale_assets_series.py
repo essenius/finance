@@ -4,7 +4,7 @@
 
 from datetime import datetime, time
 from types import SimpleNamespace
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, Mock
 
 import psycopg
 
@@ -40,6 +40,44 @@ def make_cursor(fetchone=None, fetchall=None):
     cm.__enter__.return_value = cursor
     cm.__exit__.return_value = False
     return cm
+
+
+def set_read_asset_description(cursor: MagicMock) -> None:
+    cursor.description = [
+        SimpleNamespace(name="id"),
+        SimpleNamespace(name="name"),
+        SimpleNamespace(name="symbol"),
+        SimpleNamespace(name="provider"),
+        SimpleNamespace(name="provider_code"),
+        SimpleNamespace(name="long_name"),
+        SimpleNamespace(name="short_name"),
+        SimpleNamespace(name="instrument"),
+        SimpleNamespace(name="region"),
+        SimpleNamespace(name="exchange"),
+        SimpleNamespace(name="currency"),
+        SimpleNamespace(name="unit"),
+        SimpleNamespace(name="timezone"),
+        SimpleNamespace(name="first_available_date"),
+        SimpleNamespace(name="week_start"),
+        SimpleNamespace(name="week_end"),
+        SimpleNamespace(name="market_open"),
+        SimpleNamespace(name="market_close"),
+    ]
+
+
+def set_read_series_description(cursor: MagicMock) -> None:
+    cursor.description = [
+        SimpleNamespace(name="id"),
+        SimpleNamespace(name="code"),
+        SimpleNamespace(name="asset_id"),
+        SimpleNamespace(name="name"),
+        SimpleNamespace(name="interval"),
+        SimpleNamespace(name="series_type"),
+        SimpleNamespace(name="retention"),
+        SimpleNamespace(name="retention_period"),
+        SimpleNamespace(name="bootstrap_history"),
+        SimpleNamespace(name="publication_offset"),
+    ]
 
 
 # ------------------------------------------------------------
@@ -86,10 +124,12 @@ def test_refresh_short_lived_series_ids_handles_disconnected(make_backend: Creat
 # ------------------------------------------------------------
 
 
-def test_store_asset_insert(make_asset: Creator[Asset], make_backend: Creator[FakeBackend]):
+def test_store_asset_insert(
+    make_asset: Creator[Asset], make_backend: Creator[FakeBackend], make_provider: Creator[Mock]
+):
     backend, sql = make_backend().with_sql()
-
-    asset: Asset = make_asset(id=None)
+    provider = make_provider(name="yahoo")
+    asset: Asset = make_asset(id=None, provider=provider)
     sql.execute_write = MagicMock(return_value=Success(42))
 
     result = backend.store_asset(asset)
@@ -239,7 +279,7 @@ def test_get_assets_returns_asset_list(make_backend: Creator[FakeBackend]):
             "USD",
             "share",
             "America/New_York",
-            None,
+            "2020-01-10",
             "mon",
             "fri",
             "9:30",
@@ -267,26 +307,7 @@ def test_get_assets_returns_asset_list(make_backend: Creator[FakeBackend]):
         ),
     ]
 
-    cursor.description = [
-        SimpleNamespace(name="id"),
-        SimpleNamespace(name="name"),
-        SimpleNamespace(name="symbol"),
-        SimpleNamespace(name="provider"),
-        SimpleNamespace(name="provider_code"),
-        SimpleNamespace(name="long_name"),
-        SimpleNamespace(name="short_name"),
-        SimpleNamespace(name="instrument"),
-        SimpleNamespace(name="region"),
-        SimpleNamespace(name="exchange"),
-        SimpleNamespace(name="currency"),
-        SimpleNamespace(name="unit"),
-        SimpleNamespace(name="timezone"),
-        SimpleNamespace(name="first_available_date"),
-        SimpleNamespace(name="week_start"),
-        SimpleNamespace(name="week_end"),
-        SimpleNamespace(name="market_open"),
-        SimpleNamespace(name="market_close"),
-    ]
+    set_read_asset_description(cursor)
     cursor.fetchall.return_value = rows
 
     result = backend.get_assets()
@@ -306,13 +327,23 @@ def test_get_assets_returns_asset_list(make_backend: Creator[FakeBackend]):
     assert meta0.market_close == time(hour=16)
 
 
-def test_get_assets_error(assert_error: AssertError, make_backend: Creator[FakeBackend]):
+def test_get_assets_db_error(assert_error: AssertError, make_backend: Creator[FakeBackend]):
     backend, connection = make_backend().with_connection()
     connection.cursor.side_effect = psycopg.Error("db error")
+    result = backend.get_assets()
+    assert_error(result, "get_assets operation failed", "db error")
+
+
+def test_get_assets_missing_provider(assert_error: AssertError, make_backend: Creator[FakeBackend]):
+    backend, cursor = make_backend().with_cursor()
+    rows = [(2, "X", "X", "bogus", "X", "", "", "st", "US", "N", "USD", "sh", "UTC", None, "mon", "fri", "min", "max")]
+    set_read_asset_description(cursor)
+    cursor.fetchall.return_value = rows
 
     result = backend.get_assets()
+    result = backend.get_assets()
 
-    assert_error(result, "get_assets operation failed", "db error")
+    assert_error(result, "get_assets could not load asset 'X'", "cannot find provider 'bogus'")
 
 
 # ------------------------------------------------------------
@@ -320,52 +351,16 @@ def test_get_assets_error(assert_error: AssertError, make_backend: Creator[FakeB
 # ------------------------------------------------------------
 
 
-def test_get_series_returns_series_list(make_backend: Creator[FakeBackend], make_asset):
-    backend, connection = make_backend().with_connection()
+def test_get_series_returns_series_list(make_asset: Creator[Asset], make_backend: Creator[FakeBackend]):
+    backend, cursor = make_backend().with_cursor()
 
     rows = [
-        (
-            10,
-            "intraday",
-            1,
-            "SPX",
-            "1m",
-            "value",
-            "short_lived",
-            "30d",
-            "30d",
-            None,
-        ),
-        (
-            11,
-            "daily",
-            1,
-            "SPX",
-            "1d",
-            "candle",
-            "long_lived",
-            None,
-            "1y",
-            "1d",
-        ),
+        (10, "intraday", 1, "SPX", "1m", "value", "short_lived", "30d", "30d", None),
+        (11, "daily", 1, "SPX", "1d", "candle", "long_lived", None, "1y", "1d"),
     ]
 
-    cursor_cm = make_cursor(fetchall=rows)
-
-    inner_cursor = cursor_cm.__enter__.return_value
-    inner_cursor.description = [
-        SimpleNamespace(name="id"),
-        SimpleNamespace(name="code"),
-        SimpleNamespace(name="asset_id"),
-        SimpleNamespace(name="name"),
-        SimpleNamespace(name="interval"),
-        SimpleNamespace(name="series_type"),
-        SimpleNamespace(name="retention"),
-        SimpleNamespace(name="retention_period"),
-        SimpleNamespace(name="bootstrap_history"),
-        SimpleNamespace(name="publication_offset"),
-    ]
-    connection.cursor.return_value = cursor_cm
+    set_read_series_description(cursor)
+    cursor.fetchall.return_value = rows
 
     asset = make_asset()
 
@@ -383,7 +378,7 @@ def test_get_series_returns_series_list(make_backend: Creator[FakeBackend], make
     assert series_list[0].asset is asset
 
 
-def test_get_series_error(assert_error: AssertError, make_backend: Creator[FakeBackend]):
+def test_get_series_db_error(assert_error: AssertError, make_backend: Creator[FakeBackend]):
     backend, connection = make_backend().with_connection()
     connection.cursor.side_effect = psycopg.Error("boom")
 
@@ -392,6 +387,24 @@ def test_get_series_error(assert_error: AssertError, make_backend: Creator[FakeB
 
     result = backend.get_series(get_asset)
     assert_error(result, "get_series operation failed", "boom")
+
+
+def test_get_series_parse_error(assert_error: AssertError, make_backend: Creator[FakeBackend]):
+    backend, cursor = make_backend().with_cursor()
+
+    rows = [(10, "intraday", 1, "SPX", "1m", "value", "short_lived", "30d", "30d", None)]
+
+    set_read_series_description(cursor)
+    cursor.fetchall.return_value = rows
+
+    def get_asset(id: int) -> None:
+        return None
+
+    result = backend.get_series(get_asset)
+
+    assert_error(
+        result, reason="get_series could not load series with ID '10'", error="could not find asset with ID '1'"
+    )
 
 
 def test_save_sweep(make_backend: Creator[FakeBackend]):

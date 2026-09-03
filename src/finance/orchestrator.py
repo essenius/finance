@@ -122,7 +122,7 @@ class Orchestrator:
 
         return self._ingest_points(payload.points, series)
 
-    def _ingest_points(self, points: SeriesPoints, series: Series):
+    def _ingest_points(self, points: SeriesPoints, series: Series) -> bool:
         # this assumes the payload is ordered low-high or high-low
         batch_first = points[0].time
         batch_last = points[-1].time
@@ -152,7 +152,7 @@ class Orchestrator:
             )
         return all_ok
 
-    def _prepare(self):
+    def _prepare(self) -> None:
         logger.info(f"Finance version: {finance.__version__} started.")
 
         logger.debug("Loading state")
@@ -167,7 +167,7 @@ class Orchestrator:
             stored = unwrap(self.backend.store_asset(asset))
             self.registry.register_stored_asset(stored)
 
-        saved_series = unwrap(self.backend.get_series(self.registry.get_asset_by_id))
+        saved_series = unwrap(self.backend.get_series(self.registry.get_asset))
         reconciled_series = self.registry.reconcile_series(saved_series)
         for series in reconciled_series.to_persist:
             logger.info(f"Persisting series {series.name}")

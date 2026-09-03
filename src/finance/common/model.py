@@ -73,7 +73,7 @@ class SeriesPoint:
             volume=data.get("volume"),
         )
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         result = f"{self.__class__.__name__}(id={self.series_id}, time={self.time.astimezone(UTC).isoformat(timespec='seconds')}"
         for field_name in Candle:
             value = getattr(self, field_name.value)
@@ -115,7 +115,7 @@ class Asset:
     # assigned by the backend
     id: int | None = None
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"Asset(id={self.id}, name={self.name}, symbol={self.symbol}, provider_code={self.provider_code}, metadata={self.effective_metadata})"
 
     @classmethod
@@ -242,10 +242,10 @@ class Series:
         )
 
     @staticmethod
-    def is_intraday_interval(interval: timedelta):
+    def is_intraday_interval(interval: timedelta) -> bool:
         return interval < timedelta(days=1)
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"Series(id={self.id}, name={self.name}, asset={self.asset.name}, retention={self.retention}, series_type={self.series_type}, interval={self.interval})"
 
     def bootstrap_history_delta(self) -> timedelta:
@@ -263,10 +263,10 @@ class Series:
     def interval_delta(self) -> timedelta:
         return require_duration(self.interval, f"interval for {self.name}")
 
-    def is_daily(self):
+    def is_daily(self) -> bool:
         return not self.is_intraday()
 
-    def is_intraday(self):
+    def is_intraday(self) -> bool:
         return self.is_intraday_interval(self.interval_delta())
 
     def publication_offset_delta(self) -> timedelta:
@@ -303,11 +303,11 @@ class SeriesState:
     needs_save: bool = False
 
     @staticmethod
-    def is_none_or_greater(left: datetime | None, right: datetime):
+    def is_none_or_greater(left: datetime | None, right: datetime) -> bool:
         return left is None or left > right
 
     @staticmethod
-    def is_none_or_smaller(left: datetime | None, right: datetime):
+    def is_none_or_smaller(left: datetime | None, right: datetime) -> bool:
         return left is None or left < right
 
     def get_sweep_start(self, sweep: SweepConfig, last: CandleIdentity) -> datetime | None:
@@ -319,7 +319,7 @@ class SeriesState:
             return None
         return self.sweep_start
 
-    def update_point_range(self, first: datetime, last: datetime):
+    def update_point_range(self, first: datetime, last: datetime) -> None:
         # update the captured point range
         if self.is_none_or_smaller(self.last_point, last):
             self.last_point = last
@@ -327,7 +327,7 @@ class SeriesState:
         if self.is_none_or_greater(self.first_point, first):
             self.first_point = first
 
-    def update_sweep_state(self, sweep: SweepConfig, last: CandleIdentity):
+    def update_sweep_state(self, sweep: SweepConfig, last: CandleIdentity) -> None:
         store_label = last.store_label()
         self.next_sweep = store_label + sweep.cadence
         self.sweep_start = store_label - sweep.window

@@ -75,7 +75,7 @@ class SeriesCalendar:
         # snap to already snaps to previous
         return self._utc_to_local(snap_to(ts, self.interval))
 
-    def snap_back_on_publish_time(self, local: datetime, id: CandleIdentity):
+    def snap_back_on_publish_time(self, local: datetime, id: CandleIdentity) -> CandleIdentity:
         if local < id.publish_label() + self._get_publication_offset():
             old_label = id.publish_label()  # in local timezone
             new_label = self._snap_back_trading_week(old_label - self.interval)

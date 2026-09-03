@@ -25,7 +25,7 @@ DURATION_UNITS = {
 WEEKDAY_ABBR_MAP = {abbr.lower(): i for i, abbr in enumerate(calendar.day_abbr)}
 
 
-def normalize_db_time(value):
+def normalize_db_time(value) -> datetime:
     if isinstance(value, datetime):
         if value.tzinfo is None:
             # Naive → treat as UTC
@@ -36,7 +36,7 @@ def normalize_db_time(value):
     raise TypeError(f"Unexpected time type: {type(value)}")
 
 
-def now_second_precision():
+def now_second_precision() -> datetime:
     return datetime.now(tz=UTC).replace(microsecond=0)
 
 

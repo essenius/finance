@@ -95,7 +95,6 @@ def test_reconcile_series_create_only(make_asset: Creator[Asset], make_series: C
     asset = make_asset(name="SPX", id=1)
     series_yaml = make_series(asset=asset)
     registry = Registry(series=[series_yaml])
-    registry._assets_by_name = {"SPX": asset}
 
     result = registry._reconcile_series([])
 
@@ -110,7 +109,6 @@ def test_reconcile_series_update(make_asset: Creator[Asset], make_series: Creato
     series_yaml = make_series(asset=asset, interval="1d")
 
     registry = Registry(series=[series_yaml])
-    registry._assets_by_name = {"SPX": asset}
 
     series_db = make_series(asset=asset, id=10, interval="2d")
     result = registry._reconcile_series([series_db])
@@ -123,7 +121,6 @@ def test_reconcile_series_orphans_ignored(make_asset: Creator[Asset], make_serie
     registry = Registry(series=[])
 
     asset = make_asset(name="SPX", id=1)
-    registry._assets_by_name = {"SPX": asset}
 
     series_db = make_series(asset=asset, id=10)
 
@@ -142,7 +139,6 @@ def test_reconcile_same(make_asset: Creator[Asset], make_series: Creator[Series]
     asset = make_asset(name="SPX", id=None)
     series = make_series(asset, retention=Retention.LONG_LIVED.value, id=None)
     registry = Registry(assets=[asset], series=[series])
-    registry._assets_by_name = {"SPX": asset}
 
     asset2 = asset.with_id(1)
     to_persist = registry.merge_and_find_new_assets([asset2])
@@ -195,12 +191,10 @@ def test_register_stored_asset_success(make_asset: Creator[Asset], make_metadata
     assert current.effective_metadata.first_available_date is None
 
     assert registry._assets_by_id[1] is asset
-    assert registry._assets_by_name["SPX"] is asset
 
     new_meta = make_metadata(first_available_date=date(2020, 1, 1))
     asset.effective_metadata = new_meta
     registry.register_stored_asset(asset)
-    # current = registry._assets_by_id[1]
     assert current.effective_metadata.first_available_date == date(2020, 1, 1)
 
 
@@ -222,7 +216,6 @@ def test_register_stored_series_success(make_asset: Creator[Asset], make_series:
     registry.register_stored_series(series)
 
     assert registry._series_by_id[10] is series
-    assert registry._series_by_name["SPX:dummy"] is series
 
 
 # ------------------------------------------------------------
@@ -239,10 +232,8 @@ def test_lookup_assets_and_series(make_asset: Creator[Asset], make_series: Creat
     registry.register_stored_asset(asset)
     registry.register_stored_series(series)
 
-    assert registry.get_asset_by_id(1) is asset
-    assert registry.get_asset_by_name("SPX") is asset
-    assert registry.get_series_by_id(10) is series
-    assert registry.get_series_by_name("SPX:dummy") is series
+    assert registry.get_asset(1) is asset
+    assert registry.get_series(10) is series
 
     assert list(registry.all_assets()) == [asset]
     assert list(registry.all_series()) == [series]

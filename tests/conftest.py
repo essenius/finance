@@ -12,13 +12,14 @@ import pytest
 from pytest import LogCaptureFixture
 
 from finance.common.applogger import JsonFormatter, LogConfig, LogConfigurator
-from finance.common.configuration import SweepConfig
+from finance.common.configuration import ProviderConfig, SweepConfig
 from finance.common.model import Asset, AssetMetadata, FetchResult, ProviderProtocol, Series
 from finance.common.string_enums import Retention, SeriesType
 from finance.common.time_utils import UTC
 from finance.common.types import Failure, Result, Unwrap
 from finance.config.loader import PROVIDER_REGISTRY
-from finance.state.state import State
+from finance.state.state import JsonlWAL, State
+from finance.timeseries.series_backend import SeriesBackend
 from tests.support.types import AssertError, Creator, Factory, StateContext
 
 # ---------------------------------------------------------------------------
@@ -182,7 +183,7 @@ def make_provider() -> Creator[Mock]:
 
         fake_provider = Mock(spec=ProviderProtocol)
         fake_provider.fetch.return_value = fetch_result
-        fake_provider.provider_config = Mock()
+        fake_provider.provider_config = Mock(spec=ProviderConfig)
         fake_provider.provider_config.name = name
         fake_provider.name = name
         fake_provider.provider_config._get_history_limit.return_value = timedelta(days=60)
@@ -211,8 +212,8 @@ def make_providers(make_provider) -> Creator[dict[str, ProviderProtocol]]:
 
 @pytest.fixture
 def state_deps() -> tuple[Mock, Mock]:
-    wal = Mock()
-    backend = Mock()
+    wal = Mock(spec=JsonlWAL)
+    backend = Mock(spec=SeriesBackend)
 
     wal.peek.return_value = None
     wal.read_all.return_value = []

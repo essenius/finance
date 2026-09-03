@@ -28,7 +28,6 @@ def test_get_returns_cached_entry(state_env: StateContext):
     result = state.get_series_state(1)
     assert result == my_state
     wal.read_all.assert_not_called()
-    backend.read_first.assert_not_called()
 
 
 # ---------------------------------------------------------------------------

@@ -129,7 +129,7 @@ class AppLogger:
         self.name = f"finance{postfix}"
 
     @property
-    def logger(self):
+    def logger(self) -> logging.Logger:
         return logging.getLogger(self.name)
 
     def log(self, level: str, msg: str | None = None, **context: Any) -> None:
@@ -161,13 +161,13 @@ class AppLogger:
         # Emit JSON log (formatter handles serialization)
         self.logger.log(py_level, msg, extra=clean_context, stacklevel=stacklevel)
 
-    def debug(self, msg=None, **context: Any):
+    def debug(self, msg=None, **context: Any) -> None:
         self.log("debug", msg, **context)
 
-    def error(self, msg=None, **context: Any):
+    def error(self, msg=None, **context: Any) -> None:
         self.log("error", msg, **context)
 
-    def exception(self, msg=None, **context: Any):
+    def exception(self, msg=None, **context: Any) -> None:
         # Add structured fields
         exc_type, exc_value, exc_tb = sys.exc_info()
         assert exc_type is not None
@@ -176,8 +176,8 @@ class AppLogger:
         context["exception.trace"] = "".join(traceback.format_exception(exc_type, exc_value, exc_tb))
         self.log("error", msg, **context)
 
-    def info(self, msg=None, **context: Any):
+    def info(self, msg=None, **context: Any) -> None:
         self.log("info", msg, **context)
 
-    def warning(self, msg=None, **context: Any):
+    def warning(self, msg=None, **context: Any) -> None:
         self.log("warning", msg, **context)

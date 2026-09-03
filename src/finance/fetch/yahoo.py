@@ -217,7 +217,7 @@ class YahooProvider(MarketDataProvider):
         return int(ts) % seconds == 0
 
     def _parse_result(self, reader: JsonReader) -> Result[JsonObject]:
-        def fail(message: str):
+        def fail(message: str) -> Failure:
             return Failure(reason="Could not interpret fetch response", error=message)
 
         try:

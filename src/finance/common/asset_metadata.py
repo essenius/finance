@@ -64,5 +64,5 @@ class AssetMetadata:
             market_close=parse_time(reader.get(str, "market_close")),
         )
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"AssetMetadata(short={self.short_name}, currency={self.currency}, timezone={None if self.timezone is None else self.timezone.key})"

@@ -2,13 +2,14 @@
 # Licensed under the Apache License, Version 2.0. See the LICENSE file for details.
 # File: tests/test_main_run.py
 
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from pathlib import Path
 from unittest.mock import Mock
 
 from pytest import LogCaptureFixture
 
 from finance.common.configuration import LogConfig, TimescaleConfig
+from finance.common.model import ProviderProtocol
 from finance.common.types import AppError, Failure, Result, Success
 from finance.config.loader import AppConfig
 from finance.fetch.controller import FetchController
@@ -16,6 +17,7 @@ from finance.main import run
 from finance.orchestrator import Orchestrator
 from finance.registry.registry import Registry
 from finance.state.state import State
+from finance.state.wal import JsonlWAL
 from finance.timeseries.series_backend import SeriesBackend
 
 # ---------------------------------------------------------------------------
@@ -29,7 +31,7 @@ def make_config() -> AppConfig:
         logging=LogConfig.from_config({}),
         assets=[],
         series=[],
-        providers=Mock(),
+        providers=Mock(spec=dict[str, ProviderProtocol]),
         timescaledb=TimescaleConfig.from_config({"host": "h", "db": "d", "user": "u", "password": "p"}),
     )
 
@@ -59,13 +61,13 @@ class FakeCompositeEngine:
 def test_run_wires_dependencies_and_returns_orchestrator_result():
     config = make_config()
 
-    registry = Mock()
-    backend = Mock()
-    wal = Mock()
-    state = Mock()
-    fetcher = Mock()
+    registry = Mock(spec=Registry)
+    backend = Mock(spec=SeriesBackend)
+    wal = Mock(spec=JsonlWAL)
+    state = Mock(spec=State)
+    fetcher = Mock(spec=FetchController)
 
-    orchestrator = Mock()
+    orchestrator = Mock(spec=Orchestrator)
     orchestrator.run.return_value = 17
 
     def load_config() -> Result[AppConfig]:
@@ -113,7 +115,7 @@ def test_run_wires_dependencies_and_returns_orchestrator_result():
 def test_run_returns_one_when_backend_initialization_fails():
 
     backend_factory = Mock(return_value=Failure(reason="Backend initialization failed", error="boom"))
-    orchestrator_factory = Mock()
+    orchestrator_factory = Mock(spec=Callable[..., Orchestrator])
 
     result = run(
         load_config=lambda: Success(make_config()),

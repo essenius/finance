@@ -9,7 +9,7 @@ from typing import Any, Protocol
 import requests
 
 from ..common.candle_identity import CandleIdentity
-from ..common.configuration import ProviderConfig
+from ..common.configuration import ProviderConfig, SweepConfig
 from ..common.json_utils import JsonLike
 from ..common.model import FetchResult, Series
 from ..common.time_utils import now_second_precision
@@ -67,5 +67,5 @@ class MarketDataProvider:
         except Exception as exc:
             return Failure(reason=f"Exception during {self.name} fetch of {series.name} ({series.id})", error=str(exc))
 
-    def sweep_config(self, interval: timedelta):
+    def sweep_config(self, interval: timedelta) -> SweepConfig:
         return self.config.get_sweep(interval)

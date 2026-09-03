@@ -80,7 +80,7 @@ class ConfigLoader:
         self.config_path = config_path
         self.init_yaml_loader()
 
-    def init_yaml_loader(self):
+    def init_yaml_loader(self) -> None:
         # Remove YAML-specific timestamp resolution (JSON doesn't recognize date/time/datetime).
         for key, resolvers in list(YamlJsonLoader.yaml_implicit_resolvers.items()):
             YamlJsonLoader.yaml_implicit_resolvers[key] = [

@@ -7,7 +7,7 @@ import sys
 from pathlib import Path
 
 
-def is_irrelevant(line):
+def is_irrelevant(line) -> bool:
     return not line or line.startswith("#") or "=" not in line
 
 

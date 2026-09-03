@@ -11,6 +11,7 @@ from typing import LiteralString
 # using direct import to facilitate patching
 import psycopg
 from psycopg.abc import QueryNoTemplate
+from psycopg.rows import TupleRow
 from psycopg.sql import SQL, Identifier
 
 from ..common.configuration import TimescaleConfig
@@ -68,7 +69,7 @@ class TimescaleSqlClient:
 
     # ---  Private methods ---
 
-    def _connect(self):
+    def _connect(self) -> psycopg.Connection[TupleRow]:
         return psycopg.connect(**(self._config.connect_config()))
 
     def _database_operation[T](self, fn: Callable[[psycopg.Cursor], T], context: str = "Database") -> Result[T]:

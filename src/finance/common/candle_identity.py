@@ -30,12 +30,12 @@ class CandleIdentity:
         self.is_daily = is_daily
         self.interval = interval
 
-    def __eq__(self, other: CandleIdentity):
+    def __eq__(self, other: CandleIdentity) -> bool:
         if not isinstance(other, CandleIdentity):
             return NotImplemented
         return (self.is_daily, self.value) == (other.is_daily, other.value)
 
-    def __lt__(self, other: CandleIdentity):
+    def __lt__(self, other: CandleIdentity) -> bool:
         if not isinstance(other, CandleIdentity):
             return NotImplemented
         # Compare by kind first, then by value

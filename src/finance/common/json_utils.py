@@ -169,7 +169,7 @@ class JsonReader:
 
         return current
 
-    def is_empty(self):
+    def is_empty(self) -> bool:
         return not self.value
 
     def items(self) -> Iterator[tuple[str, JsonReader]]:

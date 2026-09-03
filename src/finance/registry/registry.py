@@ -33,10 +33,10 @@ class Registry:
 
         # Final authoritative registry
         self._assets_by_id: dict[int, Asset] = {}
-        self._assets_by_name: dict[str, Asset] = {}
+        # CO: self._assets_by_name: dict[str, Asset] = {}
 
         self._series_by_id: dict[int, Series] = {}
-        self._series_by_name: dict[str, Series] = {}
+        # CO: self._series_by_name: dict[str, Series] = {}
 
     # ------------------------------------------------------------
     # Reconciliation entry point
@@ -60,7 +60,7 @@ class Registry:
 
         to_persist: list[Asset] = []
 
-        def find_existing_asset(yaml_asset):
+        def find_existing_asset(yaml_asset) -> Asset | None:
             # First match by name (YAML identity)
             db_asset = db_by_name.get(yaml_asset.name)
             if db_asset:
@@ -92,7 +92,7 @@ class Registry:
     def _reconcile_series(self, saved_series: list[Series]) -> ReconciledSeries:
         db_by_name = {s.name: s for s in saved_series}
 
-        def find_existing_series(yaml_series):
+        def find_existing_series(yaml_series) -> Series | None:
             # First match by name
             db_series = db_by_name.get(yaml_series.name)
             if db_series:
@@ -150,7 +150,7 @@ class Registry:
         The asset must have a valid id (assigned by the backend).
         """
 
-        def store[T](asset_dict: dict[T, Asset], key: T, asset: Asset):
+        def store[T](asset_dict: dict[T, Asset], key: T, asset: Asset) -> None:
             if asset_dict.get(key) is None:
                 asset_dict[key] = asset
             else:
@@ -160,7 +160,7 @@ class Registry:
             raise AppError("Cannot register asset without an id")
 
         store(self._assets_by_id, asset.id, asset)
-        store(self._assets_by_name, asset.name, asset)
+        # CO: store(self._assets_by_name, asset.name, asset)
 
     def register_stored_series(self, series: Series) -> None:
         """
@@ -171,23 +171,17 @@ class Registry:
             raise AppError("Cannot register series without an id")
 
         self._series_by_id[series.id] = series
-        self._series_by_name[series.name] = series
+        # CO: self._series_by_name[series.name] = series
 
     # ------------------------------------------------------------
     # Lookup API
     # ------------------------------------------------------------
 
-    def get_asset_by_id(self, asset_id: int) -> Asset:
+    def get_asset(self, asset_id: int) -> Asset:
         return self._assets_by_id[asset_id]
 
-    def get_asset_by_name(self, name: str) -> Asset:
-        return self._assets_by_name[name]
-
-    def get_series_by_id(self, series_id: int) -> Series:
+    def get_series(self, series_id: int) -> Series:
         return self._series_by_id[series_id]
-
-    def get_series_by_name(self, name: str) -> Series:
-        return self._series_by_name[name]
 
     def all_assets(self) -> Iterable[Asset]:
         return list(self._assets_by_id.values())

@@ -107,7 +107,7 @@ class State:
 
         return Success(removed_count, warnings=warnings)
 
-    def _update_wal_range(self):
+    def _update_wal_range(self) -> None:
         for entry in list(self._wal.read_all()):
             series_id = entry.series_id
             timestamp = entry.time

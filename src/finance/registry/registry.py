@@ -33,10 +33,7 @@ class Registry:
 
         # Final authoritative registry
         self._assets_by_id: dict[int, Asset] = {}
-        # CO: self._assets_by_name: dict[str, Asset] = {}
-
         self._series_by_id: dict[int, Series] = {}
-        # CO: self._series_by_name: dict[str, Series] = {}
 
     # ------------------------------------------------------------
     # Reconciliation entry point
@@ -160,7 +157,6 @@ class Registry:
             raise AppError("Cannot register asset without an id")
 
         store(self._assets_by_id, asset.id, asset)
-        # CO: store(self._assets_by_name, asset.name, asset)
 
     def register_stored_series(self, series: Series) -> None:
         """
@@ -171,7 +167,6 @@ class Registry:
             raise AppError("Cannot register series without an id")
 
         self._series_by_id[series.id] = series
-        # CO: self._series_by_name[series.name] = series
 
     # ------------------------------------------------------------
     # Lookup API

@@ -64,3 +64,9 @@ class CandleIdentity:
             return datetime.combine(self.value.date(), time.min, UTC)
         else:
             return self.value.astimezone(UTC)
+
+    def __repr__(self) -> str:
+        if self.is_daily:
+            return self.value.date().isoformat()
+        else:
+            return self.value.astimezone(UTC).isoformat(timespec="minutes")

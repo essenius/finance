@@ -130,6 +130,7 @@ class Asset:
             raise ParseError(f"cannot find provider '{provider_name}'")
 
         return cls(
+            id=reader.get(int, "id"),
             name=name,
             symbol=reader.get(str, "symbol", default=name.upper()),
             provider=provider,
@@ -206,8 +207,6 @@ class Series:
         """Create a new Series instance. Checks values and can raise ParseError"""
 
         reader = JsonReader(config)
-        # will be empty if filled from yaml config, filled if from database.
-        id = reader.get(int, "id")
         raw_interval = reader.require(str, "interval")
         interval = require_duration(raw_interval, "interval")
         is_intraday = Series.is_intraday_interval(interval)
@@ -229,7 +228,7 @@ class Series:
         )
 
         return cls(
-            id=id,
+            id=reader.get(int, "id"),  # will be empty if filled from yaml config, filled if from database.
             asset=asset,
             calendar=calendar,
             code=reader.require(str, "code"),
@@ -311,10 +310,12 @@ class SeriesState:
         return left is None or left < right
 
     def get_sweep_start(self, sweep: SweepConfig, last: CandleIdentity) -> datetime | None:
-        if self.next_sweep is None or self.sweep_start is None:
-            self.update_sweep_state(sweep, last)
         if sweep.window <= timedelta(0):
             return None
+
+        if self.next_sweep is None or self.sweep_start is None:
+            self.update_sweep_state(sweep, last)
+
         if self.next_sweep is not None and self.next_sweep > last.store_label():
             return None
         return self.sweep_start

@@ -4,6 +4,8 @@
 
 from datetime import datetime
 
+from finance.common.applogger import AppLogger
+
 from ..common.candle_identity import CandleIdentity
 from ..common.json_utils import JsonReader
 from ..common.model import FetchData, FetchResult, Series, SeriesPoint
@@ -15,6 +17,8 @@ BASE_URL = "https://api.stlouisfed.org/fred/series/observations"
 
 # check out https://api.stlouisfed.org/fred/series/search?search_text=gold&api_key=...&file_type=json for a list of series
 
+logger = AppLogger("fred")
+
 
 class FredProvider(MarketDataProvider):
     """FRED daily economic data provider."""
@@ -25,6 +29,7 @@ class FredProvider(MarketDataProvider):
 
         start_date = start.date().strftime("%Y-%m-%d")
         end_date = end.date().strftime("%Y-%m-%d")
+        logger.debug(f"  Requesting Fred for {start} - {end}")
 
         params = {
             "series_id": series.asset.provider_code,
@@ -51,6 +56,7 @@ class FredProvider(MarketDataProvider):
         try:
             observations = reader.get_array("observations", allow_missing="no")
 
+            logger.debug(f"  Retrieved {len(observations)} observations")
             points: list[SeriesPoint] = []
             series_id = series.require_id()
 
@@ -75,6 +81,8 @@ class FredProvider(MarketDataProvider):
                 points.append(SeriesPoint(series_id=series_id, time=time, close=value))
 
             result = FetchData(series_id=series_id, series=series, points=points, metadata=None)
+            logger.debug(f"  Returned {len(points)} observations")
+
             return Success(result)
         except ParseError as ve:
             return Failure(str(ve))

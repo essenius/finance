@@ -40,6 +40,9 @@ class YahooProvider(MarketDataProvider):
         if series.is_daily() and start.value.date() == end.value.date():
             id = series.calendar.last_identity_before(start.value)
             start_timestamp = id.end_timestamp()
+        logger.debug(
+            f"  Requesting Yahoo for {datetime.fromtimestamp(start_timestamp).astimezone(UTC)} - {datetime.fromtimestamp(end_timestamp).astimezone(UTC)}"
+        )
         url, params = self._build_url(series.asset.provider_code, series.interval, start_timestamp, end_timestamp)
         result = self._safe_call(fn=lambda: self._fetch_impl(url=url, params=params), series=series)
 
@@ -59,6 +62,8 @@ class YahooProvider(MarketDataProvider):
         result = FetchData(
             series_id=series.require_id(), series=series, points=points_result.payload, metadata=metadata
         )
+        logger.debug(f"  Returned {len(points_result.payload)} observations")
+
         return Success(result)
 
     # ----------------
@@ -103,9 +108,9 @@ class YahooProvider(MarketDataProvider):
         if incomplete_count > 0:
             warnings.append(f"{incomplete_count} incomplete candles")
         if len(candles) > 0:
-            logger.debug(f" result[0]: {candles[0].time}")
+            logger.debug(f"  first: {candles[0].time}")
             if len(candles) > 1:
-                logger.debug(f" result[-1]: {candles[-1].time}")
+                logger.debug(f"  last: {candles[-1].time}")
 
         return candles, warnings
 
@@ -141,13 +146,15 @@ class YahooProvider(MarketDataProvider):
         if arrays_result.ok is False:
             return arrays_result
         if arrays_result.payload is None:
+            logger.debug("  No data received")
             return Success([], arrays_result.warnings)
         timestamps, arrays = arrays_result.payload
+        logger.debug(f"  Received {len(timestamps)} candles")
         # remove last element from timestamps and arrays if timestamp not aligned with interval period
         if timestamps != [] and not self._is_aligned(timestamps[-1], series):
             popped = timestamps.pop()
             logger.debug(
-                f"Removed last candle as timestamp {datetime.fromtimestamp(popped).astimezone(UTC)} not aligned"
+                f"  Removed last candle as timestamp {datetime.fromtimestamp(popped).astimezone(UTC)} not aligned"
             )
             for key in arrays:
                 if arrays[key] != []:

@@ -25,12 +25,16 @@ class FetchController:
         for series in series_list:
             series_id = series.require_id()
             state_entry = state.get_series_state(series_id)
+            logger.debug(
+                f"Fetching series: {series.name} ({series.id}). Stored range: {state_entry.first_point} - {state_entry.last_point}"
+            )
             range = self._get_fetch_range(series=series, state=state_entry)
             if range is None:
+                logger.debug("  Up to date")
                 continue
             start, end, is_incremental = range
             logger.debug(
-                f"series: {series.name} ({series.id}) Store range: {start.store_label()} - {end.store_label()} Publish range: {start.publish_label()} - {end.publish_label()} {'/I' if is_incremental else ''}"
+                f"  Range: {start} - {end} Publish range: {start.publish_label()} - {end.publish_label()} {'/I' if is_incremental else ''}"
             )
             yield series.asset.provider.fetch(series, start=start, end=end, is_incremental=is_incremental)
 
@@ -65,22 +69,26 @@ class FetchController:
                 # Full history update, is also a sweep
                 state.update_sweep_state(sweep_config, last_req)
                 end = last_req
+            logger.debug(f"  Prepend range: {start} - {end}. Next sweep: {state.next_sweep}")
             return (start, end, False)
 
+        # if we get here, state.last_point is set: only None the first time, when we do a full history
+        start_point = calendar.from_store_label(require(state.last_point, "state.last_point") + series.interval_delta())
         sweep_start = state.get_sweep_start(sweep_config, last_req)
         if sweep_start is not None:
-            retention = series.retention_delta()
-            if retention is not None:
-                sweep_start = max(sweep_start, now - retention)
-            first_identity = calendar.snap_forward_identity(sweep_start)
+            sweep_start = calendar.from_store_label(sweep_start)
+            start_point = min(start_point, sweep_start)
+            logger.debug(f"  Sweep start: {start_point}. Next sweep: {state.next_sweep}")
             state.update_sweep_state(sweep_config, last_req)
-            return (first_identity, last_req, False)
 
-        last_point = require(state.last_point, "state.last_point")
-        if last_req.store_label() > last_point:
-            first_identity = calendar.snap_forward_identity(last_point + series.interval_delta())
-            return (first_identity, last_req, True)
-        return None
+        retention = series.retention_delta()
+        if retention is not None:
+            start_point = max(start_point, now - retention)
+        if last_req.value < start_point:
+            return None
+        first_identity = calendar.snap_forward_identity(start_point)
+        logger.debug(f"  Incremental range: {first_identity} - {last_req}")
+        return (first_identity, last_req, True)
 
     @staticmethod
     def _get_prepend_range(
@@ -106,7 +114,7 @@ class FetchController:
         first_trade_time = calendar.first_trade_time()
         if first_trade_time is not None:
             oldest_required = max(first_trade_time, oldest_required)
-            logger.debug(f"oldest required: {oldest_required}")
+        logger.debug(f"  Oldest required: {oldest_required}")
 
         first_identity = calendar.snap_forward_identity(oldest_required)
 
@@ -114,7 +122,5 @@ class FetchController:
         snap_identity = calendar.snap_back_identity(now)
         last_identity = calendar.snap_back_on_publish_time(now, snap_identity)
 
-        logger.debug(
-            f"series: {series.name} ({series.id}): {first_identity.store_label()} - {last_identity.store_label()}"
-        )
+        logger.debug(f"  required range: {first_identity} - {last_identity}")
         return first_identity, last_identity

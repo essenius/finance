@@ -264,7 +264,7 @@ def test_compute_fetch_range_intraday(
 
     assert result is not None, "sweep: publication expected"
     first, last, is_incremental = result
-    assert not is_incremental, "sweep: not incremental"
+    assert is_incremental, "sweep: incremental"
     assert first.store_label() == datetime(2026, 7, 13, 15, 30, tzinfo=UTC), "sweep: first == sweep start"
     assert last.store_label() == datetime(2026, 7, 15, 15, 20, tzinfo=UTC), "sweep: last == last_req"
     assert state_entry_2.next_sweep == datetime(2026, 7, 15, 16, 20, tzinfo=UTC), "sweep: next == last + cadence"
@@ -332,7 +332,7 @@ def test_compute_fetch_range_daily(
 
     assert result is not None, "sweep publication expected"
     first, last, is_incremental = result
-    assert not is_incremental, "sweep is not incremental"
+    assert is_incremental, "sweep is incremental"
     assert first.store_label() == datetime(2026, 7, 13, tzinfo=UTC), "first is Monday after sweep start"
     assert last.store_label() == datetime(2026, 7, 14, tzinfo=UTC), "last is last_req"
     assert state_entry_2.next_sweep == datetime(2026, 7, 15, tzinfo=UTC)  # last + cadence

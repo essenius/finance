@@ -24,6 +24,12 @@ def default_if_none[T](value: T | None, default: T) -> T:
     return default if value is None else value
 
 
+# the following convention is used for datetime parameters:
+#  - moment: any datetime
+#  - local: datetime in local timezone
+#  - label: the label used for storing in the database.
+
+
 @dataclass
 class SeriesCalendar:
     timezone: ZoneInfo
@@ -34,8 +40,6 @@ class SeriesCalendar:
     interval: timedelta
     publication_offset: timedelta | None = None
     first_available_date: date | None = None
-
-    # _offset: timedelta | None = None
 
     @classmethod
     def create(cls, interval: timedelta, publication_offset: timedelta | None, meta: AssetMetadata) -> SeriesCalendar:
@@ -55,25 +59,30 @@ class SeriesCalendar:
     def first_trade_time(self) -> datetime | None:
         if self.first_available_date is None:
             return None
-        return datetime.combine(self.first_available_date, time.min, self.timezone)
+        return self._combine_local(self.first_available_date)
 
-    def last_identity_before(self, moment_utc: datetime) -> CandleIdentity:
-        return self.snap_back_identity(moment_utc - ONE_MICROSECOND)
+    def from_store_label(self, label: datetime) -> datetime:
+        # Midnight UTC must become midnight local time for daily series;
+        # intraday series are converted to the market timezone.
+        return self._combine_local(label).astimezone(UTC) if self._is_daily() else label
 
-    def snap_back_identity(self, moment_utc: datetime) -> CandleIdentity:
-        local = self._utc_to_local(moment_utc)
+    def last_identity_before(self, moment: datetime) -> CandleIdentity:
+        return self.snap_back_identity(moment - ONE_MICROSECOND)
+
+    def snap_back_identity(self, moment: datetime) -> CandleIdentity:
+        local = self._to_local(moment)
 
         if self._is_daily():
             trading_day_label = self._snap_back_trading_day_label(local)
-            return self._make_candle_identity(trading_day_label)
+            return self._identity(trading_day_label)
 
         value = self.snap_back_interval(local)
         candle_label = self._snap_back_intraday_interval(value)
-        return self._make_candle_identity(candle_label)
+        return self._identity(candle_label)
 
-    def snap_back_interval(self, ts: datetime) -> datetime:
+    def snap_back_interval(self, moment: datetime) -> datetime:
         # snap to already snaps to previous
-        return self._utc_to_local(snap_to(ts, self.interval))
+        return self._to_local(snap_to(moment, self.interval))
 
     def snap_back_on_publish_time(self, local: datetime, id: CandleIdentity) -> CandleIdentity:
         if local < id.publish_label() + self._get_publication_offset():
@@ -82,20 +91,20 @@ class SeriesCalendar:
             return replace(id, value=new_label)
         return id
 
-    def snap_forward_identity(self, moment_utc: datetime) -> CandleIdentity:
-        local = self._utc_to_local(moment_utc)
+    def snap_forward_identity(self, moment: datetime) -> CandleIdentity:
+        local = self._to_local(moment)
 
         if self._is_daily():
             trading_day_label = self._snap_forward_trading_day_label(local)
-            return self._make_candle_identity(trading_day_label)
+            return self._identity(trading_day_label)
 
         value = self.snap_forward_interval(local)
         candle_label = self._snap_forward_intraday_interval(value)
-        return self._make_candle_identity(candle_label)
+        return self._identity(candle_label)
 
-    def snap_forward_interval(self, ts: datetime) -> datetime:
-        snapped = self.snap_back_interval(ts)
-        if snapped < ts:
+    def snap_forward_interval(self, moment: datetime) -> datetime:
+        snapped = self.snap_back_interval(moment)
+        if snapped < moment:
             snapped += self.interval
         return snapped
 
@@ -103,7 +112,7 @@ class SeriesCalendar:
     # Private methods
     # ----------------
 
-    def _combine_local(self, local_day: date, local_time: time) -> datetime:
+    def _combine_local(self, local_day: date, local_time: time = time.min) -> datetime:
         return datetime.combine(local_day, local_time, tzinfo=self.timezone)
 
     def _daily_trading_window(self, local: datetime) -> tuple[datetime, datetime]:
@@ -141,8 +150,8 @@ class SeriesCalendar:
     def _is_overnight(self) -> bool:
         return self.market_open > self.market_close
 
-    def _make_candle_identity(self, label: datetime) -> CandleIdentity:
-        return CandleIdentity(value=label, is_daily=self._is_daily(), interval=self.interval)
+    def _identity(self, local: datetime) -> CandleIdentity:
+        return CandleIdentity(value=local, is_daily=self._is_daily(), interval=self.interval)
 
     def _snap_back_intraday_interval(self, local: datetime) -> datetime:
         sow, eow = self._weekly_trading_window(local)
@@ -168,7 +177,7 @@ class SeriesCalendar:
     def _snap_back_trading_day_label(self, local: datetime) -> datetime:
         day = self._snap_back_trading_day(local)
         last_trading_day = self._snap_back_trading_week(day)
-        return datetime.combine(last_trading_day, time.min, tzinfo=local.tzinfo)
+        return self._combine_local(last_trading_day)
 
     def _snap_back_trading_week(self, local: date) -> date:
         _, eow = self._weekly_trading_window_days(local)
@@ -208,7 +217,7 @@ class SeriesCalendar:
             return sow + ONE_WEEK
         return local
 
-    def _utc_to_local(self, ts: datetime) -> datetime:
+    def _to_local(self, ts: datetime) -> datetime:
         return ts.astimezone(self.timezone)
 
     def _weekly_trading_window(self, local: datetime) -> tuple[datetime, datetime]:

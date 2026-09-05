@@ -4,6 +4,8 @@
 
 from datetime import datetime
 
+from finance.common.applogger import AppLogger
+
 from ..common.candle_identity import CandleIdentity
 from ..common.json_utils import JsonArray, JsonObject, JsonReader
 from ..common.model import FetchData, FetchResult, Series, SeriesPoint
@@ -15,6 +17,8 @@ BASE_URL = "https://data-api.ecb.europa.eu/service/data"
 
 # example: https://data-api.ecb.europa.eu/service/data/EXR/D.USD.EUR.SP00.A?format=jsondata&startPeriod=2020-01-01&endPeriod=2020-02-01&detail=dataonly
 
+logger = AppLogger("ecb")
+
 
 class EcbProvider(MarketDataProvider):
     """ECB daily FX provider (no intraday)."""
@@ -24,6 +28,8 @@ class EcbProvider(MarketDataProvider):
         end_date = end.date().isoformat()
 
         params = {"updatedAfter": start_date} if is_incremental else {"startPeriod": start_date, "endPeriod": end_date}
+        logger.debug(f"  Requesting ECB with params{params}")
+
         params = params | {"format": "jsondata", "detail": "dataonly"}
 
         return self._safe_call(fn=lambda: self._fetch(series, params), series=series)
@@ -67,6 +73,7 @@ class EcbProvider(MarketDataProvider):
 
         # Extract data points
 
+        logger.debug(f"  retrieved {len(observations)} observations")
         points = self._parse_points(series, observations, date_values)
         result = FetchData(series_id=series.require_id(), series=series, points=points, metadata=None)
         return Success(result)
@@ -103,5 +110,6 @@ class EcbProvider(MarketDataProvider):
                 continue
 
             points.append(SeriesPoint(series_id=series.require_id(), time=time, close=value))
+            logger.debug(f"  Returned {len(points)} observations")
 
         return points

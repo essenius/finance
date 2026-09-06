@@ -86,7 +86,8 @@ def test_fetch_success_intraday(
 
     fake = yahoo_provider(now_provider=fake_now)
 
-    now = make_identity(fake_now())
+    start = make_identity(fake_now())
+    end = make_identity(fake_now() + timedelta(seconds=1))
     fake.session.queue(
         200,
         {
@@ -94,7 +95,7 @@ def test_fetch_success_intraday(
                 "result": [
                     {
                         "meta": {"exchangeTimezoneName": "UTC"},
-                        "timestamp": [now.start_timestamp()],
+                        "timestamp": [start.start_timestamp()],
                         "indicators": {"quote": [{"close": [10.0]}]},
                     }
                 ],
@@ -107,7 +108,7 @@ def test_fetch_success_intraday(
         asset, interval="1h", retention=Retention.SHORT_LIVED.value, series_type=SeriesType.VALUE.value
     )
 
-    result = fake.provider.fetch(series, start=now, end=now, is_incremental=False)
+    result = fake.provider.fetch(series, start=start, end=end, is_incremental=False)
 
     payload = unwrap(result)
     points = payload.points

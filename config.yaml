@@ -63,7 +63,7 @@ business:
     intraday:
       interval: 5m
       # retention period is defined in the database. Keep aligned.
-      retention_period: 30d
+      retention_period: 60d
       # for <1d, default retention is short lived, bootstrap_history 30d
       # short lived means stored in table with retention policy
 

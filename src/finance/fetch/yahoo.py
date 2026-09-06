@@ -2,6 +2,7 @@
 # Licensed under the Apache License, Version 2.0. See the LICENSE file for details.
 # File: src/finance/fetch/yahoo.py
 
+from bisect import bisect_left
 from datetime import date, datetime, time
 from urllib.parse import quote
 from zoneinfo import ZoneInfo
@@ -11,7 +12,7 @@ from ..common.asset_metadata import AssetMetadata
 from ..common.candle_identity import CandleIdentity
 from ..common.guards import require
 from ..common.json_utils import JsonObject, JsonReader
-from ..common.model import FetchData, FetchResult, Series, SeriesPoint, SeriesPointsResult
+from ..common.model import FetchData, FetchResult, Series, SeriesPoint, SeriesPoints, SeriesPointsResult
 from ..common.string_enums import Candle
 from ..common.time_utils import UTC
 from ..common.types import Failure, ParseError, Result, Success
@@ -59,9 +60,10 @@ class YahooProvider(MarketDataProvider):
         points_result = self._extract_candles(series, reader, require(metadata.timezone, "metadata timezone"))
         if points_result.ok is False:
             return fetch_failure(error=points_result.reason)
-        result = FetchData(
-            series_id=series.require_id(), series=series, points=points_result.payload, metadata=metadata
-        )
+        points = self._discard_outside_range(points_result.payload, start, end)
+        logger.debug(f"  {len(points)} candles remaining")
+
+        result = FetchData(series_id=series.require_id(), series=series, points=points, metadata=metadata)
         logger.debug(f"  Returned {len(points_result.payload)} observations")
 
         return Success(result)
@@ -69,6 +71,11 @@ class YahooProvider(MarketDataProvider):
     # ----------------
     # Private methods
     # ----------------
+
+    def _discard_outside_range(self, points: SeriesPoints, start: CandleIdentity, end: CandleIdentity) -> SeriesPoints:
+        first = bisect_left(points, start.value, key=lambda p: p.time)
+        last = bisect_left(points, end.value, key=lambda p: p.time)
+        return points[first:last]
 
     def _build_candles(
         self, timestamps: list[int], arrays: dict[str, list[float | None]], series: Series, timezone: ZoneInfo

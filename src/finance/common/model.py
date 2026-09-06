@@ -218,7 +218,7 @@ class Series:
             retention = Retention.require(raw_retention)  # no context, caller will provide it
         retention_period = validate_duration(reader.get(str, "retention_period"), "retention period")
         bootstrap_history = validate_duration(reader.get(str, "bootstrap_history"), "bootstrap history") or (
-            "10y" if retention == Retention.LONG_LIVED else "30d"
+            "10y" if retention == Retention.LONG_LIVED else "60d"
         )
 
         raw_publication_offset = reader.get(str, "publication_offset")

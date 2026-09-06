@@ -236,8 +236,9 @@ CREATE INDEX IF NOT EXISTS series_retention_idx ON series (retention);
 -- Hypertables
 -- ============================
 
+--     tablename, compress_after, retention_after interval, chunk_interval
 SELECT bootstrap.create_data_table('series_data_cold'::name, '7 days'::interval, NULL::interval, '1 month'::interval);
-SELECT bootstrap.create_data_table('series_data_hot'::name, '3 days'::interval, '30 days'::interval, '1 day'::interval);
+SELECT bootstrap.create_data_table('series_data_hot'::name, '3 days'::interval, '60 days'::interval, '1 day'::interval);
 
 -- Reload config to apply telemetry change
 SELECT pg_reload_conf();
@@ -279,3 +280,39 @@ CREATE TABLE IF NOT EXISTS series_state (
     next_sweep TIMESTAMPTZ NOT NULL,
     sweep_start TIMESTAMPTZ NOT NULL
 );
+
+-- helper query for Grafana intraday charts
+
+CREATE OR REPLACE FUNCTION get_intraday_data(p_series_id bigint)
+RETURNS TABLE (
+    point bigint,
+    "time" timestamptz,
+    close double precision,
+    ma100 double precision,
+    ma500 double precision
+)
+LANGUAGE sql
+AS $$
+    WITH data AS (
+        SELECT
+            row_number() OVER (ORDER BY time) AS point,
+            "time",
+            close
+        FROM series_data_hot
+        WHERE series_id = p_series_id
+    )
+    SELECT
+        point,
+        time,
+        close,
+        avg(close) OVER (
+            ORDER BY point
+            ROWS BETWEEN 99 PRECEDING AND CURRENT ROW
+        ) AS ma100,
+        avg(close) OVER (
+            ORDER BY point
+            ROWS BETWEEN 499 PRECEDING AND CURRENT ROW
+        ) AS ma500
+    FROM data
+    ORDER BY point;
+$$;

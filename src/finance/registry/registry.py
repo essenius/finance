@@ -172,11 +172,11 @@ class Registry:
     # Lookup API
     # ------------------------------------------------------------
 
-    def get_asset(self, asset_id: int) -> Asset:
-        return self._assets_by_id[asset_id]
+    def get_asset(self, asset_id: int) -> Asset | None:
+        return self._assets_by_id.get(asset_id)
 
-    def get_series(self, series_id: int) -> Series:
-        return self._series_by_id[series_id]
+    def get_series(self, series_id: int) -> Series | None:
+        return self._series_by_id.get(series_id)
 
     def all_assets(self) -> Iterable[Asset]:
         return list(self._assets_by_id.values())

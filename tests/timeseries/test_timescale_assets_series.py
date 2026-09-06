@@ -10,7 +10,7 @@ import psycopg
 
 from finance.common.model import Asset, Series
 from finance.common.string_enums import Retention, SeriesType
-from finance.common.types import Failure, Success
+from finance.common.types import Failure, ParseError, Success
 from tests.support.fakes import FakeBackend
 from tests.support.types import AssertError, Creator
 
@@ -347,6 +347,28 @@ def test_get_assets_missing_provider(assert_error: AssertError, make_backend: Cr
 
 
 # ------------------------------------------------------------
+# get_cold_chunk_size
+# ------------------------------------------------------------
+
+
+def test_get_cold_chunk_size(assert_error: AssertError, make_backend: Creator[FakeBackend]):
+    backend, cursor = make_backend().with_cursor()
+
+    cursor.fetchall.return_value = [(123,)]
+    result = backend.get_cold_chunk_size()
+    assert result.ok is True
+    assert result.payload == 123
+
+    cursor.fetchall.return_value = []
+    result = backend.get_cold_chunk_size()
+    assert_error(result, reason="get_cold_chunk_size failed", error="no data returned")
+
+    cursor.fetchall.side_effect = ParseError("boom")
+    result = backend.get_cold_chunk_size()
+    assert_error(result, reason="get_cold_chunk_size operation failed", error="boom")
+
+
+# ------------------------------------------------------------
 # get_series
 # ------------------------------------------------------------
 
@@ -389,7 +411,25 @@ def test_get_series_db_error(assert_error: AssertError, make_backend: Creator[Fa
     assert_error(result, "get_series operation failed", "boom")
 
 
-def test_get_series_parse_error(assert_error: AssertError, make_backend: Creator[FakeBackend]):
+def test_get_series_error_no_id(assert_error: AssertError, make_backend: Creator[FakeBackend]):
+    backend, cursor = make_backend().with_cursor()
+
+    rows = [(None, "intraday", 1, "SPX", "1m", "value", "short_lived", "30d", "30d", None)]
+
+    set_read_series_description(cursor)
+    cursor.fetchall.return_value = rows
+
+    def get_asset(id: int) -> None:
+        return None
+
+    result = backend.get_series(get_asset)
+    assert_error(
+        result, reason="get_series could not load series with ID 'None'", error="['id']: Missing required key `id`"
+    )
+
+
+def test_get_series_skip_missing_asset(make_backend: Creator[FakeBackend]):
+    """if an asset id is missing, we have an orphan, so we should ignore it"""
     backend, cursor = make_backend().with_cursor()
 
     rows = [(10, "intraday", 1, "SPX", "1m", "value", "short_lived", "30d", "30d", None)]
@@ -402,9 +442,13 @@ def test_get_series_parse_error(assert_error: AssertError, make_backend: Creator
 
     result = backend.get_series(get_asset)
 
-    assert_error(
-        result, reason="get_series could not load series with ID '10'", error="could not find asset with ID '1'"
-    )
+    assert result.ok is True
+    assert result.payload == []
+
+
+# CO:    assert_error(
+# CO:        result, reason="get_series could not load series with ID '10'", error="could not find asset with ID '1'"
+# CO:    )
 
 
 def test_save_sweep(make_backend: Creator[FakeBackend]):

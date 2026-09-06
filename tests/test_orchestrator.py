@@ -135,8 +135,9 @@ def test_prepare_loads_state_and_reconciles_backend(
 
 
 def test_prepare_does_not_persist_when_nothing_changed(
-    backend: Mock, orchestrator: Orchestrator, registry: Mock, state: Mock
+    backend: Mock, orchestrator: Orchestrator, registry: Mock, state: Mock, json_caplog: LogCaptureFixture
 ):
+    """also tests chunk count warning"""
     state.load.return_value = Success(0)
     backend.get_assets.return_value = Success([])
     registry.merge_and_find_new_assets.return_value = []
@@ -147,7 +148,9 @@ def test_prepare_does_not_persist_when_nothing_changed(
     reconciled.to_persist = []
     registry.reconcile_series.return_value = reconciled
 
+    backend.get_cold_chunk_size.return_value = Failure(reason="boom")
     orchestrator._prepare()
+    assert "Could not determine chunk count for hypertable 'series_table_cold'." in json_caplog.text
 
     backend.store_asset.assert_not_called()
     backend.store_series.assert_not_called()

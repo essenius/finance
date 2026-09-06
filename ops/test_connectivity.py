@@ -5,88 +5,89 @@
 from pathlib import Path
 from unittest.mock import Mock
 
-from finance.common.model import SeriesPoint
-from finance.common.time_utils import now_second_precision
+from finance.common.applogger import AppLogger, LogConfigurator
+from finance.common.types import Failure
 from finance.config.loader import ConfigLoader
-from finance.orchestrator import Orchestrator, unwrap
+from finance.orchestrator import Orchestrator
 from finance.registry.registry import Registry
+from finance.state.state import State
+from finance.state.wal import JsonlWAL
 from finance.timeseries import SeriesBackend
 
 
 def print_list(input_list: list, caption: str) -> None:
-    print(caption)
+    logger.info(f"{caption}:")
     for entry in input_list:
-        print(f"{entry}")
+        logger.info(f"  {entry}")
+
+
+def print_error(msg: str, fail: Failure) -> None:
+    logger.error(msg, **fail.to_log_dict())
+
+
+logger = AppLogger()
 
 
 def main():
     project_root = Path(__file__).resolve().parent
 
-    print("Loading config...")
+    log_configurator = LogConfigurator()
+    log_configurator.bootstrap()
+
+    logger.info("Loading config...")
     loader = ConfigLoader(cwd=project_root, config_path=Path("config.yaml"))
     cfg_result = loader.load()
     if cfg_result.ok is False:
-        print("Config load failed:", cfg_result.reason, cfg_result.error)
+        print_error("Config load failed", cfg_result)
         return
 
     app_cfg = cfg_result.payload
     asset_list = app_cfg.assets
     series_list = app_cfg.series
     print_list(asset_list, "loaded assets")
-    print_list(series_list, "loaded series: ")
+    print_list(series_list, "loaded series")
 
     if len(series_list) == 0:
-        print("Terminating as there are no series")
+        logger.warning("Terminating as there are no series")
         return
 
     env_cfg = app_cfg.timescaledb
-    print(f"environment config: {env_cfg}")
-    print("creating backend")
+    logger.info(f"environment config: {env_cfg}")
+    logger.info("creating backend")
 
     registry = Registry(assets=asset_list, series=series_list)
 
-    backend_result = SeriesBackend.from_config(env_cfg)
+    backend_result = SeriesBackend.from_config(env_cfg, app_cfg.providers.get)
     if backend_result.ok is False:
-        print("Backend creation failed:", backend_result.reason, backend_result.error)
+        print_error("Backend creation failed", backend_result)
         return
 
     backend = backend_result.payload
+    wal = JsonlWAL(app_cfg.paths["wal"])
 
-    orchestrator = Orchestrator(backend=backend, registry=registry, state=Mock(), fetcher=Mock())
-    print("Preparing...")
+    state = State(backend=backend, wal=wal)
+    orchestrator = Orchestrator(backend=backend, registry=registry, state=state, fetcher=Mock())
+    logger.info("Preparing...")
     orchestrator._prepare()
 
     print_list(list(registry.all_assets()), "registry assets")
     print_list(list(registry.all_series()), "registry series")
 
-    assets = unwrap(backend.get_assets())
-    print_list(assets, "backend get_assets()")
-
-    series = unwrap(backend.get_series())
-    print_list(series, "backend get_series()")
-
-    now = now_second_precision()
-    print(f"writing point at {now}")
     id = list(registry.all_series())[0].id
     assert id is not None
-    point = SeriesPoint(id, now, close=123.48)
-    result = backend.add_point(point)
-    if result.ok is False:
-        print(f"Write failed: {result.reason}, {result.error}")
+
+    state_result = backend.get_series_states()
+    if state_result.ok is False:
+        print_error("Read states failed", state_result)
         return
-
-    print("Write OK")
-    # Read it back (TODO not right yet. Fix)
-
-    print("Reading back...")
-    read_result = backend.read_last(id)
-
-    if read_result.ok is False:
-        print("Read failed:", read_result.error)
+    if len(state_result.payload) <= 0:
+        logger.warning("No data returned")
         return
-
-    print("Read OK")
-    print(f"Returned point: {read_result.payload}")
+    id, value = next(iter(state_result.payload.items()))
+    logger.info("Read OK")
+    logger.info(
+        f"first series state: series ID {id}, first point: {value.first_point}, last point: {value.last_point}, next sweep: {value.next_sweep}"
+    )
 
 
 if __name__ == "__main__":

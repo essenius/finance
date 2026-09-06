@@ -2,79 +2,48 @@
 # Licensed under the Apache License, Version 2.0. See the LICENSE file for details.
 # File: ops/config.yaml
 
-
 environment:
   logging:
     level: info
   paths:
     wal: wal.jsonl
-    state: state.json
   timescaledb:
     host: localhost
-    port: 5432
-    ssl_mode: verify-ca
+    port: 5433
+    ssl_mode: verify-full
     db: test
-    max_batch_size: 1
-    max_batch_age_seconds: 1.0
+    max_batch_size: 1000
+    max_batch_age_seconds: 2.0
 
 business:
   providers:
     yahoo:
       timeout: 10s
-      timezone: UTC
+      sweep:
+        default:
+          window: 2h
+          cadence: 30m
+        1d:
+          window: 1w
+          cadence: 1d
       constraints:
         history_limits:
-          default: 7d
+          default: 1w
           5m: 60d
           1h: 730d
           1d: null
-    
-    ecb:
-      timeout: 20s
-      timezone: Europe/Berlin
-      constraints: {}
-    
+
   templates:
-    daily_value:
+    daily:
       interval: 1d
-      series_type: value
-
-    daily_candle:
-      interval: 1d
-
-    intraday_value:
-      interval: 5m
-      series_type: value
-
-    intraday_candle:
-      interval: 5m
 
   assets:
     eurusd_yahoo:
-      provider: 
+      provider:
         name: yahoo
         code: EURUSD=X
       symbol: EURUSD
-      tags:
-        instrument: forex
-        exchange: FOREX
-        region: GLOBAL
-        currency: USD
-        unit: ratio
+      region: GLOBAL
+      unit: EUR
       series:
-        intraday: intraday_candle
-        daily: daily_candle
-
-    eurusd_ecb:
-      provider: 
-        name: ecb
-        code: USD_EUR
-      symbol: EURUSD
-      tags:
-        instrument: forex
-        exchange: FOREX
-        region: EU
-        currency: USD
-        unit: ratio
-      series:
-        daily: daily_value
+        daily: daily

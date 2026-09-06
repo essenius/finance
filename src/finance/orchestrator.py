@@ -155,6 +155,12 @@ class Orchestrator:
     def _prepare(self) -> None:
         logger.info(f"Finance version: {finance.__version__} started.")
 
+        chunk_count_result = self.backend.get_cold_chunk_size()
+        if chunk_count_result.ok is False:
+            logger.warning("Could not determine chunk count for hypertable 'series_table_cold'.")
+        else:
+            logger.info(f"Hypertable 'series_table_cold' has {chunk_count_result.payload} chunks.")
+
         logger.debug("Loading state")
         flush_count = unwrap(self.state.load(), throw=False)
         logger.debug(f"Flushed {flush_count} items from the WAL")

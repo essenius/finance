@@ -115,6 +115,17 @@ class SeriesBackend:
         except ParseError as pe:
             return Failure(f"get_assets could not load asset '{asset_name}'", str(pe))
 
+    def get_cold_chunk_size(self) -> Result[int]:
+        query = "SELECT num_chunks FROM timescaledb_information.hypertables WHERE hypertable_name ='series_data_cold';"
+        result = self._sql_client.execute_read(query, context="get_cold_chunk_size")
+        if result.ok is False:
+            return result
+        rows = result.payload["rows"]
+        if len(rows) < 1:
+            return Failure(reason="get_cold_chunk_size failed", error="no data returned")
+        chunk_count = rows[0][0]
+        return Success(chunk_count)
+
     def get_series(self, get_asset: Callable[[int], Asset | None]) -> Result[list[Series]]:
         query = """
             SELECT s.id, s.code, s.asset_id, a.name as asset_name, s.interval, s.series_type,
@@ -138,8 +149,8 @@ class SeriesBackend:
                 series_id = reader.require(int, "id")
                 asset_id = reader.require(int, "asset_id")
                 asset = get_asset(asset_id)
-                if asset is None:
-                    raise ParseError(f"could not find asset with ID '{asset_id}'")
+                if asset is None:  # an orphan, ignore
+                    continue
                 series = Series.create(asset=asset, config=reader.get_object())
                 series_list.append(series)
             return Success(series_list)
@@ -148,18 +159,24 @@ class SeriesBackend:
             return Failure(reason=f"get_series could not load series with ID '{series_id}'", error=str(pe))
 
     def get_series_states(self) -> Result[dict[int, SeriesState]]:
-        # 1. Load cold/hot ranges
-        cold = self._sql_client.execute_read(
-            "SELECT series_id, MIN(time), MAX(time) FROM series_data_cold GROUP BY series_id;",
-            context="get_series_states_range_cold",
-        )
+
+        query = """
+            SELECT s.id AS series_id, first.time AS min_time, last.time AS max_time
+            FROM series s
+            CROSS JOIN LATERAL (
+                SELECT time FROM {table} WHERE series_id = s.id ORDER BY time LIMIT 1
+            ) first
+            CROSS JOIN LATERAL (
+                SELECT time FROM {table} WHERE series_id = s.id ORDER BY time DESC LIMIT 1
+            ) last;
+        """
+        context = "get_series_states_range_"
+        cold = self._sql_client.execute_read(query=query, table="series_data_cold", context=f"{context}cold")
+
         if cold.ok is False:
             return cold
 
-        hot = self._sql_client.execute_read(
-            "SELECT series_id, MIN(time), MAX(time) FROM series_data_hot GROUP BY series_id;",
-            context="get_series_states_range_hot",
-        )
+        hot = self._sql_client.execute_read(query=query, table="series_data_hot", context=f"{context}hot")
         if hot.ok is False:
             return hot
 

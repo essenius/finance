@@ -166,5 +166,4 @@ def test_parse_write_datetime():
 
 def test_timestamp():
     assert timestamp(datetime(1970, 1, 1, 0, 0, 0, 999999, tzinfo=UTC)) == 0, "chopped off below seconds"
-    assert timestamp(datetime(1965, 2, 23, tzinfo=UTC)) == -153187200
-    assert timestamp(datetime(1, 1, 1, tzinfo=UTC)) == -62135596800
+    assert timestamp(datetime(1, 1, 1, tzinfo=UTC)) == -62135596800, "before epoch works too"

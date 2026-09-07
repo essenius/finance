@@ -26,18 +26,18 @@ OPS_DIR := ops
 ALL_SOURCE_DIRS := $(SRC_DIR) $(TOOL_DIR) $(DB_DIR) $(OPS_DIR)
 ALL_DIRS := $(ALL_SOURCE_DIRS) $(TEST_DIR)
 
-# Python interpreter (evaluate on use)
-PYTHON = python3
+## Python interpreter (evaluate on use)
+#PYTHON = python3
 
-# evaluate once
-SYSTEM_PYTHON := $(shell env -i \
-	PATH="$(shell getconf PATH)" \
-	LANG=C \
-	LC_ALL=C \
-	sh -c 'command -v python3')
-ifeq ($(SYSTEM_PYTHON),)
-	$(error Could not find system python3)
-endif
+## evaluate once
+#SYSTEM_PYTHON := $(shell env -i \
+#	PATH="$(shell getconf PATH)" \
+#	LANG=C \
+#	LC_ALL=C \
+#	sh -c 'command -v python3')
+#ifeq ($(SYSTEM_PYTHON),)
+#	$(error Could not find system python3)
+#endif
 
 # don't use build, it causes a circular depencency due to make's implicit search
 CACHE_DIR := .cache
@@ -69,8 +69,8 @@ help:
 	@echo "  make systemd         - Install systemd units"
 	@echo "Configuration:"
 	@echo "  Env file:            '$(ENV_FILE)'"
-	@echo "  System python:       '$(SYSTEM_PYTHON)'"
-	@echo "  Python:              '$$(which $(PYTHON))'"
+#	@echo "  System python:       '$(SYSTEM_PYTHON)'"
+#	@echo "  Python:              '$$(which $(PYTHON))'"
 	@echo "  Deploy target:       '$(ENV_ROOT)'"
 	@echo "  Source folder:       '$(SRC_DIR)'"
 	@echo "  Test folder:         '$(TEST_DIR)'"
@@ -109,10 +109,10 @@ validate:
 
 # cache dir is required but should not cause a trigger if changed
 $(LINT_STAMP): | $(CACHE_DIR)
-$(LINT_STAMP): $(shell find $(ALL_DIRS) -name '*.py')
-	$(PYTHON) -m $(TOOL_DIR).add_license
-	ruff check . --fix
-	ruff format .
+$(LINT_STAMP): $(shell find $(ALL_DIRS) -name '*.py') pyproject.toml uv.lock
+	uv run python -m $(TOOL_DIR).add_license
+	uv run ruff check . --fix
+	uv run ruff format .
 	touch $(LINT_STAMP)
 
 lint: $(LINT_STAMP)
@@ -122,8 +122,8 @@ lint: $(LINT_STAMP)
 # ------------------------------------------------------------
 
 $(TEST_STAMP): | $(CACHE_DIR)
-$(TEST_STAMP): $(shell find $(SRC_DIR) $(TOOL_DIR) $(TEST_DIR) -name '*.py')
-	$(PYTHON) -m pytest -c pytest.ini -q
+$(TEST_STAMP): $(shell find $(SRC_DIR) $(TOOL_DIR) $(TEST_DIR) -name '*.py') pyproject.toml uv.lock
+	uv run pytest -c pytest.ini -q
 	touch $(TEST_STAMP)
 
 test: $(TEST_STAMP)
@@ -142,9 +142,9 @@ bump:
 # ------------------------------------------------------------
 
 $(BUILD_STAMP): | $(CACHE_DIR)
-$(BUILD_STAMP): $(shell find $(SRC_DIR) $(TOOL_DIR) -name '*.py') pyproject.toml
+$(BUILD_STAMP): $(shell find $(SRC_DIR) $(TOOL_DIR) -name '*.py') pyproject.toml uv.lock
 	rm -rf dist
-	python -m build
+	uv build
 	touch $(BUILD_STAMP)
 
 build: lint test $(BUILD_STAMP)
@@ -166,9 +166,7 @@ $(ENV_VENV): | $(ENV_ROOT)
 	@if [ ! -f "$(ENV_VENV)/pyvenv.cfg" ]; then \
 		echo "=== Creating venv at $(ENV_VENV) ==="; \
 		rm -rf "$(ENV_VENV)"; \
-		$(SYSTEM_PYTHON) -m venv $(ENV_VENV); \
-		$(ENV_VENV)/bin/python -m ensurepip; \
-		$(ENV_VENV)/bin/pip install --upgrade pip wheel; \
+		uv venv "$(ENV_VENV)" --python 3.13; \
 	else \
 		echo "=== Using existing venv at $(ENV_VENV) ==="; \
 	fi

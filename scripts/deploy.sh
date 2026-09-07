@@ -29,9 +29,8 @@ mkdir -p "$WHEEL_FOLDER"
 cp "$WHEEL" "$WHEEL_FOLDER"
 
 echo "=== Installing wheel into venv ==="
-"$ENV_VENV/bin/pip3" install --force-reinstall --no-cache-dir "$WHEEL_FOLDER/$WHEEL_FILE"
 
-cp "$DEV_ROOT/requirements.txt" "$ENV_ROOT"
+uv pip install --python "$ENV_VENV/bin/python" --force-reinstall --no-cache --link-mode=copy "$WHEEL_FOLDER/$WHEEL_FILE"
 
 if [[ ! -f "$ENV_ROOT/config.yaml" ]]; then
     echo "=== Copying config.yaml to $ENV_ROOT ==="

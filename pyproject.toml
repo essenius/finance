@@ -8,7 +8,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "finance"
-version = "0.2.52"
+version = "0.2.53"
 description = "Finance tools"
 authors = [{ name = "Rik Essenius" }]
 readme = "README.md"
@@ -26,18 +26,13 @@ dependencies = [
 where = ["src"]
 #exclude = ["tools*", "tests*"]
 
-[project.optional-dependencies]
+[dependency-groups]
 dev = [
     "coverage",
-    "iniconfig",
-    "packaging",
-    "pip-tools",
-    "pluggy",
-    "Pygments",
     "pyright",
     "pytest",
     "pytest-cov",
-    "ruff"
+    "ruff",
 ]
 
 #[tool.setuptools.dynamic]
@@ -51,7 +46,7 @@ typeCheckingMode = "basic"
 # Global settings
 line-length = 120
 indent-width = 4
-target-version = "py312"
+target-version = "py313"
 
 exclude = [
     ".vscode-server",

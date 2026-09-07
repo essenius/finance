@@ -282,7 +282,9 @@ class SeriesBackend:
 
     def store_series(self, series: Series) -> Result[Series]:
         if series.asset.id is None:
-            return Failure(reason="store series operation failed", error="asset.id was not set")
+            return Failure(
+                reason=f"store series operation for asset `{series.asset.name}` failed", error="asset.id was not set"
+            )
 
         base_fields = (
             series.code,

@@ -254,7 +254,7 @@ def test_store_series_error_no_asset_id(
     series = make_series(asset=asset, id=None)
 
     result = backend.store_series(series)
-    assert_error(result, "store series operation failed", "asset.id was not set")
+    assert_error(result, "store series operation for asset `eur_usd` failed", "asset.id was not set")
 
 
 # ------------------------------------------------------------

@@ -61,7 +61,7 @@ def sql_with_fake_connection(make_backend_config: Factory[TimescaleConfig]) -> C
 @pytest.fixture
 def sql_with_fake_psycopg(make_backend_config: Factory[TimescaleConfig]) -> ContextManagerFactory[FakeSql]:
     @contextmanager
-    def _make(execute_error=False) -> Generator[FakeSql, None, None]:
+    def _make(execute_error=False) -> Generator[FakeSql]:
         cursor = MagicMock()
         cursor.execute.return_value = None
         cursor.executemany.return_value = None

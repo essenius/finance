@@ -151,6 +151,7 @@ class Registry:
             if asset_dict.get(key) is None:
                 asset_dict[key] = asset
             else:
+                asset_dict[key].id = asset.id
                 asset_dict[key].effective_metadata = asset.effective_metadata
 
         if asset.id is None:

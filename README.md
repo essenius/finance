@@ -14,7 +14,6 @@ As secrets are not to be shared, the repo only has an example .env file, which y
 Supported entries
 - `CONFIG_PATH`: the YAML configuration file (default config.yaml). Relative to the current directory (or absolute).
 - `FRED_API_KEY`: the API key for FRED (mandatory). 
-- `YAHOO_API_KEY`: the API key for Yahoo (optional).
 - `TIMESCALEDB_HOST`: the TimescaleDB host e.g. `localhost`.
 - `TIMESCALEDB_DB`: the database for Timescale, e.g. `finance`.
 - `TIMESCALEDB_USER`: the user id
@@ -22,7 +21,7 @@ Supported entries
 - `TIMESCALEDB_SSL_MODE`: the SSL mode in PostgreSQL format. Default is `verify-full`. You can use `disable` to use plain TCP instead of TLS, or `require` to use TLS but not validate the certs. You can also use `verify-ca` to verify the CA cert but not the hostname. 
 - `TIMESCALEDB_SSL_ROOT_CERT`: the location of the CA certificate to be used. If omitted, the standard CA cert storage will be used. 
 
-Everything except the secrets (API keys, credentials) and `CONFIG_PATH` can also be specified in the Environment configuration section of `config.yaml`.
+Everything except the secrets (API keys, user, password) and `CONFIG_PATH` can also be specified in the Environment configuration section of `config.yaml`.
 
 ### Environment Configuration
 
@@ -35,7 +34,6 @@ environment:
     level: info
   paths:
     wal: wal.jsonl
-    state: state.json
   timescaledb:
     host: localhost
     port: 5432
@@ -48,7 +46,7 @@ max_batch_size and max_batch_age_seconds control how often the ingested data poi
 
 ### Business Configuration
 
-This section contains the definitions of `providers` (providing the series), `assets` (series definitions) and `composites` (calculations on series), and supporting structures (`field_sets`). Composites have been disabled for the first release.
+This section contains the definitions of `providers` (providing the series), `assets` (series definitions), and `templates` providing sets of fields.
 
 #### Providers
 Three providers are currently supported: Yahoo (chart API), Fred and ECB. 
@@ -86,8 +84,9 @@ That makes the sweep unnecessary.
 #### Templates
 
 We distinguish assets and series. Asset is a specific financial instrument, such as a share of a company, an currency exchange rate or an published interest rate.
-Every asset can have one or more (usually max 2) series, a longer term one (interval 1 day or more) and a short term one with interval less than a day (intraday).
+Every asset can have one or more series, longer term ones (interval 1 day or more) and short term ones with interval less than a day (intraday).
 Because many assets and series will have similar properties, you can use templates to avoid repetition.
+There are templates containing asset specific fields (i.e. valid for all series of that asset) or series specific fields
 
 You define templates as follows:
 
@@ -102,7 +101,7 @@ business:
     intraday:
       interval: 5m
       retention: short_lived
-      bootstrap_history: 30d
+      bootstrap_history: 60d
 
     candle: {}
 
@@ -113,10 +112,10 @@ business:
       week_start: sun
       week_end: sat
 
-    us_equities:
+    us_treasury:
       timezone: America/New_York
-      market_open: 09:30
-      market_close: 16:00
+      instrument: MACRO
+      region: US
 
     ecb:
       timezone: Europe/Berlin
@@ -130,11 +129,13 @@ This means we define a re-usable template named `daily` which defines an interva
 
 Then we have template `candle` which only uses default values (amongst which a series_type of `candle`, which means having values [`open`, `high`, `low`, `close`, `volume`]). This can be useful to make choices explicit. Alternatively, template `value` supports only one value, which will only populate the `close` field. This is useful for instruments that don't have the full candle like the ECB USD/EUR rate, and the FRED interest rates. 
 
-The template `24x7` defines the start of the week is Sunday and end of week is Saturday, and template `us_equities` defining a timezone, market open time and market close time (in local time). 
+The template `24x7` defines the start of the week is Sunday and end of week is Saturday, and template `us_treasury` defining a timezone, and instrument and region. 
 
 The `ecb` template shows the use of `publication_offset`. Normally, values are published when a series interval has completed. So e.g. the 9am interval of 5 minutes ends at 9:05 and the point is published then. For daily series, this is on the next day. However, some daily series (for example the ECB EUR/USD rates) are published at a certain time during the day (16:00 local time). That is what the publication offset specifies. If there is no publication offset, the value of the interval is taken. If there is one, it specifies the offset from midnight local time when the publication happens. It seems inconsistent to take local time, but this was done to be able to cater for daylight savings. 
 
-You can make combined templates as well, for example 
+The templates `daily`, `intraday` and `value` are series templates. Templates `24x7` and `us_treasury` are asset templates. the `ecb` template is a mix since publication_offset belongs to a series and the rest to an asset. If an asset has just one series, that can be convenient.
+
+You can make combined templates as well, for example:
 
 ```yaml
 business:
@@ -159,20 +160,22 @@ business:
       provider:
         name: yahoo
         code: GC=F
-      symbol: GOLD
-      tags:
-        instrument: commodity
-        exchange: COMMODITY
-        region: GLOBAL
-        currency: USD
-        unit: 100_troy_ounce
+      symbol: GC
+      templates: 24x7
+      region: GLOBAL
+      unit: 100_troy_ounce
       series:
-        intraday: [intraday, 24x7]
-        daily: [daily, 24x7]
+        intraday: intraday
+        daily: daily
 ```
 
 In this example, `gold` is the asset key, which must be unique and should not be changed after it has been ingested into the database. 
-The `provider` section specifies which provider to use  and which provider code to use for fetching. The symbol here is `GOLD`. You can also omit it, and then the key (in this case `gold`) will be used instead. The tags are metadata that you can use for querying. The series section defines the series, using the series templates as defined earlier. So e.g. the `intraday` series will use the values as specified in the `intraday` and `24x7` templates. You can also make this a section with the same entries as the template instead of a reference, but for consistency and ease of usedit is recommended to use templates. 
+The `provider` section specifies which provider to use and which provider code to use for fetching. The symbol here is `GC`. You can also omit it, and then the capitalized key (in this case `GOLD`) will be used instead. the `templates` section defines asset templates (see above) that must be applied. Then there are several optional fields: `long_name`, `short_name`, `instrument`, `region`, `exchange`, `currency` and `unit` that you can use for querying. The series section defines the series, using the series templates as defined earlier. So e.g. the `intraday` series will use the values as specified in the `intraday` template. You can also use multiple templates with brackets and comma separating the template names e.g. `[ecb, daily]`.
+
+There are also fields needed for calendar calculations. Those are timezone (using the standard Python format e.g. `Europe/Amsterdam`), `market_open`, `market_close` (both local time, format `hh:mm`), `week_start` and `week_end` (days of the week that start or end the trading week, default `mon` and `fri` respectively). The field `first_available_date` specfies the first date that an asset was available. That is useful for assets that have a shorter history than the
+retention period. For example, if you have a 10 year retention but an asset only started 4 years ago, specifying the `first_available_date` will prevent the system from repeatedly trying to download the missing 6 years. 
+
+For assets/series fetched from  Yahoo, some metadata will be retrieved automatically, so you won't need to specify `short_name`, `long_name`, `instrument`, `exchange`, `currency`, `timezone`, `market_open`, `market_close` or `first_available_date`. It does not provide region or unit, so if you want to use that you will need to specify them in the YAML file.
 
 #### Composites
 
@@ -188,10 +191,12 @@ The repository layout is as follows
 ```
 db/ 
     # the SQL scripts to create the database and its tables
+docs/
+    # documentation besides this README.md
 ops/
     # system test scripts
 scripts/
-    # bash scripts used by makefile
+    # bash scripts used by makefile, including deployment scripts
 src/
   finance/
     common/
@@ -208,7 +213,7 @@ src/
         # capturing last values and timestamps per asset as well as a write ahead logger (WAL)
     timeseries/
         # reading from and writing to TimescaleDB
-    main_utils.py    # utilities for main
+    orchestrator.py  # executing the workflow to fetch and store data
     main.py          # the main application
 systemd/
     # definitions to use the application as a timed service
@@ -225,7 +230,6 @@ Makefile             # testing/building/deploying the application
 pyproject.toml       # project definition
 pytest.ini           # pytest config
 README.md            # this file
-ruff.toml            # ruff (static analysis) config
 ```
 
 ---

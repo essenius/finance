@@ -9,7 +9,7 @@ from zoneinfo import ZoneInfo
 import pytest
 
 from finance.common.candle_identity import CandleIdentity
-from finance.common.time_utils import UTC
+from finance.common.time_utils import UTC, timestamp
 from tests.support.types import Factory
 
 
@@ -34,8 +34,7 @@ def test_candle_identity_intraday():
     assert id4 != id3, "equal values but unequal is_daily is not equal"
     assert id1.store_label() == datetime(2026, 7, 15, 3, tzinfo=UTC)
     assert id1.publish_label() == datetime(2026, 7, 15, 12, tzinfo=tokyo)
-    assert id1.start_timestamp() == 1784084400
-    assert id1.end_timestamp() == 1784084400  # same as start for intraday
+    assert id1.end_moment() == datetime(2026, 7, 15, 12, tzinfo=tokyo)  # same as publish label for intraday
 
 
 def test_candle_identity_daily():
@@ -45,21 +44,18 @@ def test_candle_identity_daily():
 
     assert id1.store_label() == datetime(2026, 7, 15, tzinfo=UTC)
     assert id1.publish_label() == datetime(2026, 7, 15, tzinfo=athens)
-    assert id1.start_timestamp() == 1784062800  # midnight Athens time
-    assert (
-        id1.end_timestamp() == 1784149199
-    )  # one microsecond before the next label (to catch labels e.g. at start of day)
+    assert id1.end_moment() == datetime(2026, 7, 15, 23, 59, 59, tzinfo=athens)  # last second of the day for daily
 
 
 def test_normalize_store_label(fixed_now: Factory[datetime]):
     now = fixed_now()
-    timestamp = int(now.timestamp())
+    ts = timestamp(now)
     tokyo = ZoneInfo("Asia/Tokyo")
-    id1 = CandleIdentity.from_timestamp(timestamp, timezone=tokyo, interval=timedelta(days=1))
+    id1 = CandleIdentity.from_timestamp(ts, timezone=tokyo, interval=timedelta(days=1))
     # for daily or more, we have daily labels.
     # Note the date is different. Tokyo is 9 hours ahead of UTC, so the timestamp in local time is already in the next day.
     assert id1.store_label() == datetime(2025, 6, 16, tzinfo=UTC)
 
-    id2 = CandleIdentity.from_timestamp(timestamp, timezone=tokyo, interval=timedelta(minutes=5))
+    id2 = CandleIdentity.from_timestamp(ts, timezone=tokyo, interval=timedelta(minutes=5))
     # for intraday, we keep the complete datetime in UTC
     assert id2.store_label() == now

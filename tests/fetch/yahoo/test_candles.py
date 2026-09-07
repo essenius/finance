@@ -8,7 +8,7 @@ from datetime import datetime
 from finance.common.json_utils import JsonReader
 from finance.common.model import Asset, Series, SeriesPoint, SeriesPoints
 from finance.common.string_enums import Retention, SeriesType
-from finance.common.time_utils import UTC
+from finance.common.time_utils import UTC, timestamp
 from finance.common.types import Unwrap
 from finance.fetch.yahoo import YahooProvider
 from tests.support.fakes import FakeProvider
@@ -43,7 +43,7 @@ def test_extract_candles_valid_output_structure(
     )
     reader = JsonReader(
         {
-            "timestamp": [int(now.timestamp())],
+            "timestamp": [timestamp(now)],
             "indicators": {
                 "quote": [
                     {
@@ -79,10 +79,10 @@ def test_extract_candles_skips_invalid(
 ):
     """Invalid candle (None value) → skipped with warning."""
 
-    timestamp = int(datetime(2026, 7, 23, tzinfo=UTC).timestamp())
+    ts = timestamp(datetime(2026, 7, 23, tzinfo=UTC))
     reader = JsonReader(
         {
-            "timestamp": [timestamp],
+            "timestamp": [ts],
             "indicators": {
                 "quote": [
                     {
@@ -115,11 +115,11 @@ def test_extract_candles_signals_incomplete(
 ):
     """Invalid candle (None value) → skipped with warning."""
 
-    timestamp = int(datetime(2026, 7, 23, tzinfo=UTC).timestamp())
+    ts = timestamp(datetime(2026, 7, 23, tzinfo=UTC))
 
     reader = JsonReader(
         {
-            "timestamp": [timestamp],
+            "timestamp": [ts],
             "indicators": {
                 "quote": [
                     {

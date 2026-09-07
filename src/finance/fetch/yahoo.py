@@ -14,7 +14,7 @@ from ..common.guards import require
 from ..common.json_utils import JsonObject, JsonReader
 from ..common.model import FetchData, FetchResult, Series, SeriesPoint, SeriesPoints, SeriesPointsResult
 from ..common.string_enums import Candle
-from ..common.time_utils import UTC
+from ..common.time_utils import UTC, timestamp
 from ..common.types import Failure, ParseError, Result, Success
 from .provider import MarketDataProvider
 
@@ -35,15 +35,16 @@ class YahooProvider(MarketDataProvider):
         def fetch_failure(error: str) -> Failure:
             return Failure(f"Could not parse series '{series.name}' in Yahoo fetch result", error=error)
 
-        start_timestamp = start.start_timestamp()
-        end_timestamp = end.end_timestamp()
+        start_moment = start.value
+        end_moment = end.end_moment()
+
         # quirk in Yahoo: you don't get anything with daily series if both start and end are in the same day
-        if series.is_daily() and start.value.date() == end.value.date():
-            id = series.calendar.last_identity_before(start.value)
-            start_timestamp = id.end_timestamp()
-        logger.debug(
-            f"  Requesting Yahoo for {datetime.fromtimestamp(start_timestamp).astimezone(UTC)} - {datetime.fromtimestamp(end_timestamp).astimezone(UTC)}"
-        )
+        if series.is_daily() and start_moment.date() == end_moment.date():
+            id = series.calendar.last_identity_before(start_moment)
+            start_moment = id.end_moment()
+        logger.debug(f"  Requesting Yahoo for {start_moment.astimezone(UTC)} - {end_moment.astimezone(UTC)}")
+        start_timestamp = timestamp(start_moment)
+        end_timestamp = timestamp(end_moment)
         url, params = self._build_url(series.asset.provider_code, series.interval, start_timestamp, end_timestamp)
         result = self._safe_call(fn=lambda: self._fetch_impl(url=url, params=params), series=series)
 
@@ -60,11 +61,13 @@ class YahooProvider(MarketDataProvider):
         points_result = self._extract_candles(series, reader, require(metadata.timezone, "metadata timezone"))
         if points_result.ok is False:
             return fetch_failure(error=points_result.reason)
-        points = self._discard_outside_range(points_result.payload, start, end)
+
+        # start.value is on purpose here, we want to discard the extra value that got returned because of the quirk.
+        points = self._discard_outside_range(points_result.payload, start.value, end_moment)
         logger.debug(f"  {len(points)} candles remaining")
 
         result = FetchData(series_id=series.require_id(), series=series, points=points, metadata=metadata)
-        logger.debug(f"  Returned {len(points_result.payload)} observations")
+        logger.debug(f"  Returned {len(points)} observations")
 
         return Success(result)
 
@@ -72,9 +75,9 @@ class YahooProvider(MarketDataProvider):
     # Private methods
     # ----------------
 
-    def _discard_outside_range(self, points: SeriesPoints, start: CandleIdentity, end: CandleIdentity) -> SeriesPoints:
-        first = bisect_left(points, start.value, key=lambda p: p.time)
-        last = bisect_left(points, end.value, key=lambda p: p.time)
+    def _discard_outside_range(self, points: SeriesPoints, start: datetime, end: datetime) -> SeriesPoints:
+        first = bisect_left(points, start, key=lambda p: p.time)
+        last = bisect_left(points, end, key=lambda p: p.time)
         return points[first:last]
 
     def _build_candles(

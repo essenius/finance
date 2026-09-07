@@ -113,6 +113,10 @@ def snap_to(time_point: datetime, range: timedelta) -> datetime:
     return datetime.fromtimestamp(snapped, tz=UTC)
 
 
+def timestamp(moment: datetime) -> int:
+    return int(moment.timestamp())
+
+
 def validate_duration(text: str | None, context: str | None = None) -> str | None:
     parse_duration(text, context)
     return text

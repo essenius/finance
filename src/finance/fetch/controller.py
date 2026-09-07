@@ -84,9 +84,9 @@ class FetchController:
         retention = series.retention_delta()
         if retention is not None:
             start_point = max(start_point, now - retention)
-        if last_req.value < start_point:
-            return None
         first_identity = calendar.snap_forward_identity(start_point)
+        if last_req < first_identity:
+            return None
         logger.debug(f"  Incremental range: {first_identity} - {last_req}")
         return (first_identity, last_req, True)
 

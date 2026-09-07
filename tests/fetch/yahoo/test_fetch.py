@@ -12,7 +12,7 @@ from finance.common.candle_identity import CandleIdentity
 from finance.common.json_utils import JsonObject
 from finance.common.model import Asset, FetchData, Series, SeriesPoint
 from finance.common.string_enums import Retention, SeriesType
-from finance.common.time_utils import UTC
+from finance.common.time_utils import UTC, timestamp
 from finance.common.types import Unwrap
 from tests.fetch.yahoo.test_candles import YahooFakeSession
 from tests.support.types import AssertError, Creator, Factory
@@ -95,7 +95,7 @@ def test_fetch_success_intraday(
                 "result": [
                     {
                         "meta": {"exchangeTimezoneName": "UTC"},
-                        "timestamp": [start.start_timestamp()],
+                        "timestamp": [timestamp(start.value)],
                         "indicators": {"quote": [{"close": [10.0]}]},
                     }
                 ],
@@ -210,7 +210,7 @@ def test_fetch_missing_exchange_timezone(
                 "result": [
                     {
                         "meta": meta,
-                        "timestamp": [now.start_timestamp()],
+                        "timestamp": [timestamp(now.value)],
                         "indicators": {"quote": [{"close": [10.0]}]},
                     }
                 ],
@@ -243,7 +243,7 @@ def test_fetch_missing_quote(
                 "result": [
                     {
                         "meta": {"exchangeTimezoneName": "UTC"},
-                        "timestamp": [now.start_timestamp()],
+                        "timestamp": [timestamp(now.value)],
                         "indicators": {},
                     }
                 ],

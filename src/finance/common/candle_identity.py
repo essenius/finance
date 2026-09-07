@@ -46,18 +46,15 @@ class CandleIdentity:
     def date(self) -> date:
         return self.value.date()
 
-    def end_timestamp(self) -> int:
+    def end_moment(self) -> datetime:
         if self.is_daily:
             # allow any time in the label period, to allow for publishers using start-of-day or end-of-day
             # note this is only used to calculate the fetch period based on already determined identities
-            return int((self.value + self.interval).timestamp() - 1)
-        return int(self.value.timestamp())
+            return self.value + self.interval - timedelta(seconds=1)
+        return self.value
 
     def publish_label(self) -> datetime:
         return self.value
-
-    def start_timestamp(self) -> int:
-        return int(self.value.timestamp())
 
     def store_label(self) -> datetime:
         if self.is_daily:

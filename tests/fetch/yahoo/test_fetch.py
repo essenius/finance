@@ -295,7 +295,7 @@ def test_fetch_real_fixture_5m_eliminates_last_and_fills_metadata(
     assert metadata.short_name == "Gold Dec 26"
     assert metadata.long_name is None
     assert metadata.instrument == "FUTURE"
-    assert metadata.region is None
+    assert metadata.geo_exposure is None
     assert metadata.exchange == "CMX"
     assert metadata.currency == "USD"
     assert metadata.unit is None

@@ -93,7 +93,7 @@ business:
       timezone: America/New_York
       # you can also use different metadata in templates
       instrument: MACRO
-      region: US
+      geo_exposure: NORTH_AMERICA
 
     ecb:
       timezone: Europe/Berlin
@@ -109,14 +109,14 @@ business:
 
     # With yahoo, most metadata is grabbed from the response. Configuration here will override that.
     # What minimally remains is the provider, the provider code and a series.
-    # Since Yahoo doesn't return region and unit, those should be provided here too.
+    # Since Yahoo doesn't return geo_exposure and unit, those should be provided here too.
 
     eurusd_yahoo:
       provider:
         name: yahoo
         code: EURUSD=X
       symbol: EURUSD
-      region: GLOBAL
+      geo_exposure: WORLD
       unit: EUR
       series:
         daily: daily
@@ -132,9 +132,9 @@ business:
       symbol: EURUSD
       long_name: daily EUR/USD rate
       templates: ecb
-      instrument: FOREX
+      instrument: CURRENCY
       exchange: ECB
-      region: EU
+      geo_exposure: EUROPE
       currency: USD
       unit: ratio
       series:
@@ -149,7 +149,8 @@ business:
         name: yahoo
         code: GC=F
       templates: 24x7
-      region: GLOBAL
+      geo_exposure: WORLD
+      asset_class: COMMODITY
       unit: 100_troy_ounce
       series:
         intraday: intraday
@@ -159,7 +160,8 @@ business:
       provider:
         name: yahoo
         code: CL=F
-      region: GLOBAL
+      geo_exposure: WORLD
+      asset_class: COMMODITY
       unit: barrel
       series:
         intraday: intraday
@@ -169,7 +171,8 @@ business:
       provider:
         name: yahoo
         code: BZ=F
-      region: GLOBAL
+      geo_exposure: WORLD
+      asset_class: COMMODITY
       unit: barrel
       series:
         intraday: intraday
@@ -183,7 +186,7 @@ business:
       provider:
         name: yahoo
         code: SHEL
-      region: UK
+      geo_exposure: WORLD
       unit: share
       series:
         intraday: intraday
@@ -198,7 +201,8 @@ business:
       provider:
         name: yahoo
         code: PPFB.DE
-      region: WORLD
+      geo_exposure: WORLD
+      asset_class: COMMODITY
       unit: share
       series:
         intraday: intraday
@@ -209,7 +213,8 @@ business:
       provider:
         name: yahoo
         code: VWCE.AS
-      region: WORLD
+      geo_exposure: WORLD
+      asset_class: EQUITY
       unit: share
       series:
         intraday: intraday
@@ -223,7 +228,7 @@ business:
       provider:
         name: yahoo
         code: ^GSPC
-      region: US
+      geo_exposure: NORTH_AMERICA
       unit: index_point
       series:
         daily: daily
@@ -232,7 +237,7 @@ business:
       provider:
         name: yahoo
         code: ^VIX
-      region: US
+      geo_exposure: NORTH_AMERICA
       unit: index_point
       series:
         daily: daily
@@ -247,7 +252,7 @@ business:
         code: "BTC-USD"
       symbol: BTCUSD
       templates: 24x7
-      region: GLOBAL
+      geo_exposure: WORLD
       unit: coin
       series:
         intraday: intraday

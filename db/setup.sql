@@ -182,13 +182,14 @@ CREATE TABLE IF NOT EXISTS asset (
 
     -- metadata
 
-    long_name  TEXT,
-    short_name TEXT,
-    instrument TEXT,
-    region     TEXT,
-    exchange   TEXT,
-    currency   TEXT,
-    unit       TEXT,
+    long_name    TEXT,
+    short_name   TEXT,
+    instrument   TEXT,
+    geo_exposure TEXT,
+    exchange     TEXT,
+    currency     TEXT,
+    unit         TEXT,
+    asset_class  TEXT,
     
     -- market calendar 
 
@@ -257,7 +258,8 @@ SELECT
     a.long_name,
     a.short_name,
     a.instrument,
-    a.region,
+    a.asset_class,
+    a.geo_exposure,
     a.exchange,
     a.currency,
     a.unit,

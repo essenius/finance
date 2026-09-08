@@ -43,7 +43,7 @@ business:
         name: yahoo
         code: EURUSD=X
       symbol: EURUSD
-      region: GLOBAL
+      geo_exposure: WORLD
       unit: EUR
       series:
         daily: daily

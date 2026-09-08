@@ -171,7 +171,8 @@ class Orchestrator:
         for asset in to_persist:
             logger.info(f"Persisting asset {asset.name}")
             stored = unwrap(self.backend.store_asset(asset))
-            self.registry.register_stored_asset(stored)
+            asset.id = stored.id
+            self.registry.register_stored_asset(asset)
 
         saved_series = unwrap(self.backend.get_series(self.registry.get_asset))
         reconciled_series = self.registry.reconcile_series(saved_series)

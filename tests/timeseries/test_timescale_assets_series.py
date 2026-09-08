@@ -52,7 +52,8 @@ def set_read_asset_description(cursor: MagicMock) -> None:
         SimpleNamespace(name="long_name"),
         SimpleNamespace(name="short_name"),
         SimpleNamespace(name="instrument"),
-        SimpleNamespace(name="region"),
+        SimpleNamespace(name="geo_exposure"),
+        SimpleNamespace(name="asset_class"),
         SimpleNamespace(name="exchange"),
         SimpleNamespace(name="currency"),
         SimpleNamespace(name="unit"),
@@ -275,6 +276,7 @@ def test_get_assets_returns_asset_list(make_backend: Creator[FakeBackend]):
             "Apple Incorporated",
             "stock",
             "US",
+            "EQUITY",
             "NASDAQ",
             "USD",
             "share",
@@ -295,6 +297,7 @@ def test_get_assets_returns_asset_list(make_backend: Creator[FakeBackend]):
             "Microsoft Corporation",
             "stock",
             "US",
+            "EQUITY",
             "NASDAQ",
             "USD",
             "share",
@@ -336,14 +339,14 @@ def test_get_assets_db_error(assert_error: AssertError, make_backend: Creator[Fa
 
 def test_get_assets_missing_provider(assert_error: AssertError, make_backend: Creator[FakeBackend]):
     backend, cursor = make_backend().with_cursor()
-    rows = [(2, "X", "X", "bogus", "X", "", "", "st", "US", "N", "USD", "sh", "UTC", None, "mon", "fri", "min", "max")]
+    rows = [(2, "X", "X", "foo", "X", "", "", "s", "EQ", "US", "N", "$", "s", "UTC", None, "mon", "fri", "min", "max")]
     set_read_asset_description(cursor)
     cursor.fetchall.return_value = rows
 
     result = backend.get_assets()
     result = backend.get_assets()
 
-    assert_error(result, "get_assets could not load asset 'X'", "cannot find provider 'bogus'")
+    assert_error(result, "get_assets could not load asset 'X'", "cannot find provider 'foo'")
 
 
 # ------------------------------------------------------------

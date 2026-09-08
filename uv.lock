@@ -221,7 +221,7 @@ wheels = [
 
 [[package]]
 name = "finance"
-version = "0.2.52"
+version = "0.2.53"
 source = { editable = "." }
 dependencies = [
     { name = "psycopg", extra = ["binary"] },

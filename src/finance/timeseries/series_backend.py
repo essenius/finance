@@ -92,7 +92,7 @@ class SeriesBackend:
     def get_assets(self) -> Result[list[Asset]]:
         query = """
             SELECT id, name, symbol, provider, provider_code, long_name, short_name,
-              instrument, region, exchange, currency, unit, first_available_date::text,
+              instrument, asset_class, geo_exposure, exchange, currency, unit, first_available_date::text,
               timezone, week_start, week_end, market_open::text, market_close::text
             FROM asset ORDER BY id;
             """
@@ -109,7 +109,7 @@ class SeriesBackend:
             for row in rows:
                 config = self._table_to_json(row, columns)
                 asset_name = config.get("name", "None")
-                asset = Asset.create(config=config, get_provider=self._get_provider)
+                asset = Asset.create(config=config, get_provider=self._get_provider, no_defaults=True)
                 assets.append(asset)
             return Success(assets)
         except ParseError as pe:
@@ -243,7 +243,8 @@ class SeriesBackend:
             meta.long_name,
             meta.short_name,
             meta.instrument,
-            meta.region,
+            meta.asset_class,
+            meta.geo_exposure,
             meta.exchange,
             meta.currency,
             meta.unit,
@@ -258,17 +259,17 @@ class SeriesBackend:
         if asset.id is None:
             sql_query = """
                     INSERT INTO asset (name, symbol, provider, provider_code,
-                        long_name, short_name, instrument, region, exchange, currency, unit,
+                        long_name, short_name, instrument, asset_class, geo_exposure, exchange, currency, unit,
                         first_available_date, timezone, week_start, week_end, market_open, market_close)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                     RETURNING id;
                     """
             params = base_fields
         else:
             sql_query = """
                 UPDATE asset
-                SET name=%s, symbol=%s, provider=%s, provider_code=%s,
-                    long_name=%s, short_name=%s, instrument=%s, region=%s, exchange=%s, currency=%s, unit=%s,
+                SET name=%s, symbol=%s, provider=%s, provider_code=%s, long_name=%s, short_name=%s,
+                    instrument=%s, asset_class=%s, geo_exposure=%s, exchange=%s, currency=%s, unit=%s,
                     first_available_date=%s, timezone=%s, week_start=%s, week_end=%s, market_open=%s, market_close=%s
                 WHERE id=%s
                 RETURNING id;

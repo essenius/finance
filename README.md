@@ -115,7 +115,7 @@ business:
     us_treasury:
       timezone: America/New_York
       instrument: MACRO
-      region: US
+      geo_exposure: NORTH_AMERICA
 
     ecb:
       timezone: Europe/Berlin
@@ -129,7 +129,7 @@ This means we define a re-usable template named `daily` which defines an interva
 
 Then we have template `candle` which only uses default values (amongst which a series_type of `candle`, which means having values [`open`, `high`, `low`, `close`, `volume`]). This can be useful to make choices explicit. Alternatively, template `value` supports only one value, which will only populate the `close` field. This is useful for instruments that don't have the full candle like the ECB USD/EUR rate, and the FRED interest rates. 
 
-The template `24x7` defines the start of the week is Sunday and end of week is Saturday, and template `us_treasury` defining a timezone, and instrument and region. 
+The template `24x7` defines the start of the week is Sunday and end of week is Saturday, and template `us_treasury` defining a timezone, and instrument and geo_exposure. 
 
 The `ecb` template shows the use of `publication_offset`. Normally, values are published when a series interval has completed. So e.g. the 9am interval of 5 minutes ends at 9:05 and the point is published then. For daily series, this is on the next day. However, some daily series (for example the ECB EUR/USD rates) are published at a certain time during the day (16:00 local time). That is what the publication offset specifies. If there is no publication offset, the value of the interval is taken. If there is one, it specifies the offset from midnight local time when the publication happens. It seems inconsistent to take local time, but this was done to be able to cater for daylight savings. 
 
@@ -162,7 +162,8 @@ business:
         code: GC=F
       symbol: GC
       templates: 24x7
-      region: GLOBAL
+      geo_exposure: WORLD
+      asset_class: COMMODITY
       unit: 100_troy_ounce
       series:
         intraday: intraday
@@ -170,18 +171,18 @@ business:
 ```
 
 In this example, `gold` is the asset key, which must be unique and should not be changed after it has been ingested into the database. 
-The `provider` section specifies which provider to use and which provider code to use for fetching. The symbol here is `GC`. You can also omit it, and then the capitalized key (in this case `GOLD`) will be used instead. the `templates` section defines asset templates (see above) that must be applied. Then there are several optional fields: `long_name`, `short_name`, `instrument`, `region`, `exchange`, `currency` and `unit` that you can use for querying. The series section defines the series, using the series templates as defined earlier. So e.g. the `intraday` series will use the values as specified in the `intraday` template. You can also use multiple templates with brackets and comma separating the template names e.g. `[ecb, daily]`.
+The `provider` section specifies which provider to use and which provider code to use for fetching. The symbol here is `GC`. You can also omit it, and then the capitalized key (in this case `GOLD`) will be used instead. the `templates` section defines asset templates (see above) that must be applied. Then there are several optional fields: `long_name`, `short_name`, `instrument`, `geo_exposure`, `asset_class`, `exchange`, `currency` and `unit` that you can use for querying. The series section defines the series, using the series templates as defined earlier. So e.g. the `intraday` series will use the values as specified in the `intraday` template. You can also use multiple templates with brackets and comma separating the template names e.g. `[ecb, daily]`.
 
 There are also fields needed for calendar calculations. Those are timezone (using the standard Python format e.g. `Europe/Amsterdam`), `market_open`, `market_close` (both local time, format `hh:mm`), `week_start` and `week_end` (days of the week that start or end the trading week, default `mon` and `fri` respectively). The field `first_available_date` specfies the first date that an asset was available. That is useful for assets that have a shorter history than the
 retention period. For example, if you have a 10 year retention but an asset only started 4 years ago, specifying the `first_available_date` will prevent the system from repeatedly trying to download the missing 6 years. 
 
-For assets/series fetched from  Yahoo, some metadata will be retrieved automatically, so you won't need to specify `short_name`, `long_name`, `instrument`, `exchange`, `currency`, `timezone`, `market_open`, `market_close` or `first_available_date`. It does not provide region or unit, so if you want to use that you will need to specify them in the YAML file.
+For assets/series fetched from  Yahoo, some metadata will be retrieved automatically, so you won't need to specify `short_name`, `long_name`, `instrument`, `exchange`, `currency`, `timezone`, `market_open`, `market_close` or `first_available_date`. It does not provide `geo_exposure` or `unit`, so if you want to use that you will need to specify them in the YAML file. The `asset_class` field is defaulted to the value of `instrument` for values `EQUITY`, `BOND`, `CURRENCY` and `CRYTPOCURRENCY`.
 
 #### Composites
 
-_Composites have been disabled for V1. They will be re-introduced later._
+_Composites have been disabled for V1. They may be re-introduced later._
 
-Intent is to define composite data using base data or even other composites. They also have a unique user defined identifier, and always have an `expression` referring to the other identifiers. For single value series, you do not need to use the field name, for multi valued ones you do. so `fred_10y_nominal - fred_10y_breakeven` is correct assuming both identifiers exist in asset definitions. For multi-value assets, use `asset.field` as in e.g. `gold_daily.high - gold_daily.low`. Composites can also have InfluxDB `tags` and `timeseries` (daily or intraday). You can use arithmetical functions like `+`, `-`, `*`, `/`, `min`, `max`, `math.sqrt` and others. Dependencies are taken into account, and cycles will be rejected. 
+_Intent is to define composite data using base data or even other composites. They also have a unique user defined identifier, and always have an `expression` referring to the other identifiers. For single value series, you do not need to use the field name, for multi valued ones you do. so `fred_10y_nominal - fred_10y_breakeven` is correct assuming both identifiers exist in asset definitions. For multi-value assets, use `asset.field` as in e.g. `gold_daily.high - gold_daily.low`. You can use arithmetical functions like `+`, `-`, `*`, `/`, `min`, `max`, `math.sqrt` and others. Dependencies are taken into account, and cycles will be rejected._
 
 ---
 

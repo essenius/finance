@@ -110,7 +110,7 @@ def make_metadata() -> Creator[AssetMetadata]:
             "long_name": None,
             "short_name": None,
             "instrument": "forex",
-            "region": "Europe",
+            "geo_exposure": "Europe",
             "exchange": "DEX",
             "currency": "USD",
             "unit": "EUR",

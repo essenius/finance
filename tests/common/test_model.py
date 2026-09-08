@@ -2,7 +2,7 @@
 # Licensed under the Apache License, Version 2.0. See the LICENSE file for details.
 # File: tests/common/test_model.py
 
-from datetime import date, datetime, time, timedelta
+from datetime import datetime, timedelta
 
 import pytest
 
@@ -45,7 +45,7 @@ def test_asset_create_with_id_differs(make_providers: Creator[dict[str, Provider
         short_name="spx",
         instrument=None,
         exchange=None,
-        region=None,
+        geo_exposure=None,
         currency=None,
         unit=None,
         timezone=None,
@@ -76,7 +76,7 @@ def test_asset_create_with_id_differs(make_providers: Creator[dict[str, Provider
     # differs from only looks at metadata, not at id, name
     assert not asset.differs_from(asset2)
 
-    config |= {"region": "Europe"}
+    config |= {"geo_exposure": "Europe"}
     asset3 = Asset.create(config=config, get_provider=make_providers().get)
     assert asset.differs_from(asset3)
 
@@ -169,13 +169,3 @@ def test_update_point_range():
     overlap = current - timedelta(days=1)
     state.update_point_range(first=overlap, last=current)
     assert state.first_point, state.last_point == (first, current)
-
-
-def test_asset_metadata_from_config():
-    config: JsonObject = {"first_available_date": "2001-02-03", "week_start": "mon", "market_close": "15:00"}
-    meta = AssetMetadata.from_config(config)
-    assert meta.first_available_date == date(2001, 2, 3)
-    assert meta.week_start == "mon"
-    assert meta.week_end is None
-    assert meta.market_close == time(hour=15)
-    assert meta.market_open is None

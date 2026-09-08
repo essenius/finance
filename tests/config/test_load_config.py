@@ -100,7 +100,7 @@ business:
     assert metadata.currency is None
     assert metadata.exchange == "NYSE"
     assert metadata.unit is None
-    assert metadata.region is None
+    assert metadata.geo_exposure is None
     assert metadata.first_available_date == date(2008, 9, 10)
     assert metadata.week_start == "sun"
     assert metadata.week_end == "sat"

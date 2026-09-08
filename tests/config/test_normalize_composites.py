@@ -13,7 +13,7 @@ def test_normalize_composites_basic(unwrap):
         "REAL10Y": {
             "expression": "fred_10y_nominal_daily - fred_10y_breakeven_daily",
             "symbol": "REAL10Y",
-            "tags": {"region": "USA"},
+            "tags": {"geo_exposure": "USA"},
         }
     }
 
@@ -26,7 +26,7 @@ def test_normalize_composites_basic(unwrap):
     asset: Asset = c["asset"]
     assert asset.symbol == "REAL10Y"
     assert asset.provider == "composite"
-    assert asset.region == "USA"
+    assert asset.geo_exposure == "USA"
     assert asset.exchange is None
 
 
@@ -46,6 +46,6 @@ def test_normalize_composites_with_resolution(unwrap):
     asset: Asset = c["asset"]
     assert asset.symbol == "SPREAD"
     assert asset.provider == "composite"
-    assert asset.region is None
+    assert asset.geo_exposure is None
     assert asset.unit == "Percent"
 """

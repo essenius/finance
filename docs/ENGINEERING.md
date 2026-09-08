@@ -276,4 +276,10 @@ Diagrams should communicate:
 
 Avoid unnecessary implementation detail and avoid duplicating information that is already authoritative elsewhere.
 
+
+## Test design principles
+
+Tests should focus on external behavior, not internal implementation details. The exception to this rule are tests for main() and Orchestrator. 
+Tests for these are deliberately integration-focused due to their role as system level coordinators. 
+
 ---

@@ -119,11 +119,13 @@ class Asset:
         return f"Asset(id={self.id}, name={self.name}, symbol={self.symbol}, provider_code={self.provider_code}, metadata={self.effective_metadata})"
 
     @classmethod
-    def create(cls, config: JsonObject, get_provider: Callable[[str], ProviderProtocol | None]) -> Asset:
+    def create(
+        cls, config: JsonObject, get_provider: Callable[[str], ProviderProtocol | None], no_defaults: bool = False
+    ) -> Asset:
         """Create a new Asset instance. Checks values and can raise ParseError"""
         reader = JsonReader(config)
         name = reader.require(str, "name")
-        config_meta = AssetMetadata.from_config(config)
+        config_meta = AssetMetadata.from_config(config, no_defaults=no_defaults)
         provider_name = reader.require(str, "provider")
         provider = get_provider(provider_name)
         if provider is None:
@@ -156,8 +158,8 @@ class Asset:
         return self.provider is other.provider and self.provider_code == other.provider_code
 
     def reconcile_with(self, current: Asset | None) -> bool:
-        # The configured metadata overrides what is in the database (i.e. currently effective)
-        # so if there is anything in the config diffferent from current, we need to save.
+        """The configured metadata overrides what is in the database (i.e. currently effective)
+        so if there is anything in the config diffferent from current, we need to save (return True)."""
 
         if current is not None:
             self.id = current.id
@@ -168,6 +170,7 @@ class Asset:
                 or self.provider_code != current.provider_code
             )
             self.effective_metadata = apply_overrides(current.effective_metadata, self.config_metadata)
+            self.effective_metadata.apply_defaults()
             return needs_save or self.effective_metadata != current.effective_metadata
 
         # We don't have a record yet, so we must save (we need an ID). Move the current config to effective as default

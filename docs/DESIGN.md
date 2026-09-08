@@ -7,7 +7,7 @@ The project follows a modular architecture with distinct layers and components, 
 Core Application (`src/finance/main.py`)
 - Orchestrator: Coordinates data ingestion, processing, and execution. Handles fetching, state updates, and result processing (`orchestrator.py`).  
 - State Management (`src/finance/state`): Manages persistent state (`state.py`) via WAL (Write-Ahead Log, `wal.py`) and backend storage.  
-- Registry (`src/finance/registry`): Tracks assets, series, and metadata (`registry.py`).  
+- Registry (`src/finance/registry`): Tracks assets, series, and metadata (`registry.py`), to ensure consistency across the application and decoupling from backend storage logic.  
 - Fetchers (`src/finance/fetch`): Retrieves data from external sources (ECB, FRED, Yahoo) via `controller.py` and provider-specific modules (`ecb.py`, `fred.py` and `yahoo.py`).  
 - Timeseries Backend (`src/finance/timeseries`): Implements time-series storage and querying logic (`timescale_sql.py`, `series_backend.py`).  
 - _Composites (`src/finance/composites`): Handles composite metric definitions and dependency resolution (`engine.py`). Currently disabled._
@@ -30,7 +30,7 @@ Regardless of the time zone of the asset, **daily series** are stored with a dat
 
 ### Result handling
 
-Operations that can fail as part of normal application flow return `Result[T]` rather than raising exceptions.
+Operations that can fail as part of normal application flow return `Result[T]` rather than raising exceptions. This avoids scattered exception handling and simplifies downstream logic.
 
 `Result[T]` is a discriminated union of `Success[T]` and `Failure`. A success contains a non-optional payload; 
 a failure contains error information but no payload.

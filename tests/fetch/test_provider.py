@@ -54,7 +54,7 @@ def test_safe_call_exception(make_asset: Creator[Asset], make_series: Creator[Se
 
     result = p._safe_call(bad, series=s)
     assert result.ok is False
-    assert "Exception during dummy fetch of eur_usd:dummy (1)" in result.reason
+    assert "Exception during dummy fetch of `eur_usd:dummy` (id=1)" in result.reason
     assert "kaboom" in str(result.error)
 
 

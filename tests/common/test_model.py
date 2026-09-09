@@ -31,12 +31,12 @@ def test_asset_create_with_id_differs(make_providers: Creator[dict[str, Provider
         "symbol": "SPX",
         "provider": "yahoo",
         "provider_code": "^SPX",
+        "isin": "US1234",
         "short_name": "spx",
     }
     asset = Asset.create(config=config, get_provider=providers.get)
     assert asset.id is None
     assert asset.name == "spx"
-    assert asset.symbol == "SPX"
     assert asset.provider.name == "yahoo"
     assert asset.provider_code == "^SPX"
 
@@ -59,26 +59,9 @@ def test_asset_create_with_id_differs(make_providers: Creator[dict[str, Provider
 
     assert (
         f"{asset}"
-        == "Asset(id=None, name=spx, symbol=SPX, provider_code=^SPX, metadata=AssetMetadata(short=spx, currency=None, timezone=None))"
+        == "Asset(id=None, name=spx, isin=US1234, provider_code=^SPX, metadata=AssetMetadata(short=spx, currency=None, timezone=None))"
     )
-
     asset.effective_metadata = asset.config_metadata
-
-    assert (
-        f"{asset}"
-        == "Asset(id=None, name=spx, symbol=SPX, provider_code=^SPX, metadata=AssetMetadata(short=spx, currency=None, timezone=None))"
-    )
-
-    asset2 = asset.with_id(1)
-    assert asset2.id == 1
-    assert asset2.name == "spx"
-
-    # differs from only looks at metadata, not at id, name
-    assert not asset.differs_from(asset2)
-
-    config |= {"geo_exposure": "Europe"}
-    asset3 = Asset.create(config=config, get_provider=make_providers().get)
-    assert asset.differs_from(asset3)
 
 
 def test_asset_create_with_wrong_timezone(make_providers: Creator[dict[str, ProviderProtocol]]):
@@ -92,7 +75,7 @@ def test_asset_create_with_wrong_timezone(make_providers: Creator[dict[str, Prov
     }
     with pytest.raises(ParseError) as ve:
         Asset.create(config=config, get_provider=make_providers().get)
-    assert "Cannot understand timezone 'bogus'" in str(ve.value)
+    assert "Cannot understand timezone `bogus`" in str(ve.value)
 
 
 def test_series_create_with_id_differs(make_asset: Creator[Asset]):

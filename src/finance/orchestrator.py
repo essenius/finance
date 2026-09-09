@@ -131,7 +131,7 @@ class Orchestrator:
             batch_first, batch_last = batch_last, batch_first
 
         logger.info(
-            f"Retrieved range for {series.name} ({series.id}): {view_utc(batch_first)} - {view_utc(batch_last)}, {len(points)} records."
+            f"Retrieved range for `{series.name}` (id={series.id}): {view_utc(batch_first)} - {view_utc(batch_last)}, {len(points)} records."
         )
 
         all_ok = True
@@ -148,7 +148,7 @@ class Orchestrator:
             self.state.update_state(series_id, batch_first, batch_last)
             range = self.state.series_state[series_id]
             logger.debug(
-                f"Range for {series.name} after updating: {view_utc(require(range.first_point))} - {view_utc(require(range.last_point))}"
+                f"Range for `{series.name}` after updating: {view_utc(require(range.first_point))} - {view_utc(require(range.last_point))}"
             )
         return all_ok
 
@@ -157,9 +157,9 @@ class Orchestrator:
 
         chunk_count_result = self.backend.get_cold_chunk_size()
         if chunk_count_result.ok is False:
-            logger.warning("Could not determine chunk count for hypertable 'series_table_cold'.")
+            logger.warning("Could not determine chunk count for hypertable `series_table_cold`.")
         else:
-            logger.info(f"Hypertable 'series_table_cold' has {chunk_count_result.payload} chunks.")
+            logger.info(f"Hypertable `series_table_cold` has {chunk_count_result.payload} chunks.")
 
         logger.debug("Loading state")
         flush_count = unwrap(self.state.load(), throw=False)
@@ -169,7 +169,7 @@ class Orchestrator:
         saved_assets = unwrap(self.backend.get_assets())
         to_persist = self.registry.merge_and_find_new_assets(saved_assets)
         for asset in to_persist:
-            logger.info(f"Persisting asset {asset.name}")
+            logger.info(f"Persisting asset `{asset.name}`")
             stored = unwrap(self.backend.store_asset(asset))
             asset.id = stored.id
             self.registry.register_stored_asset(asset)
@@ -177,7 +177,7 @@ class Orchestrator:
         saved_series = unwrap(self.backend.get_series(self.registry.get_asset))
         reconciled_series = self.registry.reconcile_series(saved_series)
         for series in reconciled_series.to_persist:
-            logger.info(f"Persisting series {series.name}")
+            logger.info(f"Persisting series `{series.name}`")
             stored = unwrap(self.backend.store_series(series))
             self.registry.register_stored_series(stored)
 

@@ -16,7 +16,7 @@ def get_project_root() -> Path:
     if (cwd / "config.yaml").exists():
         return cwd
 
-    raise RuntimeError(f"Current working directory {cwd} is not a valid project root (config.yaml not found).")
+    raise RuntimeError(f"Current working directory `{cwd}` is not a valid project root (config.yaml not found).")
 
 
 def resolve_config_path(value: str | None, default_filename: str, project_root: Path) -> Path:

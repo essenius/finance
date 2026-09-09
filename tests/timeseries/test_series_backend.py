@@ -445,4 +445,4 @@ def test_store_asset_no_effective_metadata(
     )
     asset = make_asset(effective_metadata=None)
     result = backend.store_asset(asset)
-    assert_error(result, reason="Store asset failed", error="No effective metadata to store asset 'eur_usd'")
+    assert_error(result, reason="Store asset failed", error="No effective metadata to store asset `eur_usd`")

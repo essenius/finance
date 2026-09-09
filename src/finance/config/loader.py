@@ -106,11 +106,19 @@ class ConfigLoader:
 
         cfg_path = self.config_path or config_env.paths.get("config") or Path("config.yaml")
 
-        yaml_path = cfg_path if cfg_path.is_absolute() else (self.cwd / cfg_path).resolve()
-        reader_result = load_yaml_config(yaml_path)
-        if reader_result.ok is False:
-            return reader_result
-        reader = reader_result.payload
+        config_result = self.load_yaml_config(cfg_path)
+        if config_result.ok is False:
+            return config_result
+
+        config = config_result.payload
+        override_path = config_env.paths.get("config_override")
+        if override_path:
+            override_result = self.load_yaml_config(override_path)
+            if override_result.ok is False:
+                return override_result
+            merge_config(config, override_result.payload)
+        reader = JsonReader(config)
+
         env_reader = reader.reader_for("environment", allow_missing="yes")
         yaml_config = load_environment_config(env_reader, self.cwd)
         config = config_env.merge(yaml_config)
@@ -130,6 +138,19 @@ class ConfigLoader:
             logging=log_cfg,
         )
         return Success(app_config)
+
+    def load_yaml_config(self, path: Path) -> Result[JsonObject]:
+        yaml_path = path if path.is_absolute() else (self.cwd / path).resolve()
+
+        if not yaml_path.exists():
+            return Failure(reason=f"Config file not found: `{yaml_path}`")
+
+        try:
+            with yaml_path.open("r", encoding="utf-8") as f:
+                result = yaml.load(f, Loader=YamlJsonLoader) or {}
+                return Success(result)
+        except yaml.YAMLError as exc:
+            return Failure(reason="Invalid YAML", error=str(exc))
 
     # -----------------------------
     # Load secrets from .env
@@ -167,16 +188,14 @@ class ConfigLoader:
 # TODO check if integrating into config loader makes sense
 
 
-def load_yaml_config(yaml_path: Path) -> Result[JsonReader]:
-    if not yaml_path.exists():
-        return Failure(reason=f"Config file not found: {yaml_path}")
+def merge_config(base: JsonObject, override: JsonObject) -> None:
+    for key, value in override.items():
+        existing = base.get(key)
 
-    try:
-        with yaml_path.open("r", encoding="utf-8") as f:
-            result = yaml.load(f, Loader=YamlJsonLoader) or {}
-            return Success(JsonReader(result))
-    except yaml.YAMLError as exc:
-        return Failure(reason="Invalid YAML", error=exc)
+        if isinstance(existing, dict) and isinstance(value, dict):
+            merge_config(existing, value)
+        else:
+            base[key] = value
 
 
 # ---------------------------------
@@ -206,7 +225,7 @@ def normalize_providers(reader: JsonReader, api_keys: JsonObject) -> Result[dict
                 content["api_key"] = api_key
             config = ProviderConfig.from_config(content)
         except (ParseError, ZoneInfoNotFoundError) as exc:
-            return Failure(reason=f"Could not parse provider '{provider}'", error=exc)
+            return Failure(reason=f"Could not parse provider `{provider}`", error=exc)
 
         providers[provider] = provider_class(config)
 
@@ -243,7 +262,7 @@ def check_series_templates(reader: JsonReader) -> Result[JsonObject]:
             check_template(item_reader)
         return Success(templates)
     except ParseError as exc:
-        return Failure(reason=f"Could not parse series template '{current}'", error=exc)
+        return Failure(reason=f"Could not parse series template `{current}`", error=exc)
 
 
 # -----------------------------
@@ -290,7 +309,7 @@ def normalize_assets_and_series(
             series = cfg_reader.reader_for("series", allow_missing="no")
 
             for code, series_def in series.items():
-                template_reader.context = f"series '{code}'"
+                template_reader.context = f"series `{code}`"
                 input = series_def.get_any()
                 meta = input if isinstance(input, dict) else series_def.get_array(expected_type=str)
                 config_reader = JsonReader(_embed_templates(meta, template_reader, {}))
@@ -300,7 +319,7 @@ def normalize_assets_and_series(
                 series_list.append(series)
 
         except ParseError as exc:
-            return Failure(reason=f"Could not parse asset '{asset_name}'", error=exc.args[0])
+            return Failure(reason=f"Could not parse asset `{asset_name}`", error=exc.args[0])
 
     return Success(BusinessConfig(providers=providers, assets=asset_list, series=series_list))
 
@@ -329,7 +348,7 @@ def normalize_composites(raw_composites: dict) -> Result[dict]:
     try:
         for name, cfg in raw_composites.items():
             tags = {k.lower(): v for k, v in cfg.get("tags", {}).items()}
-            symbol = require(cfg, "symbol", f"composite '{name}'")
+            symbol = require(cfg, "symbol", f"composite `{name}`")
             asset = Asset.create(name=name, symbol=symbol, config={"provider": "composite"}, tags=tags)
             if RESOLUTION in cfg:
                 # validate the resolution by creating a series instance
@@ -338,7 +357,7 @@ def normalize_composites(raw_composites: dict) -> Result[dict]:
             else:
                 resolution = None
             composites[name] = {
-                "expression": require(cfg, "expression", f"composite '{name}'"),
+                "expression": require(cfg, "expression", f"composite `{name}`"),
                 "asset": asset,
                 "resolution": resolution,
             }

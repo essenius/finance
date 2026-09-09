@@ -112,11 +112,13 @@ class Asset:
     effective_metadata: AssetMetadata
     provider_metadata: AssetMetadata | None = None
 
+    isin: str | None = None
+
     # assigned by the backend
     id: int | None = None
 
     def __repr__(self) -> str:
-        return f"Asset(id={self.id}, name={self.name}, symbol={self.symbol}, provider_code={self.provider_code}, metadata={self.effective_metadata})"
+        return f"Asset(id={self.id}, name={self.name}, isin={self.isin}, provider_code={self.provider_code}, metadata={self.effective_metadata})"
 
     @classmethod
     def create(
@@ -129,7 +131,7 @@ class Asset:
         provider_name = reader.require(str, "provider")
         provider = get_provider(provider_name)
         if provider is None:
-            raise ParseError(f"cannot find provider '{provider_name}'")
+            raise ParseError(f"cannot find provider `{provider_name}`")
 
         return cls(
             id=reader.get(int, "id"),
@@ -137,10 +139,12 @@ class Asset:
             symbol=reader.get(str, "symbol", default=name.upper()),
             provider=provider,
             provider_code=reader.require(str, "provider_code"),
+            isin=reader.get(str, "isin"),
             config_metadata=config_meta,
             effective_metadata=config_meta,
         )
 
+    ''' TODO delete
     def differs_from(self, other: Asset) -> bool:
         """
         if this is classified as the same entity (one of the identity checks passed),
@@ -149,9 +153,11 @@ class Asset:
         return (
             self.name != other.name
             or self.symbol != other.symbol
+            or self.isin != other.isin
             or not self.same_semantics(other)
             or self.effective_metadata != other.effective_metadata
         )
+    '''
 
     def same_semantics(self, other: Asset) -> bool:
         """check if two assets are semantically the same (e.g. indicating a rename)"""
@@ -168,6 +174,7 @@ class Asset:
                 or self.symbol != current.symbol
                 or self.provider is not current.provider
                 or self.provider_code != current.provider_code
+                or self.isin != current.isin
             )
             self.effective_metadata = apply_overrides(current.effective_metadata, self.config_metadata)
             self.effective_metadata.apply_defaults()
@@ -251,7 +258,7 @@ class Series:
         return f"Series(id={self.id}, name={self.name}, asset={self.asset.name}, retention={self.retention}, series_type={self.series_type}, interval={self.interval})"
 
     def bootstrap_history_delta(self) -> timedelta:
-        return require_duration(self.bootstrap_history, f"bootstrap history for {self.name}")
+        return require_duration(self.bootstrap_history, f"bootstrap history for `{self.name}`")
 
     def differs_from(self, other: Series) -> bool:
         """
@@ -263,7 +270,7 @@ class Series:
         return self.code != other.code or not self.same_semantics(other)
 
     def interval_delta(self) -> timedelta:
-        return require_duration(self.interval, f"interval for {self.name}")
+        return require_duration(self.interval, f"interval for `{self.name}`")
 
     def is_daily(self) -> bool:
         return not self.is_intraday()
@@ -272,13 +279,13 @@ class Series:
         return self.is_intraday_interval(self.interval_delta())
 
     def publication_offset_delta(self) -> timedelta:
-        return require_duration(self.publication_offset, f"publication offset for {self.name}")
+        return require_duration(self.publication_offset, f"publication offset for `{self.name}`")
 
     def require_id(self) -> int:
         return require(self.id, "series.id")
 
     def retention_delta(self) -> timedelta | None:
-        return parse_duration(self.retention_period, f"retention period for {self.name}")
+        return parse_duration(self.retention_period, f"retention period for `{self.name}`")
 
     def same_semantics(self, other: Series) -> bool:
         """check if two series are semantically the same (e.g. indicating a rename of the code)"""

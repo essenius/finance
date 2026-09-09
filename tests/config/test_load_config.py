@@ -13,20 +13,16 @@ from finance.common.json_utils import JsonObject, JsonReader
 from finance.common.model import Asset, Series
 from finance.common.string_enums import Retention, SeriesType
 from finance.common.types import Unwrap
-from finance.config.loader import (
-    AppConfig,
-    ConfigLoader,
-    check_series_templates,
-    load_business_config,
-    load_yaml_config,
-)
+from finance.config.loader import AppConfig, ConfigLoader, check_series_templates, load_business_config
 from tests.support.types import AssertError
 
 
-def test_load_yaml_config(tmp_path: Path, unwrap: Unwrap[JsonReader]):
+def test_load_yaml_config(tmp_path: Path, unwrap: Unwrap[JsonObject]):
     yaml_file = tmp_path / "config.yaml"
     yaml_file.write_text("providers:\n  yahoo:\n    default_interval: 10m\n")
-    reader: JsonReader = unwrap(load_yaml_config(yaml_file))
+    loader = ConfigLoader(cwd=tmp_path)
+    obj: JsonObject = unwrap(loader.load_yaml_config(yaml_file))
+    reader = JsonReader(obj)
     assert reader.get(str, ["providers", "yahoo", "default_interval"]) == "10m"
 
 
@@ -65,16 +61,19 @@ business:
         exchange: NYSE
       series:
         daily: daily
-
-  composites:
-    spread:
-      symbol: SPREAD
-      expression: "fred_10y_daily - fred_2y_daily"
 """)
 
+    override_file = tmp_path / "config_test.yaml"
+    override_file.write_text("environment:\n  paths:\n    wal:\n      mytestwal.jsonl")
     env_file.write_text("TIMESCALEDB_HOST=y\nTIMESCALEDB_DB=db1\nTIMESCALEDB_PASSWORD=password\n")
 
-    environ = {"TIMESCALEDB_HOST": "x", "TIMESCALEDB_DB": "db2", "TIMESCALEDB_USER": "user", "FRED_API_KEY": "123abc"}
+    environ = {
+        "CONFIG_OVERRIDE_PATH": "config_test.yaml",
+        "TIMESCALEDB_HOST": "x",
+        "TIMESCALEDB_DB": "db2",
+        "TIMESCALEDB_USER": "user",
+        "FRED_API_KEY": "123abc",
+    }
 
     loader = ConfigLoader(cwd=tmp_path, environ=environ)
     result = loader.load()
@@ -118,19 +117,14 @@ business:
     assert series.series_type == SeriesType.CANDLE
     assert series.id is None
 
-    """
-    # composites
-    assert cfg["composites"]["spread"]["expression"] == "fred_10y_daily - fred_2y_daily"
-    assert cfg["composites"]["spread"]["asset"].symbol == "SPREAD"
-    """
-
     backend_config = app_config.timescaledb
     assert backend_config.host == "y"
     assert backend_config.dbname == "db1"
 
+    # override must have kicked in
     wal_path = app_config.paths["wal"]
     assert wal_path.is_absolute()
-    assert wal_path.name == "mywal.jsonl"
+    assert wal_path.name == "mytestwal.jsonl"
 
 
 def test_load_config_missing_file(tmp_path: Path, assert_error: AssertError):
@@ -217,4 +211,4 @@ def test_load_check_series_templates_maximal(unwrap: Unwrap[JsonObject]):
 def test_load_business_config_template_error(assert_error: AssertError):
     reader = JsonReader({"providers": None, "assets": None, "templates": {"t1": {"interval": "qx"}}})
     result = load_business_config(reader, {})
-    assert_error(result, "Could not parse series template 't1'", "Invalid duration 'qx' in interval")
+    assert_error(result, "Could not parse series template `t1`", "Invalid duration `qx` in interval")

@@ -70,7 +70,7 @@ def test_normalize_assets_missing_required_field(
     )
 
     result = normalize_assets_and_series(reader, JsonReader({}), make_providers())
-    assert_error(result, "Could not parse asset 'eurusd'", "['provider', 'name']: Missing required key `provider`")
+    assert_error(result, "Could not parse asset `eurusd`", "['provider', 'name']: Missing required key `provider`")
 
 
 def test_normalize_assets_malformed_provider(
@@ -87,7 +87,7 @@ def test_normalize_assets_malformed_provider(
 
     result = normalize_assets_and_series(reader, JsonReader({}), make_providers())
     assert_error(
-        result, "Could not parse asset 'eurusd'", "['provider', 'name']: type `str` is not a container (level: 1)"
+        result, "Could not parse asset `eurusd`", "['provider', 'name']: type `str` is not a container (level: 1)"
     )
 
 
@@ -107,7 +107,7 @@ def test_normalize_assets_missing_interval(
         }
     )
     result = normalize_assets_and_series(reader, JsonReader({}), make_providers())
-    assert_error(result, "Could not parse asset 'spx'", "['interval']: Missing required key `interval`")
+    assert_error(result, "Could not parse asset `spx`", "['interval']: Missing required key `interval`")
 
 
 def test_normalize_assets_invalid_retention(
@@ -127,7 +127,7 @@ def test_normalize_assets_invalid_retention(
     )
     result = normalize_assets_and_series(reader, JsonReader({}), make_providers())
     assert_error(
-        result, "Could not parse asset 'spx'", "Invalid Retention: 'bogus'. Allowed: ['short_lived', 'long_lived']"
+        result, "Could not parse asset `spx`", "Invalid Retention: `bogus`. Allowed: ['short_lived', 'long_lived']"
     )
 
 
@@ -174,4 +174,4 @@ def test_normalize_asset_missing_template(
         }
     )
     result = normalize_assets_and_series(reader, JsonReader({}), make_providers())
-    assert_error(result, "Could not parse asset 'spx'", "['template1']: Missing required key `template1`")
+    assert_error(result, "Could not parse asset `spx`", "['template1']: Missing required key `template1`")

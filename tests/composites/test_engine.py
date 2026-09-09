@@ -215,7 +215,7 @@ def test_missing_dependency(unwrap, assert_error, state):
 
     fr = fail[0]
     assert fr.measurement == "C"
-    assert_error(fr, "failed", "name 'B' is not defined")
+    assert_error(fr, "failed", "name `B` is not defined")
 
     # No composite should be written to state
     assert state.data.get("C_daily") is None

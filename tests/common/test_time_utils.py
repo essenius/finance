@@ -48,13 +48,13 @@ def test_parse_duration_valid():
 def test_parse_duration_rejects_garbage(text):
     with pytest.raises(ParseError) as exc_info:
         parse_duration(text, "test")
-    assert f"Invalid duration '{text}' in test" in str(exc_info.value)
+    assert f"Invalid duration `{text}` in test" in str(exc_info.value)
 
 
 def test_parse_duration_accepts_no_context():
     with pytest.raises(ParseError) as exc_info:
         parse_duration("qx")
-    assert str(exc_info.value) == "Invalid duration 'qx'"
+    assert str(exc_info.value) == "Invalid duration `qx`"
 
 
 def test_validate_duration():
@@ -62,7 +62,7 @@ def test_validate_duration():
     assert validate_duration(None, "test") is None
     with pytest.raises(ParseError) as exc_info:
         validate_duration("qx", "test")
-    assert str(exc_info.value) == "Invalid duration 'qx' in test"
+    assert str(exc_info.value) == "Invalid duration `qx` in test"
 
 
 def test_normalize_db_time_datetime(fixed_now: Factory[datetime]):
@@ -90,7 +90,7 @@ def test_parse_weekday():
     assert parse_weekday("sat") == 5
     with pytest.raises(ParseError) as exc_info:
         parse_weekday("bogus")
-    assert str(exc_info.value) == "Cannot understand day 'bogus'."
+    assert str(exc_info.value) == "Cannot understand day `bogus`."
 
 
 def test_parse_write_time():
@@ -115,7 +115,7 @@ def test_parse_write_time():
 
     with pytest.raises(ParseError) as exc_info:
         parse_time("bogus")
-    assert str(exc_info.value) == "Cannot understand time 'bogus'."
+    assert str(exc_info.value) == "Cannot understand time `bogus`."
 
 
 def test_snap_to():
@@ -151,7 +151,7 @@ def test_parse_write_date():
     assert parse_date(d_str) == d
     with pytest.raises(ParseError) as exc_info:
         parse_date("bogus")
-    assert str(exc_info.value) == "Cannot understand date 'bogus'."
+    assert str(exc_info.value) == "Cannot understand date `bogus`."
 
 
 def test_parse_write_datetime():
@@ -161,7 +161,7 @@ def test_parse_write_datetime():
     assert parse_datetime(dt_str) == dt
     with pytest.raises(ParseError) as exc_info:
         parse_datetime("bogus")
-    assert str(exc_info.value) == "Cannot understand datetime 'bogus'."
+    assert str(exc_info.value) == "Cannot understand datetime `bogus`."
 
 
 def test_timestamp():

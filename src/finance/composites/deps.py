@@ -20,7 +20,7 @@ def extract_dependencies(expr: str, candidates: Iterable[str]) -> Result[list[st
     try:
         tree = ast.parse(expr, mode="eval")
     except SyntaxError as e:
-        return Result.fail(f"Syntax error in composite expression '{expr}'", e, meta=context)
+        return Result.fail(f"Syntax error in composite expression `{expr}`", e, meta=context)
 
     names = set()
 

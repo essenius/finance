@@ -11,7 +11,7 @@ from finance.common.types import ParseError
 def test_stringenum_validate():
     with pytest.raises(ParseError) as exc_info:
         Retention.require("bogus")
-        assert "Invalid Retention: 'bogus'. Allowed: short_lived, long_lived" in str(exc_info)
+        assert "Invalid Retention: `bogus`. Allowed: short_lived, long_lived" in str(exc_info)
 
 
 def test_stringenum_contains():

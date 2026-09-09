@@ -43,10 +43,10 @@ def test_normalize_providers_basic(unwrap: Unwrap[dict[str, ProviderProtocol]]):
 def test_normalize_providers_wrong_timeout(assert_error: AssertError):
     fred: JsonObject = {"timeout": "bogus"}
     providers = normalize_providers(JsonReader({"fred": fred}), {})
-    assert_error(providers, "Could not parse provider 'fred'", "Invalid duration 'bogus' in timeout")
+    assert_error(providers, "Could not parse provider `fred`", "Invalid duration `bogus` in timeout")
 
 
 def test_normalize_providers_no_required_api_key(assert_error: AssertError):
     fred: JsonObject = {"api_key_required": True}
     providers = normalize_providers(JsonReader({"fred": fred}), {})
-    assert_error(providers, "Could not parse provider 'fred'", "Required API key not found in FRED_API_KEY")
+    assert_error(providers, "Could not parse provider `fred`", "Required API key not found in FRED_API_KEY")

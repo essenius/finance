@@ -94,7 +94,7 @@ def test_wal_dequeue_corrupt_lines(tmp_path: Path):
     wal = JsonlWAL(wal_path)
     with pytest.raises(WALCorruptionError) as wce:
         wal.dequeue_multiple(1)
-    assert 'Invalid WAL entry: {"bad":' in str(wce.value)
+    assert 'Invalid WAL entry: `{"bad":`' in str(wce.value)
 
 
 def test_iter_entries_skips_empty_lines(tmp_path: Path):

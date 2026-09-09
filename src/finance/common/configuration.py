@@ -38,7 +38,7 @@ class ProviderConfig:
     api_key: str | None = None
 
     def timeout_delta(self) -> timedelta:
-        return require_duration(self.timeout, f"timeout for {self.name}")
+        return require_duration(self.timeout, f"timeout for `{self.name}`")
 
     @classmethod
     def from_config(cls, config: JsonObject) -> ProviderConfig:
@@ -90,7 +90,7 @@ class ProviderConfig:
         limits: dict[timedelta, timedelta | None] = {}
         for key, limit in config.items():
             limit_key = timedelta(0) if key == "default" else parse_duration(key, "key")
-            limit_value = None if limit is None else parse_duration(str(limit), f"theshold of key '{key}'")
+            limit_value = None if limit is None else parse_duration(str(limit), f"theshold of key `{key}`")
             limits[limit_key] = limit_value
         return limits
 
@@ -100,8 +100,8 @@ class ProviderConfig:
         for key, sweep_config in config.items():
             sweep_key = timedelta(0) if key == "default" else parse_duration(key, "key")
             if not isinstance(sweep_config, dict):
-                raise ParseError(f"value for sweep table entry '{key}' must be a section")
-            sweep = SweepConfig.from_config(sweep_config, f"sweep of key '{key}'")
+                raise ParseError(f"value for sweep table entry `{key}` must be a section")
+            sweep = SweepConfig.from_config(sweep_config, f"sweep of key `{key}`")
             sweeps[sweep_key] = sweep
         return sweeps
 

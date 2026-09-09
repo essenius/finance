@@ -44,7 +44,7 @@ class EcbProvider(MarketDataProvider):
         code = series.asset.provider_code
         url = self._make_url(code)
         if url is None:
-            return Failure(reason=f"Could not split provider code '{code}' into base_quote for url")
+            return Failure(reason=f"Could not split provider code `{code}` into base_quote for url")
 
         response = self.session.get(url, params=params, timeout=self.config.timeout_delta().seconds)
         response.raise_for_status()

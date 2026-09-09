@@ -58,7 +58,7 @@ def parse_duration(text: str | None, context: str | None = None) -> timedelta | 
     match = re.fullmatch(r"(\d+)([smhdwy])", text)
     if not match:
         context_string = f" in {context}" if context else ""
-        raise ParseError(f"Invalid duration '{text}'{context_string}")
+        raise ParseError(f"Invalid duration `{text}`{context_string}")
     value, unit = match.groups()
     return timedelta(seconds=int(value) * DURATION_UNITS[unit])
 
@@ -67,14 +67,14 @@ def parse_date(s: str | None) -> date | None:
     try:
         return date.fromisoformat(s) if s is not None else None
     except Exception:
-        raise ParseError(f"Cannot understand date '{s}'.") from None
+        raise ParseError(f"Cannot understand date `{s}`.") from None
 
 
 def parse_datetime(s: str | None) -> datetime | None:
     try:
         return datetime.fromisoformat(s) if s is not None else None
     except Exception:
-        raise ParseError(f"Cannot understand datetime '{s}'.") from None
+        raise ParseError(f"Cannot understand datetime `{s}`.") from None
 
 
 def parse_time(value: str | None) -> time | None:
@@ -95,7 +95,7 @@ def parse_time(value: str | None) -> time | None:
     try:
         return time.fromisoformat(value)
     except Exception:
-        raise ParseError(f"Cannot understand time '{value}'.") from None
+        raise ParseError(f"Cannot understand time `{value}`.") from None
 
 
 def parse_weekday(name: str | None) -> int | None:
@@ -103,7 +103,7 @@ def parse_weekday(name: str | None) -> int | None:
         return None
     key = name.lower()
     if key not in WEEKDAY_ABBR_MAP:
-        raise ParseError(f"Cannot understand day '{key}'.")
+        raise ParseError(f"Cannot understand day `{key}`.")
     return WEEKDAY_ABBR_MAP[key]
 
 

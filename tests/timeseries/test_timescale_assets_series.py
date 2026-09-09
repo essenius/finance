@@ -49,6 +49,7 @@ def set_read_asset_description(cursor: MagicMock) -> None:
         SimpleNamespace(name="symbol"),
         SimpleNamespace(name="provider"),
         SimpleNamespace(name="provider_code"),
+        SimpleNamespace(name="isin"),
         SimpleNamespace(name="long_name"),
         SimpleNamespace(name="short_name"),
         SimpleNamespace(name="instrument"),
@@ -171,7 +172,7 @@ def test_store_asset_error_propagates(
     sql.execute_write = MagicMock(return_value=Failure(reason="boom"))
 
     result = backend.store_asset(asset)
-    assert_error(result, "boom", None)
+    assert_error(result, "Could not write asset `eur_usd`", None)
 
 
 # ------------------------------------------------------------
@@ -241,7 +242,7 @@ def test_store_series_error_execute(
     sql.execute_write = MagicMock(return_value=Failure(reason="fail"))
 
     result = backend.store_series(series)
-    assert_error(result, "fail", None)
+    assert_error(result, "Could not write series `eur_usd:dummy`", None)
 
 
 def test_store_series_error_no_asset_id(
@@ -272,6 +273,7 @@ def test_get_assets_returns_asset_list(make_backend: Creator[FakeBackend]):
             "AAPL",
             "yahoo",
             "AAPL",
+            "US0378331005",
             "Apple Inc.",
             "Apple Incorporated",
             "stock",
@@ -293,6 +295,7 @@ def test_get_assets_returns_asset_list(make_backend: Creator[FakeBackend]):
             "MSFT",
             "yahoo",
             "MSFT",
+            "US5949181045",
             "Microsoft",
             "Microsoft Corporation",
             "stock",
@@ -320,6 +323,7 @@ def test_get_assets_returns_asset_list(make_backend: Creator[FakeBackend]):
     assert len(assets) == 2
     assert assets[0].symbol == "AAPL"
     assert assets[1].symbol == "MSFT"
+    assert assets[0].isin == "US0378331005"
     meta0 = assets[0].effective_metadata
     assert meta0 is not None
     assert meta0.timezone is not None
@@ -339,14 +343,16 @@ def test_get_assets_db_error(assert_error: AssertError, make_backend: Creator[Fa
 
 def test_get_assets_missing_provider(assert_error: AssertError, make_backend: Creator[FakeBackend]):
     backend, cursor = make_backend().with_cursor()
-    rows = [(2, "X", "X", "foo", "X", "", "", "s", "EQ", "US", "N", "$", "s", "UTC", None, "mon", "fri", "min", "max")]
+    rows = [
+        (2, "X", "X", "foo", "X", "I", "", "", "s", "EQ", "US", "N", "$", "s", "UTC", None, "mon", "fri", "min", "max")
+    ]
     set_read_asset_description(cursor)
     cursor.fetchall.return_value = rows
 
     result = backend.get_assets()
     result = backend.get_assets()
 
-    assert_error(result, "get_assets could not load asset 'X'", "cannot find provider 'foo'")
+    assert_error(result, "get_assets could not load asset `X`", "cannot find provider `foo`")
 
 
 # ------------------------------------------------------------
@@ -427,7 +433,7 @@ def test_get_series_error_no_id(assert_error: AssertError, make_backend: Creator
 
     result = backend.get_series(get_asset)
     assert_error(
-        result, reason="get_series could not load series with ID 'None'", error="['id']: Missing required key `id`"
+        result, reason="get_series could not load series with ID `None`", error="['id']: Missing required key `id`"
     )
 
 
@@ -447,11 +453,6 @@ def test_get_series_skip_missing_asset(make_backend: Creator[FakeBackend]):
 
     assert result.ok is True
     assert result.payload == []
-
-
-# CO:    assert_error(
-# CO:        result, reason="get_series could not load series with ID '10'", error="could not find asset with ID '1'"
-# CO:    )
 
 
 def test_save_sweep(make_backend: Creator[FakeBackend]):

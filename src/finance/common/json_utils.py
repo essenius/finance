@@ -230,4 +230,4 @@ class JsonReader:
         if expected_type is float and type(value) is int:
             return cast(T, float(value))
 
-        raise self._error(f"'{value}' must be of type {expected_type.__name__}", subject=path)
+        raise self._error(f"`{value}` must be of type {expected_type.__name__}", subject=path)

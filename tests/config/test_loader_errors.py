@@ -6,10 +6,15 @@
 from pathlib import Path
 from unittest.mock import patch
 
-from finance.config.loader import ConfigLoader, load_yaml_config
+from finance.config.loader import ConfigLoader
 from tests.support.types import AssertError
 
 COMPLETE_TIMESCALE_CONFIG = "TIMESCALEDB_HOST=x\nTIMESCALEDB_DB=y\nTIMESCALEDB_USER=u\nTIMESCALEDB_PASSWORD=p\n"
+
+
+# ---------------------------------------------------------------------------
+# load_yaml_config
+# ---------------------------------------------------------------------------
 
 
 def test_load_config_incomplete_timescaledb(tmp_path: Path, assert_error: AssertError):
@@ -27,16 +32,24 @@ def test_load_config_incomplete_timescaledb(tmp_path: Path, assert_error: Assert
     )
 
 
-# ---------------------------------------------------------------------------
-# load_yaml_config
-# ---------------------------------------------------------------------------
-
-
 def test_load_yaml_config_invalid_yaml(tmp_path: Path, assert_error: AssertError):
+
+    bad_yaml = tmp_path / "bad.yaml"
+    bad_yaml.write_text("this: [unclosed")
+    loader = ConfigLoader(cwd=tmp_path)
+    assert_error(loader.load_yaml_config(bad_yaml), "Invalid YAML", "while parsing a flow sequence")
+
+
+def test_load_yaml_config_invalid_override(tmp_path: Path, assert_error: AssertError):
+    yaml_file = tmp_path / "config.yaml"
+    yaml_file.write_text("")
     bad_yaml = tmp_path / "bad.yaml"
     bad_yaml.write_text("this: [unclosed")
 
-    assert_error(load_yaml_config(bad_yaml), "Invalid YAML", "while parsing a flow sequence")
+    env_file = tmp_path / ".env"
+    env_file.write_text("CONFIG_PATH=config.yaml\nCONFIG_OVERRIDE_PATH=bad.yaml\n")
+    loader = ConfigLoader(cwd=tmp_path)
+    assert_error(loader.load(), "Invalid YAML", "while parsing a flow sequence")
 
 
 # ---------------------------------------------------------------------------
@@ -61,7 +74,7 @@ business:
     loader = ConfigLoader(cwd=tmp_path)
     with patch.dict("os.environ", {}, clear=True):
         result = loader.load()
-    assert_error(result, "Could not parse asset 'spx'", "['provider', 'name']: Missing required key `provider`")
+    assert_error(result, "Could not parse asset `spx`", "['provider', 'name']: Missing required key `provider`")
 
 
 # ---------------------------------------------------------------------------
@@ -84,4 +97,4 @@ business:
     loader = ConfigLoader(cwd=tmp_path)
     with patch.dict("os.environ", {}, clear=True):
         result = loader.load()
-    assert_error(result, "Could not parse provider 'ecb'", "Invalid duration 'qx' in timeout")
+    assert_error(result, "Could not parse provider `ecb`", "Invalid duration `qx` in timeout")

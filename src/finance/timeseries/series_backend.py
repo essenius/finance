@@ -91,7 +91,7 @@ class SeriesBackend:
 
     def get_assets(self) -> Result[list[Asset]]:
         query = """
-            SELECT id, name, symbol, provider, provider_code, long_name, short_name,
+            SELECT id, name, symbol, provider, provider_code, isin, long_name, short_name,
               instrument, asset_class, geo_exposure, exchange, currency, unit, first_available_date::text,
               timezone, week_start, week_end, market_open::text, market_close::text
             FROM asset ORDER BY id;
@@ -113,7 +113,7 @@ class SeriesBackend:
                 assets.append(asset)
             return Success(assets)
         except ParseError as pe:
-            return Failure(f"get_assets could not load asset '{asset_name}'", str(pe))
+            return Failure(f"get_assets could not load asset `{asset_name}`", str(pe))
 
     def get_cold_chunk_size(self) -> Result[int]:
         query = "SELECT num_chunks FROM timescaledb_information.hypertables WHERE hypertable_name ='series_data_cold';"
@@ -156,7 +156,7 @@ class SeriesBackend:
             return Success(series_list)
 
         except ParseError as pe:
-            return Failure(reason=f"get_series could not load series with ID '{series_id}'", error=str(pe))
+            return Failure(reason=f"get_series could not load series with ID `{series_id}`", error=str(pe))
 
     def get_series_states(self) -> Result[dict[int, SeriesState]]:
 
@@ -233,13 +233,15 @@ class SeriesBackend:
 
     def store_asset(self, asset: Asset) -> Result[Asset]:
         if asset.effective_metadata is None:
-            return Failure(reason="Store asset failed", error=f"No effective metadata to store asset '{asset.name}'")
+            # Safety net: not possible unless there was a programming error
+            return Failure(reason="Store asset failed", error=f"No effective metadata to store asset `{asset.name}`")
         meta = asset.effective_metadata
         base_fields = (
             asset.name,
             asset.symbol,
             asset.provider.name,
             asset.provider_code,
+            asset.isin,
             meta.long_name,
             meta.short_name,
             meta.instrument,
@@ -258,17 +260,17 @@ class SeriesBackend:
 
         if asset.id is None:
             sql_query = """
-                    INSERT INTO asset (name, symbol, provider, provider_code,
+                    INSERT INTO asset (name, symbol, provider, provider_code, isin,
                         long_name, short_name, instrument, asset_class, geo_exposure, exchange, currency, unit,
                         first_available_date, timezone, week_start, week_end, market_open, market_close)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                     RETURNING id;
                     """
             params = base_fields
         else:
             sql_query = """
                 UPDATE asset
-                SET name=%s, symbol=%s, provider=%s, provider_code=%s, long_name=%s, short_name=%s,
+                SET name=%s, symbol=%s, provider=%s, provider_code=%s, isin=%s, long_name=%s, short_name=%s,
                     instrument=%s, asset_class=%s, geo_exposure=%s, exchange=%s, currency=%s, unit=%s,
                     first_available_date=%s, timezone=%s, week_start=%s, week_end=%s, market_open=%s, market_close=%s
                 WHERE id=%s
@@ -278,7 +280,7 @@ class SeriesBackend:
 
         result = self._sql_client.execute_write(sql_query, params)
         if result.ok is False:
-            return result
+            return Failure(f"Could not write asset `{asset.name}`", result.error)
         return Success(asset if asset.id is not None else asset.with_id(result.payload))
 
     def store_series(self, series: Series) -> Result[Series]:
@@ -318,7 +320,7 @@ class SeriesBackend:
 
         result = self._sql_client.execute_write(sql_query, params, context="store series")
         if result.ok is False:
-            return result
+            return Failure(f"Could not write series `{series.name}`", result.error)
         return Success(series if series.id is not None else series.with_id(result.payload))
 
     # ----------------

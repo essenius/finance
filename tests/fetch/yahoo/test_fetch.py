@@ -36,7 +36,7 @@ def test_fetch_impl_missing_chart(assert_error: AssertError, yahoo_provider: Fac
 
     result = fake.provider._fetch_impl(url="http://x", params={})
 
-    assert_error(result, "Could not interpret fetch response", "no 'chart' in response")
+    assert_error(result, "Could not interpret fetch response", "no `chart` in response")
 
 
 def test_fetch_impl_empty_result(assert_error: AssertError, yahoo_provider: Factory[YahooFakeSession]):
@@ -189,7 +189,7 @@ def test_impl_http_error(
     ("meta", "reason"),
     [
         ({}, "missing exchangeTimezoneName in meta"),
-        ({"exchangeTimezoneName": "Not/A_Timezone"}, "invalid exchange timezone 'Not/A_Timezone'"),
+        ({"exchangeTimezoneName": "Not/A_Timezone"}, "invalid exchange timezone `Not/A_Timezone`"),
     ],
 )
 def test_fetch_missing_exchange_timezone(
@@ -224,7 +224,7 @@ def test_fetch_missing_exchange_timezone(
     )
     result = fake.provider.fetch(series, start=now, end=now, is_incremental=False)
 
-    assert_error(result, "Could not parse series 'AAPL:dummy' in Yahoo fetch result", reason)
+    assert_error(result, "Could not parse series `AAPL:dummy` in Yahoo fetch result", reason)
 
 
 def test_fetch_missing_quote(
@@ -259,7 +259,7 @@ def test_fetch_missing_quote(
 
     assert_error(
         result,
-        "Could not parse series 'AAPL:dummy' in Yahoo fetch result",
+        "Could not parse series `AAPL:dummy` in Yahoo fetch result",
         "['indicators', 'quote', 0]: Missing required key `quote` (level: 1)",
     )
 

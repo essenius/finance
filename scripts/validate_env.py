@@ -54,10 +54,10 @@ def main() -> int:
 
     for name in sorted(mandatory):
         if name not in actual or not actual[name]:
-            print(f"ERROR: Mandatory setting '{name}' is missing")
+            print(f"ERROR: Mandatory setting `{name}` is missing")
             errors = True
         elif actual[name] == example[name]:
-            print(f"WARNING: Mandatory setting '{name}' still has its example value")
+            print(f"WARNING: Mandatory setting `{name}` still has its example value")
             warnings = True
     if not errors and not warnings:
         print("Validation of .env completed successfully")

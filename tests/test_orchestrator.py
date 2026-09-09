@@ -123,7 +123,7 @@ def test_prepare_loads_state_and_reconciles_backend(
     registry.merge_and_find_new_assets.assert_called_once_with([asset])
 
     backend.store_asset.assert_called_once_with(asset)
-    registry.register_stored_asset.assert_called_once_with(stored_asset)
+    registry.register_stored_asset.assert_called_once_with(asset)
 
     backend.get_series.assert_called_once_with(registry.get_asset)
     registry.reconcile_series.assert_called_once_with([series])
@@ -150,7 +150,7 @@ def test_prepare_does_not_persist_when_nothing_changed(
 
     backend.get_cold_chunk_size.return_value = Failure(reason="boom")
     orchestrator._prepare()
-    assert "Could not determine chunk count for hypertable 'series_table_cold'." in json_caplog.text
+    assert "Could not determine chunk count for hypertable `series_table_cold`." in json_caplog.text
 
     backend.store_asset.assert_not_called()
     backend.store_series.assert_not_called()

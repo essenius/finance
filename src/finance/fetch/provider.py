@@ -65,7 +65,9 @@ class MarketDataProvider:
         try:
             return fn()
         except Exception as exc:
-            return Failure(reason=f"Exception during {self.name} fetch of {series.name} ({series.id})", error=str(exc))
+            return Failure(
+                reason=f"Exception during {self.name} fetch of `{series.name}` (id={series.id})", error=str(exc)
+            )
 
     def sweep_config(self, interval: timedelta) -> SweepConfig:
         return self.config.get_sweep(interval)

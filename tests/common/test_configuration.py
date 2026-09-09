@@ -28,7 +28,7 @@ def test_provider_config_wrong_sweep():
                 "sweep": {"default": 3},
             }
         )
-    assert pe.value.args[0] == "value for sweep table entry 'default' must be a section"
+    assert pe.value.args[0] == "value for sweep table entry `default` must be a section"
 
 
 def test_provider_config_history_limits_and_overlap():

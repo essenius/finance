@@ -1,5 +1,7 @@
 # Copyright 2026 Rik Essenius
 # Licensed under the Apache License, Version 2.0. See the LICENSE file for details.
-# File: src/finance/__init__.py
+# File: config.local.test.yaml
 
-__version__ = "0.2.55"
+environment:
+  timescaledb:
+    db: test

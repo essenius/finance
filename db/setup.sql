@@ -179,6 +179,7 @@ CREATE TABLE IF NOT EXISTS asset (
     symbol        TEXT NOT NULL,
     provider      TEXT NOT NULL,
     provider_code TEXT NOT NULL,
+    isin          TEXT,
 
     -- metadata
 
@@ -209,8 +210,8 @@ CREATE TABLE IF NOT EXISTS asset (
 );
 
 CREATE INDEX IF NOT EXISTS asset_symbol_idx ON asset (symbol);
-CREATE INDEX IF NOT EXISTS asset_name_idx ON asset (name);
 CREATE INDEX IF NOT EXISTS asset_provider_idx ON asset (provider);
+CREATE INDEX IF NOT EXISTS asset_isin_idx ON asset (isin);
 
 -- ============================
 -- Series table
@@ -252,6 +253,7 @@ SELECT
     s.asset_id,
     a.name AS asset_name,
     a.name || ':' || s.code AS series_name,
+    a.isin,
     a.provider,
     a.provider_code,
     a.symbol,
@@ -282,6 +284,10 @@ CREATE TABLE IF NOT EXISTS series_state (
     next_sweep TIMESTAMPTZ NOT NULL,
     sweep_start TIMESTAMPTZ NOT NULL
 );
+
+-- ============================
+-- Queries
+-- ============================
 
 -- helper query for Grafana intraday charts
 

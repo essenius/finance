@@ -26,7 +26,7 @@ class FetchController:
             series_id = series.require_id()
             state_entry = state.get_series_state(series_id)
             logger.debug(
-                f"Fetching series: {series.name} ({series.id}). Stored range: {state_entry.first_point} - {state_entry.last_point}"
+                f"Fetching series `{series.name}` (id={series.id}). Stored range: {state_entry.first_point} - {state_entry.last_point}"
             )
             range = self._get_fetch_range(series=series, state=state_entry)
             if range is None:

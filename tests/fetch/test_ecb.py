@@ -101,7 +101,7 @@ def test_ecb_fetch_wrong_provider_code(
     start = make_identity(datetime(2026, 5, 8, tzinfo=ZoneInfo("Europe/Berlin")))
     end = make_identity(datetime(2026, 5, 8, 23, 59, 59, tzinfo=ZoneInfo("Europe/Berlin")))
     result = fake.provider.fetch(series, start=start, end=end, is_incremental=True)
-    assert_error(result, reason=f"Could not split provider code '{provider_code}' into base_quote")
+    assert_error(result, reason=f"Could not split provider code `{provider_code}` into base_quote")
 
 
 def test_ecb_fetch_non_200(
@@ -118,7 +118,7 @@ def test_ecb_fetch_non_200(
     asset = make_asset(provider_code="EUR_USD")
     series = make_series(asset)
     result = fake.provider.fetch(series, start=now, end=now, is_incremental=False)
-    assert_error(result, reason="Exception during ecb fetch of eur_usd:dummy", error="Internal Server Error")
+    assert_error(result, reason="Exception during ecb fetch of `eur_usd:dummy`", error="Internal Server Error")
 
 
 MALFORMED_CASES = [

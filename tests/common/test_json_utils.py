@@ -34,7 +34,7 @@ def test_json_reader_get():
 
     with pytest.raises(ParseError) as ve:
         sub_reader.get(int, "bool", default=10)
-    assert ve.value.args[0] == "test:bool: 'True' must be of type int", "invalid type for get"
+    assert ve.value.args[0] == "test:bool: `True` must be of type int", "invalid type for get"
 
 
 def test_json_reader_require():
@@ -43,7 +43,7 @@ def test_json_reader_require():
 
     with pytest.raises(ParseError) as ve:
         reader.require(int, "str")
-    assert ve.value.args[0] == "str: 'test' must be of type int"
+    assert ve.value.args[0] == "str: `test` must be of type int"
 
     with pytest.raises(ParseError) as ve:
         reader.require(int, "bogus")
@@ -95,7 +95,7 @@ def test_json_reader_get_array():
     assert array5 == []
     with pytest.raises(ParseError) as ve:
         reader.get_array("wrong_ints", expected_type=int)
-    assert ve.value.args[0] == "wrong_ints: 'a' must be of type int"
+    assert ve.value.args[0] == "wrong_ints: `a` must be of type int"
 
     with pytest.raises(ParseError) as ve:
         reader.get_array(["list", 0])
@@ -115,7 +115,7 @@ def test_json_reader_get_nullable_array():
 
     with pytest.raises(ParseError) as ve:
         reader.get_nullable_array("wrong_ints", expected_type=int)
-    assert ve.value.args[0] == "wrong_ints: 'a' must be of type int"
+    assert ve.value.args[0] == "wrong_ints: `a` must be of type int"
 
 
 def test_json_reader_get_path():

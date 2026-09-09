@@ -33,7 +33,7 @@ class YahooProvider(MarketDataProvider):
     def fetch(self, series: Series, start: CandleIdentity, end: CandleIdentity, is_incremental: bool) -> FetchResult:
 
         def fetch_failure(error: str) -> Failure:
-            return Failure(f"Could not parse series '{series.name}' in Yahoo fetch result", error=error)
+            return Failure(f"Could not parse series `{series.name}` in Yahoo fetch result", error=error)
 
         start_moment = start.value
         end_moment = end.end_moment()
@@ -188,7 +188,7 @@ class YahooProvider(MarketDataProvider):
         try:
             timezone = ZoneInfo(timezone_name)
         except Exception as e:
-            return Failure(reason=f"invalid exchange timezone '{timezone_name}': {e}")
+            return Failure(reason=f"invalid exchange timezone `{timezone_name}`: {e}")
 
         first_trade_timestamp = meta_reader.get(int, "firstTradeDate", default=0)
         first_available_date = date_from_timestamp(first_trade_timestamp, timezone)
@@ -239,7 +239,7 @@ class YahooProvider(MarketDataProvider):
 
         try:
             if reader.is_empty():
-                return fail("no 'chart' in response")
+                return fail("no `chart` in response")
             error_object = reader.get_object("error", allow_missing="yes")
             if error_object:
                 return fail(str(error_object))

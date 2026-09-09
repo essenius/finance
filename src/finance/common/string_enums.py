@@ -24,7 +24,7 @@ class StringEnum(StrEnum):
         try:
             return cls(value)
         except ValueError:
-            raise ParseError(f"Invalid {cls.__name__}: {value!r}. Allowed: {cls.values()}") from None
+            raise ParseError(f"Invalid {cls.__name__}: `{value}`. Allowed: {cls.values()}") from None
 
 
 class Candle(StringEnum):

@@ -97,4 +97,4 @@ class JsonlWAL(WAL):
             data = json.loads(stripped)
             return SeriesPoint.from_dict(data)
         except Exception as exc:
-            raise WALCorruptionError(f"Invalid WAL entry: {stripped}") from exc
+            raise WALCorruptionError(f"Invalid WAL entry: `{stripped}`") from exc

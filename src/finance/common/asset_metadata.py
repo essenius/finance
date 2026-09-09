@@ -50,7 +50,7 @@ class AssetMetadata:
             try:
                 timezone = ZoneInfo(raw_timezone)
             except ZoneInfoNotFoundError:
-                raise ParseError(f"Cannot understand timezone '{raw_timezone}'.") from None
+                raise ParseError(f"Cannot understand timezone `{raw_timezone}`.") from None
 
         week_start = reader.get(str, "week_start")
         # check and raise error if filled and wrong, but keep string representation

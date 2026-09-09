@@ -296,7 +296,6 @@ def test_fetch_real_fixture_5m_eliminates_last_and_fills_metadata(
     assert metadata.long_name is None
     assert metadata.instrument == "FUTURE"
     assert metadata.geo_exposure is None
-    assert metadata.exchange == "CMX"
     assert metadata.currency == "USD"
     assert metadata.unit is None
     assert metadata.first_available_date == date(year=2000, month=8, day=30)

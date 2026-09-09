@@ -101,6 +101,12 @@ business:
       market_open: 15:55
       market_close: 16:05
 
+    tdg:
+      exchange: TDG
+
+    nyq: # NYSE
+      exchange: NYQ
+
   assets:
 
     # -------------------------
@@ -138,7 +144,7 @@ business:
       currency: USD
       unit: ratio
       series:
-        daily: [daily, value, ecb]
+        daily: [daily, value]
 
     # -------------------------
     # COMMODITIES
@@ -189,8 +195,8 @@ business:
       geo_exposure: WORLD
       unit: share
       series:
-        intraday: intraday
-        daily: daily
+        intraday: [intraday, nyq]
+        daily: [daily, nyq]
 
     # -------------------------
     # ETFs / ETCs
@@ -217,8 +223,8 @@ business:
       asset_class: EQUITY
       unit: share
       series:
-        intraday: intraday
-        daily: daily
+        intraday: [intraday, tdg]
+        daily: [daily, tdg]
 
     # -------------------------
     # INDEXES

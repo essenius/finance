@@ -44,7 +44,6 @@ def test_asset_create_with_id_differs(make_providers: Creator[dict[str, Provider
         long_name=None,
         short_name="spx",
         instrument=None,
-        exchange=None,
         geo_exposure=None,
         currency=None,
         unit=None,
@@ -84,6 +83,7 @@ def test_series_create_with_id_differs(make_asset: Creator[Asset]):
         "code": "dummy",
         "symbol": "SPX",
         "series_type": "candle",
+        "exchange": "TDG",
         "interval": "1d",
         "bootstrap_history": "10y",
         "retention": "long_lived",
@@ -91,6 +91,7 @@ def test_series_create_with_id_differs(make_asset: Creator[Asset]):
     series = Series.create(asset=asset, config=config)
     assert series.id is None
     assert series.code == "dummy"
+    assert series.exchange == "TDG"
     assert series.name == "spx:dummy"
     assert series.asset is asset
     assert series.retention == Retention.LONG_LIVED
@@ -106,7 +107,7 @@ def test_series_create_with_id_differs(make_asset: Creator[Asset]):
     series2 = series.with_id(10)
     assert (
         f"{series2}"
-        == "Series(id=10, name=spx:dummy, asset=spx, retention=long_lived, series_type=candle, interval=1d)"
+        == "Series(id=10, name=spx:dummy, asset=spx, exchange=TDG, retention=long_lived, series_type=candle, interval=1d)"
     )
 
     # differs from only looks at metadata, not at id, name
@@ -130,6 +131,7 @@ def test_series_create_with_defaults_daily(make_asset: Creator[Asset]):
     series = Series.create(asset=asset, config=config)
     assert series.id is None
     assert series.code == "dummy"
+    assert series.exchange is None
     assert series.name == "spx:dummy"
     assert series.asset is asset
     assert series.retention == Retention.LONG_LIVED

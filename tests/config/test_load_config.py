@@ -46,6 +46,8 @@ business:
     24x7:
       week_start: sun
       week_end: sat
+    tdg:
+      exchange: TDG
 
   assets:
     spx:
@@ -58,9 +60,8 @@ business:
       market_open: 9:30:15
       tags:
         instrument: index
-        exchange: NYSE
       series:
-        daily: daily
+        daily: [daily, tdg]
 """)
 
     override_file = tmp_path / "config_test.yaml"
@@ -97,7 +98,6 @@ business:
     assert metadata is not None
     assert metadata.instrument == "index"
     assert metadata.currency is None
-    assert metadata.exchange == "NYSE"
     assert metadata.unit is None
     assert metadata.geo_exposure is None
     assert metadata.first_available_date == date(2008, 9, 10)
@@ -109,6 +109,7 @@ business:
     assert len(app_config.series) == 1
     series: Series = app_config.series[0]
     assert series.asset is asset
+    assert series.exchange == "TDG"
     assert series.bootstrap_history == "10y"
     assert series.bootstrap_history_delta() == timedelta(days=3652.5)
     assert series.interval == "1d"

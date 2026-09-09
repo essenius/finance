@@ -205,6 +205,9 @@ class Series:
     bootstrap_history: str
     publication_offset: str | None
 
+    # part of identity, but can be empty
+    exchange: str | None = None
+
     # assigned by backend
     id: int | None = None
 
@@ -242,6 +245,7 @@ class Series:
             asset=asset,
             calendar=calendar,
             code=reader.require(str, "code"),
+            exchange=reader.get(str, "exchange"),
             interval=raw_interval,
             series_type=SeriesType.require(reader.get(str, "series_type", default=str(SeriesType.CANDLE))),
             retention=retention,
@@ -255,7 +259,7 @@ class Series:
         return interval < timedelta(days=1)
 
     def __repr__(self) -> str:
-        return f"Series(id={self.id}, name={self.name}, asset={self.asset.name}, retention={self.retention}, series_type={self.series_type}, interval={self.interval})"
+        return f"Series(id={self.id}, name={self.name}, asset={self.asset.name}, exchange={self.exchange}, retention={self.retention}, series_type={self.series_type}, interval={self.interval})"
 
     def bootstrap_history_delta(self) -> timedelta:
         return require_duration(self.bootstrap_history, f"bootstrap history for `{self.name}`")

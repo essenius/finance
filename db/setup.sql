@@ -187,7 +187,6 @@ CREATE TABLE IF NOT EXISTS asset (
     short_name   TEXT,
     instrument   TEXT,
     geo_exposure TEXT,
-    exchange     TEXT,
     currency     TEXT,
     unit         TEXT,
     asset_class  TEXT,
@@ -221,6 +220,7 @@ CREATE TABLE IF NOT EXISTS series (
     id SERIAL PRIMARY KEY,
     code TEXT NOT NULL,
     asset_id INTEGER NOT NULL REFERENCES asset(id),
+    exchange TEXT,  -- later NOT NULL
     interval TEXT NOT NULL,
     series_type series_type NOT NULL,
     retention series_retention NOT NULL,
@@ -228,7 +228,7 @@ CREATE TABLE IF NOT EXISTS series (
     bootstrap_history TEXT NOT NULL,
     publication_offset TEXT,
 
-    UNIQUE(asset_id, code)
+    UNIQUE(asset_id, code) -- later , exchange)
 );
 
 CREATE INDEX IF NOT EXISTS series_asset_id_idx ON series (asset_id);
@@ -262,7 +262,7 @@ SELECT
     a.instrument,
     a.asset_class,
     a.geo_exposure,
-    a.exchange,
+    s.exchange,
     a.currency,
     a.unit,
     a.timezone,

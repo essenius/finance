@@ -92,7 +92,7 @@ class SeriesBackend:
     def get_assets(self) -> Result[list[Asset]]:
         query = """
             SELECT id, name, symbol, provider, provider_code, isin, long_name, short_name,
-              instrument, asset_class, geo_exposure, exchange, currency, unit, first_available_date::text,
+              instrument, asset_class, geo_exposure, currency, unit, first_available_date::text,
               timezone, week_start, week_end, market_open::text, market_close::text
             FROM asset ORDER BY id;
             """
@@ -128,7 +128,7 @@ class SeriesBackend:
 
     def get_series(self, get_asset: Callable[[int], Asset | None]) -> Result[list[Series]]:
         query = """
-            SELECT s.id, s.code, s.asset_id, a.name as asset_name, s.interval, s.series_type,
+            SELECT s.id, s.code, s.asset_id, a.name as asset_name, s.exchange, s.interval, s.series_type,
             s.retention, s.retention_period, s.bootstrap_history, s.publication_offset
             FROM series s
             JOIN asset a ON s.asset_id = a.id
@@ -247,7 +247,6 @@ class SeriesBackend:
             meta.instrument,
             meta.asset_class,
             meta.geo_exposure,
-            meta.exchange,
             meta.currency,
             meta.unit,
             meta.first_available_date,
@@ -261,9 +260,9 @@ class SeriesBackend:
         if asset.id is None:
             sql_query = """
                     INSERT INTO asset (name, symbol, provider, provider_code, isin,
-                        long_name, short_name, instrument, asset_class, geo_exposure, exchange, currency, unit,
+                        long_name, short_name, instrument, asset_class, geo_exposure, currency, unit,
                         first_available_date, timezone, week_start, week_end, market_open, market_close)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                     RETURNING id;
                     """
             params = base_fields
@@ -271,7 +270,7 @@ class SeriesBackend:
             sql_query = """
                 UPDATE asset
                 SET name=%s, symbol=%s, provider=%s, provider_code=%s, isin=%s, long_name=%s, short_name=%s,
-                    instrument=%s, asset_class=%s, geo_exposure=%s, exchange=%s, currency=%s, unit=%s,
+                    instrument=%s, asset_class=%s, geo_exposure=%s, currency=%s, unit=%s,
                     first_available_date=%s, timezone=%s, week_start=%s, week_end=%s, market_open=%s, market_close=%s
                 WHERE id=%s
                 RETURNING id;
@@ -292,6 +291,7 @@ class SeriesBackend:
         base_fields = (
             series.code,
             series.asset.id,
+            series.exchange,
             series.interval,
             series.series_type,
             series.retention,
@@ -303,15 +303,15 @@ class SeriesBackend:
         if series.id is None:
             sql_query = """
                 INSERT INTO series (
-                    code, asset_id, interval, series_type, retention, retention_period, bootstrap_history, publication_offset)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                    code, asset_id, exchange, interval, series_type, retention, retention_period, bootstrap_history, publication_offset)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
                 RETURNING id;
             """
             params = base_fields
         else:
             sql_query = """
                 UPDATE series
-                SET code=%s, asset_id=%s, interval=%s, series_type=%s, retention=%s, retention_period=%s,
+                SET code=%s, asset_id=%s, exchange=%s, interval=%s, series_type=%s, retention=%s, retention_period=%s,
                     bootstrap_history=%s, publication_offset=%s
                 WHERE id=%s
                 RETURNING id;

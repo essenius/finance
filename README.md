@@ -122,10 +122,13 @@ business:
       publication_offset: 16h
       market_open: 15:55
       market_close: 16:05
+
+    tdg:
+      exchange: TDG
     
 ```
 
-This means we define a re-usable template named `daily` which defines an interval of a day, is long lived, and the initial fetch will be for 10 years, and another template called `intraday` with an interval of 5 minutes, short lived, and having an initial fetch of 30 days. Short-lived and long-lived determine which back-end table the series is stored into: one without retention policy or one with. 
+This means we define a re-usable template named `daily` which defines an `interval` of a day, a `retention` of long lived, and the initial fetch (`bootstrap_history`) will be for 10 years, and another template called `intraday` with an interval of 5 minutes, short lived, and having an initial fetch of 30 days. Short-lived and long-lived determine which back-end table the series is stored into: one without retention policy or one with. 
 
 Then we have template `candle` which only uses default values (amongst which a series_type of `candle`, which means having values [`open`, `high`, `low`, `close`, `volume`]). This can be useful to make choices explicit. Alternatively, template `value` supports only one value, which will only populate the `close` field. This is useful for instruments that don't have the full candle like the ECB USD/EUR rate, and the FRED interest rates. 
 
@@ -133,7 +136,9 @@ The template `24x7` defines the start of the week is Sunday and end of week is S
 
 The `ecb` template shows the use of `publication_offset`. Normally, values are published when a series interval has completed. So e.g. the 9am interval of 5 minutes ends at 9:05 and the point is published then. For daily series, this is on the next day. However, some daily series (for example the ECB EUR/USD rates) are published at a certain time during the day (16:00 local time). That is what the publication offset specifies. If there is no publication offset, the value of the interval is taken. If there is one, it specifies the offset from midnight local time when the publication happens. It seems inconsistent to take local time, but this was done to be able to cater for daylight savings. 
 
-The templates `daily`, `intraday` and `value` are series templates. Templates `24x7` and `us_treasury` are asset templates. the `ecb` template is a mix since publication_offset belongs to a series and the rest to an asset. If an asset has just one series, that can be convenient.
+Another series template is `tdg`, which specifies that the exchange used for this series is `TDG`. This is useful when you have multiple positions of an instrument with different exchanges.
+
+The templates `daily`, `intraday`, `value` and `tdg` are series templates. Templates `24x7` and `us_treasury` are asset templates. the `ecb` template is a mix since publication_offset belongs to a series and the rest to an asset. If an asset has just one series, that can be convenient.
 
 You can make combined templates as well, for example:
 
@@ -171,12 +176,12 @@ business:
 ```
 
 In this example, `gold` is the asset key, which must be unique and should not be changed after it has been ingested into the database. 
-The `provider` section specifies which provider to use and which provider code to use for fetching. The symbol here is `GC`. You can also omit it, and then the capitalized key (in this case `GOLD`) will be used instead. the `templates` section defines asset templates (see above) that must be applied. Then there are several optional fields: `long_name`, `short_name`, `instrument`, `geo_exposure`, `asset_class`, `exchange`, `currency` and `unit` that you can use for querying. The series section defines the series, using the series templates as defined earlier. So e.g. the `intraday` series will use the values as specified in the `intraday` template. You can also use multiple templates with brackets and comma separating the template names e.g. `[ecb, daily]`.
+The `provider` section specifies which provider to use and which provider code to use for fetching. The symbol here is `GC`. You can also omit it, and then the capitalized key (in this case `GOLD`) will be used instead. the `templates` section defines asset templates (see above) that must be applied. Then there are several optional fields: `long_name`, `short_name`, `instrument`, `geo_exposure`, `asset_class`, `currency` and `unit` that you can use for querying. The series section defines the series, using the series templates as defined earlier. So e.g. the `intraday` series will use the values as specified in the `intraday` template. You can also use multiple templates with brackets and comma separating the template names e.g. `[ecb, daily]`.
 
 There are also fields needed for calendar calculations. Those are timezone (using the standard Python format e.g. `Europe/Amsterdam`), `market_open`, `market_close` (both local time, format `hh:mm`), `week_start` and `week_end` (days of the week that start or end the trading week, default `mon` and `fri` respectively). The field `first_available_date` specfies the first date that an asset was available. That is useful for assets that have a shorter history than the
 retention period. For example, if you have a 10 year retention but an asset only started 4 years ago, specifying the `first_available_date` will prevent the system from repeatedly trying to download the missing 6 years. 
 
-For assets/series fetched from  Yahoo, some metadata will be retrieved automatically, so you won't need to specify `short_name`, `long_name`, `instrument`, `exchange`, `currency`, `timezone`, `market_open`, `market_close` or `first_available_date`. It does not provide `geo_exposure` or `unit`, so if you want to use that you will need to specify them in the YAML file. The `asset_class` field is defaulted to the value of `instrument` for values `EQUITY`, `BOND`, `CURRENCY` and `CRYTPOCURRENCY`.
+For assets fetched from  Yahoo, somemetadata will be retrieved automatically, so you won't need to specify `short_name`, `long_name`, `instrument`, `currency`, `timezone`, `market_open`, `market_close` or `first_available_date`. It does not provide `geo_exposure` or `unit`, so if you want to use that you will need to specify them in the YAML file. The `asset_class` field is defaulted to the value of `instrument` for values `EQUITY`, `BOND`, `CURRENCY` and `CRYTPOCURRENCY`.
 
 #### Composites
 

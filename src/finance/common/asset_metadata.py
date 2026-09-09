@@ -20,7 +20,6 @@ class AssetMetadata:
     short_name: str | None = None
     long_name: str | None = None
     instrument: str | None = None
-    exchange: str | None = None
     geo_exposure: str | None = None
     currency: str | None = None
     unit: str | None = None
@@ -65,7 +64,6 @@ class AssetMetadata:
             instrument=reader.get(str, "instrument"),
             asset_class=reader.get(str, "asset_class"),
             geo_exposure=reader.get(str, "geo_exposure"),
-            exchange=reader.get(str, "exchange"),
             currency=reader.get(str, "currency"),
             unit=reader.get(str, "unit"),
             timezone=timezone,

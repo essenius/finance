@@ -55,7 +55,6 @@ def set_read_asset_description(cursor: MagicMock) -> None:
         SimpleNamespace(name="instrument"),
         SimpleNamespace(name="geo_exposure"),
         SimpleNamespace(name="asset_class"),
-        SimpleNamespace(name="exchange"),
         SimpleNamespace(name="currency"),
         SimpleNamespace(name="unit"),
         SimpleNamespace(name="timezone"),
@@ -73,6 +72,7 @@ def set_read_series_description(cursor: MagicMock) -> None:
         SimpleNamespace(name="code"),
         SimpleNamespace(name="asset_id"),
         SimpleNamespace(name="name"),
+        SimpleNamespace(name="exchange"),
         SimpleNamespace(name="interval"),
         SimpleNamespace(name="series_type"),
         SimpleNamespace(name="retention"),
@@ -279,7 +279,6 @@ def test_get_assets_returns_asset_list(make_backend: Creator[FakeBackend]):
             "stock",
             "US",
             "EQUITY",
-            "NASDAQ",
             "USD",
             "share",
             "America/New_York",
@@ -301,7 +300,6 @@ def test_get_assets_returns_asset_list(make_backend: Creator[FakeBackend]):
             "stock",
             "US",
             "EQUITY",
-            "NASDAQ",
             "USD",
             "share",
             "America/New_York",
@@ -343,9 +341,7 @@ def test_get_assets_db_error(assert_error: AssertError, make_backend: Creator[Fa
 
 def test_get_assets_missing_provider(assert_error: AssertError, make_backend: Creator[FakeBackend]):
     backend, cursor = make_backend().with_cursor()
-    rows = [
-        (2, "X", "X", "foo", "X", "I", "", "", "s", "EQ", "US", "N", "$", "s", "UTC", None, "mon", "fri", "min", "max")
-    ]
+    rows = [(2, "X", "X", "foo", "X", "I", "", "", "s", "EQ", "US", "$", "s", "UTC", None, "mon", "fri", "min", "max")]
     set_read_asset_description(cursor)
     cursor.fetchall.return_value = rows
 
@@ -386,8 +382,8 @@ def test_get_series_returns_series_list(make_asset: Creator[Asset], make_backend
     backend, cursor = make_backend().with_cursor()
 
     rows = [
-        (10, "intraday", 1, "SPX", "1m", "value", "short_lived", "30d", "30d", None),
-        (11, "daily", 1, "SPX", "1d", "candle", "long_lived", None, "1y", "1d"),
+        (10, "intraday", 1, "SPX", "TDG", "1m", "value", "short_lived", "30d", "30d", None),
+        (11, "daily", 1, "SPX", "XET", "1d", "candle", "long_lived", None, "1y", "1d"),
     ]
 
     set_read_series_description(cursor)
@@ -407,6 +403,7 @@ def test_get_series_returns_series_list(make_asset: Creator[Asset], make_backend
     assert series_list[1].series_type == SeriesType.CANDLE
     assert series_list[1].publication_offset == "1d"
     assert series_list[0].asset is asset
+    assert series_list[1].exchange == "XET"
 
 
 def test_get_series_db_error(assert_error: AssertError, make_backend: Creator[FakeBackend]):
@@ -423,7 +420,7 @@ def test_get_series_db_error(assert_error: AssertError, make_backend: Creator[Fa
 def test_get_series_error_no_id(assert_error: AssertError, make_backend: Creator[FakeBackend]):
     backend, cursor = make_backend().with_cursor()
 
-    rows = [(None, "intraday", 1, "SPX", "1m", "value", "short_lived", "30d", "30d", None)]
+    rows = [(None, "intraday", 1, "SPX", "XET", "1m", "value", "short_lived", "30d", "30d", None)]
 
     set_read_series_description(cursor)
     cursor.fetchall.return_value = rows
@@ -441,7 +438,7 @@ def test_get_series_skip_missing_asset(make_backend: Creator[FakeBackend]):
     """if an asset id is missing, we have an orphan, so we should ignore it"""
     backend, cursor = make_backend().with_cursor()
 
-    rows = [(10, "intraday", 1, "SPX", "1m", "value", "short_lived", "30d", "30d", None)]
+    rows = [(10, "intraday", 1, "SPX", "TDG", "1m", "value", "short_lived", "30d", "30d", None)]
 
     set_read_series_description(cursor)
     cursor.fetchall.return_value = rows

@@ -208,7 +208,6 @@ class YahooProvider(MarketDataProvider):
                 short_name=meta_reader.get(str, "shortName"),
                 long_name=meta_reader.get(str, "longName"),
                 instrument=meta_reader.get(str, "instrumentType"),
-                exchange=meta_reader.get(str, "exchangeName"),
                 currency=meta_reader.get(str, "currency"),
                 first_available_date=first_available_date,
                 timezone=timezone,

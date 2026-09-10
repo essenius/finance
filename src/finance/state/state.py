@@ -45,7 +45,7 @@ class State:
     def save(self) -> None:
         self._flush_wal()
         for id, state_entry in self.series_state.items():
-            self._save_sweep(id, state_entry)
+            self._save_state(id, state_entry)
 
     def update_state(self, series_id: int, first: datetime, last: datetime) -> None:
         """
@@ -53,17 +53,15 @@ class State:
         """
         series_state = require(self.get_series_state(series_id), "series state")
         series_state.update_point_range(first, last)
-        self._save_sweep(series_id, series_state)
+        self._save_state(series_id, series_state)
 
     # ----------------
     # Private methods
     # ----------------
 
-    def _save_sweep(self, id: int, series_state: SeriesState) -> None:
+    def _save_state(self, id: int, series_state: SeriesState) -> None:
         if series_state.needs_save:
-            self._backend.save_sweep(
-                id, require(series_state.next_sweep, "next"), require(series_state.sweep_start, "start")
-            )
+            self._backend.save_state(id, series_state)
             series_state.needs_save = False
 
     def _flush_wal(self) -> Result[int]:

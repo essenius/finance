@@ -7,6 +7,8 @@ from __future__ import annotations
 from collections.abc import Callable
 from datetime import datetime
 
+from finance.common.guards import require
+
 from ..common.applogger import AppLogger
 from ..common.json_utils import JsonObject, JsonReader
 from ..common.model import BACKEND, Asset, ProviderProtocol, Series, SeriesPoint, SeriesState
@@ -190,7 +192,8 @@ class SeriesBackend:
         # Load sweep info
 
         sweep = self._sql_client.execute_read(
-            "SELECT series_id, next_sweep, sweep_start FROM series_state;", context="get_series_states_sweep_info"
+            "SELECT series_id, next_sweep, sweep_start, last_start FROM series_state;",
+            context="get_series_states_sweep_info",
         )
         if sweep.ok is False:
             return sweep
@@ -200,10 +203,13 @@ class SeriesBackend:
         for row in sweep.payload["rows"]:
             series_id = row[0]
             if series_id not in state:
-                state[series_id] = SeriesState(next_sweep=row[1], sweep_start=row[2], needs_save=False)
+                state[series_id] = SeriesState(
+                    next_sweep=row[1], sweep_start=row[2], last_start=row[3], needs_save=False
+                )
             else:
                 state[series_id].next_sweep = row[1]
                 state[series_id].sweep_start = row[2]
+                state[series_id].last_start = row[3]
                 state[series_id].needs_save = False
 
         return Success(state)
@@ -220,15 +226,20 @@ class SeriesBackend:
 
         return Success(None)
 
-    def save_sweep(self, series_id: int, next_sweep: datetime, sweep_start: datetime) -> Result[int]:
+    def save_state(self, series_id: int, state: SeriesState) -> Result[int]:
+        # we don't save first_point and last_point as they get fetched from the data tables
+        # These two are mandatory, if they are not there we have a programming error
+        require(state.next_sweep, "next")
+        require(state.sweep_start, "start")
+
         sql_query = """
-            INSERT INTO series_state (series_id, next_sweep, sweep_start)
-            VALUES (%s, %s, %s)
+            INSERT INTO series_state (series_id, next_sweep, sweep_start, last_start)
+            VALUES (%s, %s, %s, %s)
             ON CONFLICT (series_id)
-            DO UPDATE SET next_sweep = EXCLUDED.next_sweep, sweep_start = EXCLUDED.sweep_start
+            DO UPDATE SET next_sweep = EXCLUDED.next_sweep, sweep_start = EXCLUDED.sweep_start, last_start = EXCLUDED.last_start
             RETURNING series_id;
         """
-        params = (series_id, next_sweep, sweep_start)
+        params = (series_id, state.next_sweep, state.sweep_start, state.last_start)
         return self._sql_client.execute_write(sql_query, params)
 
     def store_asset(self, asset: Asset) -> Result[Asset]:

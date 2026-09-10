@@ -282,7 +282,8 @@ FROM series s JOIN asset a ON s.asset_id = a.id ORDER BY series_id ASC;
 CREATE TABLE IF NOT EXISTS series_state (
     series_id INT PRIMARY KEY REFERENCES series(id),
     next_sweep TIMESTAMPTZ NOT NULL,
-    sweep_start TIMESTAMPTZ NOT NULL
+    sweep_start TIMESTAMPTZ NOT NULL,
+    last_start TIMESTAMPTZ
 );
 
 -- ============================

@@ -109,7 +109,7 @@ def make_metadata() -> Creator[AssetMetadata]:
         defaults = {
             "long_name": None,
             "short_name": None,
-            "instrument": "forex",
+            "instrument": "CURRENCY",
             "geo_exposure": "Europe",
             "currency": "USD",
             "unit": "EUR",
@@ -120,7 +120,9 @@ def make_metadata() -> Creator[AssetMetadata]:
             "week_start": "mon",
             "week_end": "fri",
         }
-        return AssetMetadata(**(defaults | overrides))
+        meta = AssetMetadata(**(defaults | overrides))
+        meta.apply_defaults()
+        return meta
 
     return _make
 

@@ -2,7 +2,6 @@
 # Licensed under the Apache License, Version 2.0. See the LICENSE file for details.
 # File: tests/fetch/test_controller.py
 
-from dataclasses import replace
 from datetime import date, datetime, time, timedelta
 from unittest.mock import Mock
 from zoneinfo import ZoneInfo
@@ -221,7 +220,7 @@ def test_compute_fetch_range_intraday(
     )
 
     result = fc._get_fetch_range(series=series, state=state_entry_1)
-    assert result is not None, "1st: intraday publication expected"
+    assert result is not None, "incremental intraday publication"
     first, last, is_incremental = result
     assert is_incremental, "1st: is incremental"
     assert first.store_label() == datetime(2026, 7, 15, 15, 20, tzinfo=UTC)
@@ -234,10 +233,11 @@ def test_compute_fetch_range_intraday(
     # No new points
 
     state_entry_2 = SeriesState(
-        first_point=datetime(2026, 6, 15, tzinfo=UTC), last_point=datetime(2026, 7, 15, 15, 20, tzinfo=UTC)
+        first_point=datetime(2026, 6, 15, tzinfo=UTC),
+        last_point=datetime(2026, 7, 15, 15, 20, tzinfo=UTC),
     )
     result = fc._get_fetch_range(series=series, state=state_entry_2)
-    assert result is None, "2nd: intraday publication not expected"
+    assert result is None, "no intraday publication as no new data"
 
     # older history to fetch
 
@@ -246,15 +246,17 @@ def test_compute_fetch_range_intraday(
     )
 
     result = fc._get_fetch_range(series=series, state=state_entry_3)
-    assert result is not None, "3rd: intraday publication expected"
+    assert result is not None, "intraday publication for older data"
     first, last, is_incremental = result
     assert not is_incremental, "3rd: not incremental"
     assert first.store_label() == datetime(2026, 7, 10, 15, 30, tzinfo=UTC), "3rd: first is before saved range"
     assert last.store_label() == datetime(2026, 7, 10, 23, 50, tzinfo=UTC), "3rd: last is before saved range"
 
-    long_lived_series = replace(series, retention=Retention.LONG_LIVED)
-    result = fc._get_fetch_range(series=long_lived_series, state=state_entry_3)
-    assert result is not None, "3rd: intraday insufficient history"
+    # run again wit the same
+    state_entry_3.update_last_start(first)
+    result = fc._get_fetch_range(series=series, state=state_entry_3)
+
+    assert result is None, "no publication of older data as tried before"
 
     # start with the point that didn't expect publication and enable sweeps
     provider.sweep_config.return_value = SweepConfig(window=timedelta(days=1), cadence=timedelta(hours=1))

@@ -185,6 +185,39 @@ def test_impl_http_error(
     assert_error(result, "Exception during yahoo fetch", "boom")
 
 
+def test_impl_http_422_error(
+    assert_error: AssertError,
+    fixed_now: Factory[datetime],
+    make_asset: Creator[Asset],
+    make_series: Creator[Series],
+    yahoo_provider: Factory[YahooFakeSession],
+):
+    now = make_identity(fixed_now())
+    asset = make_asset()
+    series = make_series(asset)
+    fake = yahoo_provider()
+
+    response: JsonObject = {
+        "chart": {
+            "result": None,
+            "error": {
+                "code": "Unprocessable Entity",
+                "description": "5m data not available. The requested range must be within the last 60 days.",
+            },
+        }
+    }
+
+    fake.session.queue(status=422, json_data=response)
+
+    result = fake.provider.fetch(series, start=now, end=now, is_incremental=False)
+
+    assert_error(
+        result,
+        "Could not interpret fetch response",
+        "{'code': 'Unprocessable Entity', 'description': '5m data not available. The requested range must be within the last 60 days.'}",
+    )
+
+
 @pytest.mark.parametrize(
     ("meta", "reason"),
     [

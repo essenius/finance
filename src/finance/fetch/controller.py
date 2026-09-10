@@ -30,12 +30,15 @@ class FetchController:
             )
             range = self._get_fetch_range(series=series, state=state_entry)
             if range is None:
+                state_entry.update_last_start(None)
                 logger.debug("  Up to date")
                 continue
             start, end, is_incremental = range
             logger.debug(
                 f"  Range: {start} - {end} Publish range: {start.publish_label()} - {end.publish_label()} {'/I' if is_incremental else ''}"
             )
+            # safety net for missing values, especially when backfilling data
+            state_entry.update_last_start(start)
             yield series.asset.provider.fetch(series, start=start, end=end, is_incremental=is_incremental)
 
     # ----------------
@@ -65,13 +68,18 @@ class FetchController:
         prepend_range = self._get_prepend_range(calendar, state, first_req)
         if prepend_range is not None:
             start, end = prepend_range
-            if end is None:
-                # Full history update, is also a sweep
-                state.update_sweep_state(sweep_config, last_req)
-                end = last_req
-            logger.debug(f"  Prepend range: {start} - {end}. Next sweep: {state.next_sweep}")
-            return (start, end, False)
-
+            # If we have the same start as the last run, apparently the prepend fetch didn't return
+            # everything we wanted, so we don't do it again to prevent stalling.
+            # if we have a (temporary) situation like that, every other run the incremental fetch will be done.
+            if start.store_label() != state.last_start:
+                if end is None:
+                    # Full history update, is also a sweep
+                    state.update_sweep_state(sweep_config, last_req)
+                    end = last_req
+                logger.debug(f"  Prepend range: {start} - {end}. Next sweep: {state.next_sweep}")
+                return (start, end, False)
+            else:
+                logger.debug("  Not prepending as tried before")
         # if we get here, state.last_point is set: only None the first time, when we do a full history
         start_point = calendar.from_store_label(require(state.last_point, "state.last_point") + series.interval_delta())
         sweep_start = state.get_sweep_start(sweep_config, last_req)

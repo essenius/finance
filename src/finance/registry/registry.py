@@ -134,7 +134,7 @@ class Registry:
         """
 
         asset.provider_metadata = metadata
-
+        metadata.apply_defaults()
         merged_metadata = apply_overrides(metadata, asset.config_metadata)
         if merged_metadata != asset.effective_metadata:
             asset.effective_metadata = merged_metadata

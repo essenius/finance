@@ -46,10 +46,10 @@ def test_merge_and_find_new_assets_empty(make_asset: Creator[Asset]):
 
 
 def test_merge_and_find_new_assets_update(make_asset: Creator[Asset], make_metadata: Creator[AssetMetadata]):
-    meta_x = make_metadata(instrument="x")
-    meta_y = make_metadata(instrument="y")
-    asset_yaml: Asset = make_asset(name="SPX", config_metadata=meta_x)
-    asset_db: Asset = make_asset(name="SPX", id=1, effective_metadata=meta_y)
+    meta_ccy = make_metadata()
+    meta_fut = make_metadata(instrument="FUTURE")
+    asset_yaml: Asset = make_asset(name="EURUSD", config_metadata=meta_ccy)
+    asset_db: Asset = make_asset(name="EURUSD", id=1, effective_metadata=meta_fut)
 
     registry = Registry(assets=[asset_yaml])
     result = registry.merge_and_find_new_assets([asset_db])

@@ -33,6 +33,7 @@ def test_asset_create_with_id_differs(make_providers: Creator[dict[str, Provider
         "provider_code": "^SPX",
         "isin": "US1234",
         "short_name": "spx",
+        "instrument": "INDEX",
     }
     asset = Asset.create(config=config, get_provider=providers.get)
     assert asset.id is None
@@ -43,7 +44,8 @@ def test_asset_create_with_id_differs(make_providers: Creator[dict[str, Provider
     meta = AssetMetadata(
         long_name=None,
         short_name="spx",
-        instrument=None,
+        instrument="INDEX",
+        asset_class="INDEX",
         geo_exposure=None,
         currency=None,
         unit=None,
@@ -58,7 +60,7 @@ def test_asset_create_with_id_differs(make_providers: Creator[dict[str, Provider
 
     assert (
         f"{asset}"
-        == "Asset(id=None, name=spx, isin=US1234, provider_code=^SPX, metadata=AssetMetadata(short=spx, currency=None, timezone=None))"
+        == "Asset(id=None, name=spx, isin=US1234, provider_code=^SPX, metadata=AssetMetadata(short=spx, asset_class=INDEX, timezone=None))"
     )
     asset.effective_metadata = asset.config_metadata
 

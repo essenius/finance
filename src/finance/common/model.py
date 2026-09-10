@@ -144,21 +144,6 @@ class Asset:
             effective_metadata=config_meta,
         )
 
-    ''' TODO delete
-    def differs_from(self, other: Asset) -> bool:
-        """
-        if this is classified as the same entity (one of the identity checks passed),
-        check if any properties are different
-        """
-        return (
-            self.name != other.name
-            or self.symbol != other.symbol
-            or self.isin != other.isin
-            or not self.same_semantics(other)
-            or self.effective_metadata != other.effective_metadata
-        )
-    '''
-
     def same_semantics(self, other: Asset) -> bool:
         """check if two assets are semantically the same (e.g. indicating a rename)"""
         return self.provider is other.provider and self.provider_code == other.provider_code
@@ -295,6 +280,7 @@ class Series:
         """check if two series are semantically the same (e.g. indicating a rename of the code)"""
         return (
             self.asset.same_semantics(other.asset)
+            and self.exchange == other.exchange
             and self.interval == other.interval
             and self.series_type == other.series_type
             and self.retention == other.retention
@@ -313,6 +299,7 @@ class SeriesState:
     last_point: datetime | None = None
     next_sweep: datetime | None = None
     sweep_start: datetime | None = None
+    last_start: datetime | None = None
     needs_save: bool = False
 
     @staticmethod
@@ -333,6 +320,12 @@ class SeriesState:
         if self.next_sweep is not None and self.next_sweep > last.store_label():
             return None
         return self.sweep_start
+
+    def update_last_start(self, start: CandleIdentity | None) -> None:
+        last_start = None if start is None else start.store_label()
+        if self.last_start != last_start:
+            self.last_start = last_start
+            self.needs_save = True
 
     def update_point_range(self, first: datetime, last: datetime) -> None:
         # update the captured point range

@@ -8,8 +8,9 @@ from unittest.mock import MagicMock, Mock
 
 import psycopg
 
-from finance.common.model import Asset, Series
+from finance.common.model import Asset, Series, SeriesState
 from finance.common.string_enums import Retention, SeriesType
+from finance.common.time_utils import UTC
 from finance.common.types import Failure, ParseError, Success
 from tests.support.fakes import FakeBackend
 from tests.support.types import AssertError, Creator
@@ -452,14 +453,20 @@ def test_get_series_skip_missing_asset(make_backend: Creator[FakeBackend]):
     assert result.payload == []
 
 
-def test_save_sweep(make_backend: Creator[FakeBackend]):
+def test_save_state(make_backend: Creator[FakeBackend]):
     fake_backend = make_backend(fetchone=[42])
     backend = fake_backend.backend
-    next_sweep = datetime.max
-    sweep_start = datetime.min
-    result = backend.save_sweep(series_id=42, next_sweep=next_sweep, sweep_start=sweep_start)
+    series_state = SeriesState(
+        next_sweep=datetime.max, sweep_start=datetime.min, last_start=datetime.fromtimestamp(0, tz=UTC)
+    )
+    result = backend.save_state(series_id=42, state=series_state)
     assert result.ok is True
     assert result.payload == 42
     cursor = fake_backend.fake_sql.cursor
     cursor.execute.assert_called_once()
-    assert cursor.execute.call_args_list[0].args[1] == (42, datetime.max, datetime.min)
+    assert cursor.execute.call_args_list[0].args[1] == (
+        42,
+        datetime.max,
+        datetime.min,
+        datetime.fromtimestamp(0, tz=UTC),
+    )

@@ -12,7 +12,7 @@ from ..common.json_utils import JsonObject, JsonReader
 from ..common.time_utils import parse_date, parse_time, parse_weekday
 from ..common.types import ParseError
 
-_DEFAULT_ASSET_CLASS_INSTRUMENTS = {"EQUITY", "BOND", "CURRENCY", "CRYPTOCURRENCY"}
+_SPECIFY_ASSET_CLASS_INSTRUMENTS = {"ETF", "FUTURE", "MUTUALFUND"}
 
 
 @dataclass
@@ -37,7 +37,7 @@ class AssetMetadata:
     # CO:        self.asset_class = self.instrument
 
     def apply_defaults(self) -> None:
-        if self.asset_class is None and self.instrument in _DEFAULT_ASSET_CLASS_INSTRUMENTS:
+        if self.asset_class is None and self.instrument not in _SPECIFY_ASSET_CLASS_INSTRUMENTS:
             self.asset_class = self.instrument
 
     @classmethod
@@ -79,4 +79,4 @@ class AssetMetadata:
         return meta
 
     def __repr__(self) -> str:
-        return f"AssetMetadata(short={self.short_name}, currency={self.currency}, timezone={None if self.timezone is None else self.timezone.key})"
+        return f"AssetMetadata(short={self.short_name}, asset_class={self.asset_class}, timezone={None if self.timezone is None else self.timezone.key})"

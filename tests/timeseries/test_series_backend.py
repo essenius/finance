@@ -314,8 +314,8 @@ def test_get_series_states_loads_min_max(
     )
 
     now = fixed_now()
-    # Two series in cold table
 
+    # Two series in cold table
     cold_result: SqlReadPayload = {
         "rows": [
             (1, now - timedelta(days=10), now - timedelta(days=1)),
@@ -324,16 +324,22 @@ def test_get_series_states_loads_min_max(
         "columns": {},
     }
 
+    # One series in the hot table
     hot_result: SqlReadPayload = {
         "rows": [
-            (3, now - timedelta(hours=6), now - timedelta(hours=1)),
+            (3, now - timedelta(hours=6), now - timedelta(hours=1), None),
         ],
         "columns": {},
     }
 
+    # stored data for the first cold series and one not existing in hot or cold
     sweep_start = now - timedelta(days=7)
     next_sweep = now + timedelta(days=1)
-    sweep_result: SqlReadPayload = {"rows": [(1, next_sweep, sweep_start), (4, next_sweep, sweep_start)], "columns": {}}
+    last_start = now - timedelta(hours=1)
+    sweep_result: SqlReadPayload = {
+        "rows": [(1, next_sweep, sweep_start, last_start), (4, next_sweep, sweep_start, last_start)],
+        "columns": {},
+    }
 
     sql_factory.instance.read_results = [
         cold_result,
@@ -355,6 +361,7 @@ def test_get_series_states_loads_min_max(
     assert (s1.first_point, s1.last_point) == (cold_rows[0][1], cold_rows[0][2])
     assert s1.sweep_start == sweep_start
     assert s1.next_sweep == next_sweep
+    assert s1.last_start is last_start
     assert not s1.needs_save
 
     # Validate series 2 (cold and no sweep)
@@ -362,12 +369,14 @@ def test_get_series_states_loads_min_max(
     assert (s2.first_point, s2.last_point) == (cold_rows[1][1], cold_rows[1][2])
     assert s2.sweep_start is None
     assert s2.next_sweep is None
+    assert s2.last_start is None
     assert not s2.needs_save
 
     # Validate series 3 (hot and no sweep)
     hot_rows = hot_result["rows"]
     s3: SeriesState = state[3]
     assert (s3.first_point, s3.last_point) == (hot_rows[0][1], hot_rows[0][2])
+    assert s3.last_start is None
     assert not s3.needs_save
 
     # Validate series 4 (only sweep)
@@ -376,6 +385,7 @@ def test_get_series_states_loads_min_max(
     assert s4.last_point is None
     assert s4.sweep_start == sweep_start
     assert s4.next_sweep == next_sweep
+    assert s4.last_start == last_start
     assert not s4.needs_save
 
 

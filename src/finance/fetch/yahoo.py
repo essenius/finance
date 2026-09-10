@@ -220,7 +220,11 @@ class YahooProvider(MarketDataProvider):
         """fetch the response from the provider. Is called from a _safe_call wrapper so can throw"""
         headers = {"User-Agent": "Mozilla/5.0"}
         response = self.session.get(url, params=params, headers=headers, timeout=self.config.timeout_delta().seconds)
-        response.raise_for_status()
+        # 400 is Bad Request, happens e.g. with unsupported intervals.
+        # 422 is Unprocessable Entity, e.g. if we passed the period threshold.
+        # The error object in the response will contain useful information, so let the parser kick in.
+        if response.status_code not in [400, 422]:
+            response.raise_for_status()
         reader = JsonReader(response.json()).reader_for("chart", allow_missing="yes")
         return self._parse_result(reader)
 
